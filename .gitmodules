@@ -1,0 +1,3 @@
+[submodule "embedded/esp-adf"]
+	path = embedded/esp-adf
+	url = https://github.com/espressif/esp-adf.git
