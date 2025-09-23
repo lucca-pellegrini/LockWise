@@ -12,18 +12,30 @@ class _InicialState extends State<Inicial> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Tela Inicial', style: TextStyle(color: Colors.white)),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: Icon(Icons.menu, size: 40.0, color: Colors.blueAccent),
+              onPressed: () {},
+            ),
+            Text('Tela Inicial', style: TextStyle(color: Colors.blueAccent)),
+            IconButton(
+              icon: Icon(
+                Icons.account_circle,
+                size: 40.0,
+                color: Colors.blueAccent,
+              ),
+              onPressed: () {
+                // Ação ao pressionar o ícone
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
         centerTitle: true,
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.white10,
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.account_circle, size: 40.0, color: Colors.white),
-            onPressed: () {
-              // Ação ao pressionar o ícone
-            },
-          ),
-        ],
       ),
       body: Center(
         child: Column(

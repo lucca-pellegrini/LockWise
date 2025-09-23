@@ -16,16 +16,16 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Login', style: TextStyle(color: Colors.white)),
+        title: Text('Login', style: TextStyle(color: Colors.blueAccent)),
         centerTitle: true,
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.white10,
       ),
       body: Stack(
         children: [
           SizedBox(
             height:
                 MediaQuery.of(context).size.height -
-                56.0 -
+                190.0 -
                 MediaQuery.of(context).viewInsets.bottom,
             child: Column(
               children: [
