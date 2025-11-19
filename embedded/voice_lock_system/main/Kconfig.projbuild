@@ -1,0 +1,52 @@
+menu "Voice Lock Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "YourWiFiSSID"
+        help
+            WiFi SSID (network name) for the device to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "YourWiFiPassword"
+        help
+            WiFi password (WPA or WPA2) for the device to use.
+
+    config DEVICE_ID
+        string "Device ID"
+        default "lockwise_device_001"
+        help
+            Unique identifier for this lock device.
+
+    config BACKEND_URL
+        string "Backend API URL"
+        default "http://your-backend-server.com/api/verify-voice"
+        help
+            URL of the backend API endpoint for voice verification.
+
+    config MQTT_BROKER_URL
+        string "MQTT Broker URL"
+        default "mqtt://your-mqtt-broker.com"
+        help
+            URL of the MQTT broker for remote control.
+
+    config LOCK_GPIO
+        int "Lock Control GPIO Pin"
+        default -1
+        help
+            GPIO pin for controlling the lock (-1 if using I2C).
+
+    config USE_I2C_LOCK
+        bool "Use I2C GPIO Expander for Lock Control"
+        default n
+        help
+            Enable if using I2C GPIO expander instead of direct GPIO.
+
+    config I2C_LOCK_ADDR
+        hex "I2C Lock GPIO Expander Address"
+        depends on USE_I2C_LOCK
+        default 0x20
+        help
+            I2C address of the GPIO expander controlling the lock.
+
+endmenu
