@@ -45,12 +45,12 @@
 
 static const char *TAG = "VOICE_LOCK";
 
-/* Configuration - Can be overridden via NVS or Kconfig */
-#define DEFAULT_WIFI_SSID "YourWiFiSSID"
-#define DEFAULT_WIFI_PASSWORD "YourWiFiPassword"
-#define DEFAULT_DEVICE_ID "lockwise_device_001"
-#define DEFAULT_BACKEND_URL "http://your-backend-server.com/api/verify-voice"
-#define DEFAULT_MQTT_BROKER "mqtt://your-mqtt-broker.com"
+/* Configuration - Use Kconfig values, can be overridden via NVS */
+#define DEFAULT_WIFI_SSID CONFIG_WIFI_SSID
+#define DEFAULT_WIFI_PASSWORD CONFIG_WIFI_PASSWORD
+#define DEFAULT_DEVICE_ID CONFIG_DEVICE_ID
+#define DEFAULT_BACKEND_URL CONFIG_BACKEND_URL
+#define DEFAULT_MQTT_BROKER CONFIG_MQTT_BROKER_URL
 
 #define AUDIO_SAMPLE_RATE 16000
 #define AUDIO_BITS 16
@@ -92,10 +92,10 @@ static size_t audio_buffer_len = 0;
 
 /* Function prototypes */
 static void load_config_from_nvs(void);
-static void save_config_to_nvs(void);
+static void save_config_to_nvs(void) __attribute__((unused));
 static void wifi_init(void);
 static void mqtt_init(void);
-static void audio_pipeline_init(void);
+static void audio_pipeline_setup(void);
 static esp_err_t start_voice_recording(void);
 static esp_err_t send_audio_to_backend(void);
 static void unlock_door(void);
@@ -187,9 +187,15 @@ static void wifi_init(void)
 	esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
 
 	periph_wifi_cfg_t wifi_cfg = {
-		.ssid = wifi_ssid,
-		.password = wifi_password,
+		.wifi_config.sta.ssid = {},
+		.wifi_config.sta.password = {},
 	};
+
+	// Copy SSID and password to the config
+	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, wifi_ssid,
+		sizeof(wifi_cfg.wifi_config.sta.ssid));
+	strncpy((char *)wifi_cfg.wifi_config.sta.password, wifi_password,
+		sizeof(wifi_cfg.wifi_config.sta.password));
 
 	esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
 	esp_periph_start(set, wifi_handle);
@@ -260,7 +266,7 @@ static void mqtt_init(void)
 }
 
 /* Audio Pipeline Initialization */
-static void audio_pipeline_init(void)
+static void audio_pipeline_setup(void)
 {
 	ESP_LOGI(TAG, "Initializing audio pipeline");
 
@@ -364,7 +370,6 @@ static esp_err_t start_voice_recording(void)
 /* HTTP Event Handler */
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
-	static char *output_buffer;
 	static int output_len;
 
 	switch (evt->event_id) {
@@ -565,7 +570,7 @@ void app_main(void)
 	mqtt_init();
 
 	// Initialize audio pipeline
-	audio_pipeline_init();
+	audio_pipeline_setup();
 
 	// TODO: Initialize lock control GPIO or I2C
 	// If using GPIO:
