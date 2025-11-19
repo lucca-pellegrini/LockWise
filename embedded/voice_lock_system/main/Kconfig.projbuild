@@ -49,4 +49,18 @@ menu "Voice Lock Configuration"
         help
             I2C address of the GPIO expander controlling the lock.
 
+    config MQTT_HEARTBEAT_ENABLE
+        bool "Enable MQTT Heartbeat"
+        default y
+        help
+            Enable periodic heartbeat messages to MQTT status topic.
+
+    config MQTT_HEARTBEAT_INTERVAL_SEC
+        int "MQTT Heartbeat Interval (seconds)"
+        depends on MQTT_HEARTBEAT_ENABLE
+        default 30
+        range 5 3600
+        help
+            Interval in seconds between heartbeat messages (5-3600 seconds).
+
 endmenu
