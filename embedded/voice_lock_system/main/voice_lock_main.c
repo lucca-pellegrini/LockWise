@@ -14,6 +14,10 @@
  */
 
 #include <string.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <errno.h>
+#include <arpa/inet.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -95,6 +99,8 @@ static void load_config_from_nvs(void);
 static void save_config_to_nvs(void) __attribute__((unused));
 static void wifi_init(void);
 static void mqtt_init(void);
+static void mqtt_publish_status(const char *status);
+static void mqtt_heartbeat_task(void *pvParameters);
 static void audio_pipeline_setup(void);
 static esp_err_t start_voice_recording(void);
 static esp_err_t send_audio_to_backend(void);
@@ -202,6 +208,22 @@ static void wifi_init(void)
 	periph_wifi_wait_for_connected(wifi_handle, portMAX_DELAY);
 
 	ESP_LOGI(TAG, "WiFi connected successfully");
+
+	// Get and log IP address
+	esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+	if (netif) {
+		esp_netif_ip_info_t ip_info;
+		esp_netif_get_ip_info(netif, &ip_info);
+		ESP_LOGI(TAG, "IP Address: " IPSTR, IP2STR(&ip_info.ip));
+		ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&ip_info.gw));
+		ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+
+		// Get DNS server
+		esp_netif_dns_info_t dns_info;
+		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
+		ESP_LOGI(TAG, "DNS Server: " IPSTR,
+			 IP2STR(&dns_info.ip.u_addr.ip4));
+	}
 }
 
 /* MQTT Event Handler */
@@ -219,6 +241,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 			 device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
+
+		// Publish power-on status message
+		mqtt_publish_status("POWER_ON");
 		break;
 
 	case MQTT_EVENT_DISCONNECTED:
@@ -241,7 +266,23 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 		break;
 
 	case MQTT_EVENT_ERROR:
-		ESP_LOGE(TAG, "MQTT Error");
+		ESP_LOGE(TAG, "MQTT Error event");
+		if (event->error_handle->error_type ==
+		    MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+			ESP_LOGE(TAG,
+				 "Last error code reported from esp-tls: 0x%x",
+				 event->error_handle->esp_tls_last_esp_err);
+			ESP_LOGE(TAG, "Last tls stack error number: 0x%x",
+				 event->error_handle->esp_tls_stack_err);
+			ESP_LOGE(TAG, "Last captured errno : %d (%s)",
+				 event->error_handle->esp_transport_sock_errno,
+				 strerror(event->error_handle
+						  ->esp_transport_sock_errno));
+		} else if (event->error_handle->error_type ==
+			   MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
+			ESP_LOGE(TAG, "Connection refused error: 0x%x",
+				 event->error_handle->connect_return_code);
+		}
 		break;
 
 	default:
@@ -259,23 +300,180 @@ static void mqtt_init(void)
 {
 	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", mqtt_broker_url);
 
+	// Extract hostname from URL for DNS testing
+	char hostname[128] = { 0 };
+	char *host_start = strstr(mqtt_broker_url, "://");
+	if (host_start) {
+		host_start += 3; // Skip "://"
+		char *port_start = strchr(host_start, ':');
+		char *path_start = strchr(host_start, '/');
+		int len = 0;
+
+		if (port_start) {
+			len = port_start - host_start;
+		} else if (path_start) {
+			len = path_start - host_start;
+		} else {
+			len = strlen(host_start);
+		}
+
+		if (len > 0 && len < sizeof(hostname)) {
+			strncpy(hostname, host_start, len);
+			hostname[len] = '\0';
+
+			// Test DNS resolution
+			ESP_LOGI(TAG, "Testing DNS resolution for: %s",
+				 hostname);
+			struct addrinfo hints = {
+				.ai_family = AF_UNSPEC,
+				.ai_socktype = SOCK_STREAM,
+			};
+			struct addrinfo *res;
+			int err = getaddrinfo(hostname, NULL, &hints, &res);
+			if (err != 0 || res == NULL) {
+				ESP_LOGE(TAG, "DNS lookup failed for %s: %d",
+					 hostname, err);
+			} else {
+				// Print resolved IP addresses
+				for (struct addrinfo *p = res; p != NULL;
+				     p = p->ai_next) {
+					if (p->ai_family == AF_INET) {
+						struct sockaddr_in *ipv4 =
+							(struct sockaddr_in *)
+								p->ai_addr;
+						ESP_LOGI(
+							TAG,
+							"DNS resolved to: %s",
+							inet_ntoa(
+								ipv4->sin_addr));
+					}
+				}
+				freeaddrinfo(res);
+			}
+
+			// Test TCP connection to MQTT broker
+			ESP_LOGI(TAG, "Testing TCP connection to %s:8883",
+				 hostname);
+			int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (sock >= 0) {
+				struct sockaddr_in dest_addr;
+				dest_addr.sin_family = AF_INET;
+				dest_addr.sin_port = htons(8883);
+
+				// Resolve hostname again for connection test
+				struct addrinfo *res2;
+				err = getaddrinfo(hostname, "8883", &hints,
+						  &res2);
+				if (err == 0 && res2) {
+					struct sockaddr_in *ipv4 =
+						(struct sockaddr_in *)
+							res2->ai_addr;
+					memcpy(&dest_addr.sin_addr,
+					       &ipv4->sin_addr,
+					       sizeof(dest_addr.sin_addr));
+
+					// Set socket timeout
+					struct timeval timeout = { .tv_sec = 5,
+								   .tv_usec =
+									   0 };
+					setsockopt(sock, SOL_SOCKET,
+						   SO_RCVTIMEO, &timeout,
+						   sizeof(timeout));
+					setsockopt(sock, SOL_SOCKET,
+						   SO_SNDTIMEO, &timeout,
+						   sizeof(timeout));
+
+					int connect_result = connect(
+						sock,
+						(struct sockaddr *)&dest_addr,
+						sizeof(dest_addr));
+					if (connect_result == 0) {
+						ESP_LOGI(TAG,
+							 "TCP connection successful!");
+						close(sock);
+					} else {
+						ESP_LOGE(
+							TAG,
+							"TCP connection failed: errno=%d (%s)",
+							errno, strerror(errno));
+						close(sock);
+					}
+					freeaddrinfo(res2);
+				} else {
+					ESP_LOGE(TAG,
+						 "DNS lookup failed for connection test: %d",
+						 err);
+					close(sock);
+				}
+			} else {
+				ESP_LOGE(TAG, "Failed to create socket: errno=%d",
+					 errno);
+			}
+		}
+	}
+
 	esp_mqtt_client_config_t mqtt_cfg = {
 		.broker.address.uri = mqtt_broker_url,
 		.credentials.client_id = device_id,
+		.network.timeout_ms = 30000, // Increase timeout to 30 seconds
 	};
-	
+
 	// If using mqtts://, configure TLS with embedded certificate
 	if (strncmp(mqtt_broker_url, "mqtts://", 8) == 0) {
-		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
-		mqtt_cfg.broker.verification.certificate_len = mqtt_ca_pem_end - mqtt_ca_pem_start;
-		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)", 
-		         (int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
+		mqtt_cfg.broker.verification.certificate =
+			(const char *)mqtt_ca_pem_start;
+		mqtt_cfg.broker.verification.certificate_len =
+			mqtt_ca_pem_end - mqtt_ca_pem_start;
+		ESP_LOGI(
+			TAG,
+			"MQTT TLS enabled with embedded CA certificate (%d bytes)",
+			(int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
 	}
 
 	mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
 	esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID,
 				       mqtt_event_handler, NULL);
 	esp_mqtt_client_start(mqtt_client);
+}
+
+/* MQTT Status Publishing */
+static void mqtt_publish_status(const char *status)
+{
+	if (mqtt_client == NULL) {
+		ESP_LOGW(TAG,
+			 "MQTT client not initialized, cannot publish status");
+		return;
+	}
+
+	char topic[64];
+	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
+
+	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, status,
+					     strlen(status), 1, 0);
+	if (msg_id >= 0) {
+		ESP_LOGI(TAG, "Published status to %s: %s (msg_id=%d)", topic,
+			 status, msg_id);
+	} else {
+		ESP_LOGE(TAG, "Failed to publish status");
+	}
+}
+
+/* MQTT Heartbeat Task */
+static void mqtt_heartbeat_task(void *pvParameters)
+{
+#ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
+	const int interval_ms = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC * 1000;
+	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)",
+		 CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC);
+
+	while (1) {
+		vTaskDelay(pdMS_TO_TICKS(interval_ms));
+		mqtt_publish_status("HEARTBEAT");
+	}
+#else
+	ESP_LOGI(TAG, "Heartbeat disabled in configuration");
+	vTaskDelete(NULL);
+#endif
 }
 
 /* Audio Pipeline Initialization */
@@ -495,9 +693,7 @@ static void unlock_door(void)
 	xTimerStart(lock_timer, 0);
 
 	// Publish status to MQTT
-	char topic[64];
-	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
-	esp_mqtt_client_publish(mqtt_client, topic, "UNLOCKED", 0, 0, 0);
+	mqtt_publish_status("UNLOCKED");
 }
 
 /* Lock Door */
@@ -521,9 +717,7 @@ static void lock_door(void)
 	}
 
 	// Publish status to MQTT
-	char topic[64];
-	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
-	esp_mqtt_client_publish(mqtt_client, topic, "LOCKED", 0, 0, 0);
+	mqtt_publish_status("LOCKED");
 }
 
 /* Voice Recognition Task */
@@ -598,6 +792,11 @@ void app_main(void)
 
 	// Start voice recognition task
 	xTaskCreate(voice_recognition_task, "voice_rec", 4096, NULL, 5, NULL);
+
+	// Start MQTT heartbeat task
+#ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
+	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 2048, NULL, 3, NULL);
+#endif
 
 	// Main loop - can be used for button monitoring or other tasks
 	while (1) {
