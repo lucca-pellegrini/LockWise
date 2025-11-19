@@ -250,6 +250,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 }
 
 /* MQTT Initialization */
+
+// External references to embedded certificate (if TLS is used)
+extern const uint8_t mqtt_ca_pem_start[] asm("_binary_mqtt_ca_pem_start");
+extern const uint8_t mqtt_ca_pem_end[] asm("_binary_mqtt_ca_pem_end");
+
 static void mqtt_init(void)
 {
 	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", mqtt_broker_url);
@@ -258,6 +263,14 @@ static void mqtt_init(void)
 		.broker.address.uri = mqtt_broker_url,
 		.credentials.client_id = device_id,
 	};
+	
+	// If using mqtts://, configure TLS with embedded certificate
+	if (strncmp(mqtt_broker_url, "mqtts://", 8) == 0) {
+		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
+		mqtt_cfg.broker.verification.certificate_len = mqtt_ca_pem_end - mqtt_ca_pem_start;
+		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)", 
+		         (int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
+	}
 
 	mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
 	esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID,
