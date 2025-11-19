@@ -6,21 +6,28 @@ set -e
 echo "=== Voice Lock System Build Script ==="
 
 # Check if ESP-IDF is sourced
-if [ -z "$IDF_PATH" ]; then
+if [ -z "$IDF_PATH" ] || [ ! -d "$IDF_PATH" ]; then
     echo "ERROR: ESP-IDF not found. Please source export.sh first:"
-    echo "  cd /path/to/esp-idf"
-    echo "  . ./export.sh"
+    echo "  sh -c '. ~/src/vscode/pi/LockWise/embedded/esp-adf/export.sh && ./build.sh <command>'"
     exit 1
 fi
 
 # Check if ESP-ADF is set
-if [ -z "$ADF_PATH" ]; then
-    echo "WARNING: ADF_PATH not set. Setting to default..."
-    export ADF_PATH="/home/luc/src/vscode/pi/LockWise/embedded/esp-adf"
-    if [ ! -d "$ADF_PATH" ]; then
-        echo "ERROR: ESP-ADF not found at $ADF_PATH"
-        exit 1
-    fi
+if [ -z "$ADF_PATH" ] || [ ! -d "$ADF_PATH" ]; then
+    echo "ERROR: ADF_PATH not set properly. Please source export.sh first:"
+    echo "  sh -c '. ~/src/vscode/pi/LockWise/embedded/esp-adf/export.sh && ./build.sh <command>'"
+    exit 1
+fi
+
+# Validate paths
+if [ ! -d "$IDF_PATH/components" ]; then
+    echo "ERROR: IDF_PATH ($IDF_PATH) does not contain ESP-IDF"
+    exit 1
+fi
+
+if [ ! -d "$ADF_PATH/components" ]; then
+    echo "ERROR: ADF_PATH ($ADF_PATH) does not contain ESP-ADF"
+    exit 1
 fi
 
 echo "ESP-IDF Path: $IDF_PATH"
