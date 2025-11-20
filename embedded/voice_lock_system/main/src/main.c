@@ -5,8 +5,10 @@
 #include "mqtt.h"
 #include "audio.h"
 #include "serial.h"
+#include "lock.h"
 #include "esp_log.h"
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -35,6 +37,14 @@ void app_main(void)
 	};
 	uart_param_config(UART_NUM_0, &uart_config);
 	uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
+
+	// Initialize lock control GPIO (LED indicator)
+	gpio_config_t io_conf = {
+		.pin_bit_mask = (1ULL << LOCK_CONTROL_GPIO),
+		.mode = GPIO_MODE_OUTPUT,
+	};
+	gpio_config(&io_conf);
+	lock_door();
 
 	ESP_LOGI(TAG, "=== Voice-Controlled Lock System ===");
 
@@ -67,14 +77,6 @@ void app_main(void)
 
 	// Initialize audio pipeline
 	audio_pipeline_setup();
-
-	// TODO: Initialize lock control GPIO or I2C
-	// If using GPIO:
-	// gpio_config_t io_conf = {
-	//     .pin_bit_mask = (1ULL << LOCK_CONTROL_GPIO),
-	//     .mode = GPIO_MODE_OUTPUT,
-	// };
-	// gpio_config(&io_conf);
 
 	ESP_LOGI(TAG, "System initialized successfully");
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
