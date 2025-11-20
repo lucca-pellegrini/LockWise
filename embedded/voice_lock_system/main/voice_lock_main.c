@@ -96,7 +96,6 @@ static size_t audio_buffer_len = 0;
 
 /* Function prototypes */
 static void load_config_from_nvs(void);
-static void save_config_to_nvs(void) __attribute__((unused));
 static void wifi_init(void);
 static void mqtt_init(void);
 static void mqtt_publish_status(const char *status);
@@ -128,9 +127,10 @@ static void load_config_from_nvs(void)
 		strcpy(wifi_ssid, DEFAULT_WIFI_SSID);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "wifi_ssid", wifi_ssid);
-			ESP_LOGW(TAG,
-				 "Using provisioned wifi_ssid and saved to NVS: %s",
-				 wifi_ssid);
+			ESP_LOGW(
+				TAG,
+				"Using provisioned wifi_ssid and saved to NVS: %s",
+				wifi_ssid);
 		}
 	}
 
@@ -158,9 +158,10 @@ static void load_config_from_nvs(void)
 		strcpy(device_id, DEFAULT_DEVICE_ID);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "device_id", device_id);
-			ESP_LOGW(TAG,
-				 "Using provisioned device_id and saved to NVS: %s",
-				 device_id);
+			ESP_LOGW(
+				TAG,
+				"Using provisioned device_id and saved to NVS: %s",
+				device_id);
 		}
 	}
 
@@ -204,23 +205,6 @@ static void load_config_from_nvs(void)
 	}
 
 	ESP_LOGI(TAG, "Device ID: %s", device_id);
-}
-
-static void save_config_to_nvs(void)
-{
-	nvs_handle_t nvs_handle;
-	esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
-
-	if (err == ESP_OK) {
-		nvs_set_str(nvs_handle, "wifi_ssid", wifi_ssid);
-		nvs_set_str(nvs_handle, "wifi_pass", wifi_password);
-		nvs_set_str(nvs_handle, "device_id", device_id);
-		nvs_set_str(nvs_handle, "backend_url", backend_url);
-		nvs_set_str(nvs_handle, "mqtt_broker", mqtt_broker_url);
-		nvs_commit(nvs_handle);
-		nvs_close(nvs_handle);
-		ESP_LOGI(TAG, "Configuration saved to NVS");
-	}
 }
 
 /* WiFi Initialization */
