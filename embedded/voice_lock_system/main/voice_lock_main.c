@@ -112,56 +112,95 @@ static void lock_timeout_callback(TimerHandle_t xTimer);
 static void load_config_from_nvs(void)
 {
 	nvs_handle_t nvs_handle;
-	esp_err_t err = nvs_open("voice_lock", NVS_READONLY, &nvs_handle);
+	esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
+	int nvs_available = (err == ESP_OK);
 
-	if (err == ESP_OK) {
-		size_t required_size;
+	if (!nvs_available) {
+		ESP_LOGW(TAG, "NVS unavailable, using all defaults");
+	}
 
-		// Load WiFi SSID
-		required_size = sizeof(wifi_ssid);
-		if (nvs_get_str(nvs_handle, "wifi_ssid", wifi_ssid,
-				&required_size) != ESP_OK) {
-			strcpy(wifi_ssid, DEFAULT_WIFI_SSID);
-		}
-
-		// Load WiFi Password
-		required_size = sizeof(wifi_password);
-		if (nvs_get_str(nvs_handle, "wifi_pass", wifi_password,
-				&required_size) != ESP_OK) {
-			strcpy(wifi_password, DEFAULT_WIFI_PASSWORD);
-		}
-
-		// Load Device ID
-		required_size = sizeof(device_id);
-		if (nvs_get_str(nvs_handle, "device_id", device_id,
-				&required_size) != ESP_OK) {
-			strcpy(device_id, DEFAULT_DEVICE_ID);
-		}
-
-		// Load Backend URL
-		required_size = sizeof(backend_url);
-		if (nvs_get_str(nvs_handle, "backend_url", backend_url,
-				&required_size) != ESP_OK) {
-			strcpy(backend_url, DEFAULT_BACKEND_URL);
-		}
-
-		// Load MQTT Broker URL
-		required_size = sizeof(mqtt_broker_url);
-		if (nvs_get_str(nvs_handle, "mqtt_broker", mqtt_broker_url,
-				&required_size) != ESP_OK) {
-			strcpy(mqtt_broker_url, DEFAULT_MQTT_BROKER);
-		}
-
-		nvs_close(nvs_handle);
-		ESP_LOGI(TAG, "Configuration loaded from NVS");
+	// Load WiFi SSID
+	size_t required_size = sizeof(wifi_ssid);
+	if (nvs_available && nvs_get_str(nvs_handle, "wifi_ssid", wifi_ssid,
+					 &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded wifi_ssid from NVS: %s", wifi_ssid);
 	} else {
-		// Use defaults if NVS not initialized
 		strcpy(wifi_ssid, DEFAULT_WIFI_SSID);
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "wifi_ssid", wifi_ssid);
+			ESP_LOGW(TAG,
+				 "Using provisioned wifi_ssid and saved to NVS: %s",
+				 wifi_ssid);
+		}
+	}
+
+	// Load WiFi Password
+	required_size = sizeof(wifi_password);
+	if (nvs_available && nvs_get_str(nvs_handle, "wifi_pass", wifi_password,
+					 &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded wifi_pass from NVS: [REDACTED]");
+	} else {
 		strcpy(wifi_password, DEFAULT_WIFI_PASSWORD);
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "wifi_pass", wifi_password);
+			ESP_LOGW(
+				TAG,
+				"Using provisioned wifi_pass and saved to NVS: [REDACTED]");
+		}
+	}
+
+	// Load Device ID
+	required_size = sizeof(device_id);
+	if (nvs_available && nvs_get_str(nvs_handle, "device_id", device_id,
+					 &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded device_id from NVS: %s", device_id);
+	} else {
 		strcpy(device_id, DEFAULT_DEVICE_ID);
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "device_id", device_id);
+			ESP_LOGW(TAG,
+				 "Using provisioned device_id and saved to NVS: %s",
+				 device_id);
+		}
+	}
+
+	// Load Backend URL
+	required_size = sizeof(backend_url);
+	if (nvs_available && nvs_get_str(nvs_handle, "backend_url", backend_url,
+					 &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded backend_url from NVS: %s", backend_url);
+	} else {
 		strcpy(backend_url, DEFAULT_BACKEND_URL);
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "backend_url", backend_url);
+			ESP_LOGW(
+				TAG,
+				"Using provisioned backend_url and saved to NVS: %s",
+				backend_url);
+		}
+	}
+
+	// Load MQTT Broker URL
+	required_size = sizeof(mqtt_broker_url);
+	if (nvs_available &&
+	    nvs_get_str(nvs_handle, "mqtt_broker", mqtt_broker_url,
+			&required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded mqtt_broker_url from NVS: %s",
+			 mqtt_broker_url);
+	} else {
 		strcpy(mqtt_broker_url, DEFAULT_MQTT_BROKER);
-		ESP_LOGW(TAG, "Using default configuration");
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "mqtt_broker", mqtt_broker_url);
+			ESP_LOGW(
+				TAG,
+				"Using provisioned mqtt_broker_url and saved to NVS: %s",
+				mqtt_broker_url);
+		}
+	}
+
+	if (nvs_available) {
+		nvs_commit(nvs_handle);
+		nvs_close(nvs_handle);
 	}
 
 	ESP_LOGI(TAG, "Device ID: %s", device_id);
