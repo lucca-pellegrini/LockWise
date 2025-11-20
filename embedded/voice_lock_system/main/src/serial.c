@@ -14,6 +14,8 @@
 
 static const char *TAG = "LOCKWISE_SERIAL";
 
+static void run_command(char buffer[256]);
+
 void serial_command_task(void *pvParameters)
 {
 	ESP_LOGI(TAG, "Serial command task started");
@@ -29,42 +31,46 @@ void serial_command_task(void *pvParameters)
 				buffer[index] = '\0';
 				if (index > 0) {
 					ESP_LOGI(TAG, "Received command: %s", buffer);
-
-					// Parse command
-					if (strncmp(buffer, "update_config ", 14) == 0) {
-						char key[32], value[256];
-						if (sscanf(buffer + 14, "%31s %255[^\n]", key, value) == 2) {
-							update_config(key, value);
-						} else {
-							ESP_LOGW(TAG, "Invalid update_config format");
-						}
-					} else if (strcasecmp(buffer, "unlock") == 0) {
-						unlock_door();
-					} else if (strcasecmp(buffer, "lock") == 0) {
-						lock_door();
-					} else if (strcasecmp(buffer, "reboot") == 0) {
-						mqtt_publish_status("RESTARTING");
-						esp_restart();
-					} else if (strcasecmp(buffer, "flash") == 0) {
-						switch (nvs_flash_erase()) {
-						case ESP_OK:
-							mqtt_publish_status("NVS_ERASED");
-							break;
-						case ESP_ERR_NOT_FOUND:
-							mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
-							break;
-						default:
-							mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
-							break;
-						}
-					} else {
-						ESP_LOGW(TAG, "Unknown command: %s", buffer);
-					}
 				}
 				index = 0;
+
+				run_command(buffer);
 			} else if (index < sizeof(buffer) - 1) {
 				buffer[index++] = data;
 			}
 		}
+	}
+}
+
+static void run_command(char buffer[256])
+{
+	if (strncmp(buffer, "update_config ", 14) == 0) {
+		char key[32], value[256];
+		if (sscanf(buffer + 14, "%31s %255[^\n]", key, value) == 2) {
+			update_config(key, value);
+		} else {
+			ESP_LOGW(TAG, "Invalid update_config format");
+		}
+	} else if (strcasecmp(buffer, "unlock") == 0) {
+		unlock_door();
+	} else if (strcasecmp(buffer, "lock") == 0) {
+		lock_door();
+	} else if (strcasecmp(buffer, "reboot") == 0) {
+		mqtt_publish_status("RESTARTING");
+		esp_restart();
+	} else if (strcasecmp(buffer, "flash") == 0) {
+		switch (nvs_flash_erase()) {
+		case ESP_OK:
+			mqtt_publish_status("NVS_ERASED");
+			break;
+		case ESP_ERR_NOT_FOUND:
+			mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
+			break;
+		default:
+			mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
+			break;
+		}
+	} else {
+		ESP_LOGW(TAG, "Unknown command: %s", buffer);
 	}
 }
