@@ -235,11 +235,11 @@ static void process_cbor_command(CborValue *value)
 		if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
 			ESP_LOGI(TAG, "Command: %s", command);
 
-			if (!strcmp(command, "UNLOCK")) {
+			if (!strcasecmp(command, "UNLOCK")) {
 				unlock_door();
-			} else if (!strcmp(command, "LOCK")) {
+			} else if (!strcasecmp(command, "LOCK")) {
 				lock_door();
-			} else if (!strcmp(command, "FLASH")) {
+			} else if (!strcasecmp(command, "FLASH")) {
 				switch (nvs_flash_erase()) {
 				case ESP_OK:
 					mqtt_publish_status("NVS_ERASED");
@@ -251,10 +251,10 @@ static void process_cbor_command(CborValue *value)
 					mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
 					break;
 				}
-			} else if (!strcmp(command, "REBOOT")) {
+			} else if (!strcasecmp(command, "REBOOT")) {
 				mqtt_publish_status("RESTARTING");
 				esp_restart();
-			} else if (!strcmp(command, "UPDATE_CONFIG")) {
+			} else if (!strcasecmp(command, "UPDATE_CONFIG")) {
 				handle_update_config_command(value);
 			}
 		}
