@@ -225,7 +225,7 @@ PORT=${2:-/dev/ttyUSB0}
 case $ACTION in
     menuconfig)
         echo "Opening menuconfig..."
-        idf.py menuconfig
+        idf.py menuconfig --style=monochrome
         ;;
     build)
         echo "Building project..."
