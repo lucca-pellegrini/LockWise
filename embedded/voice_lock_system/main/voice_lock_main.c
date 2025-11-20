@@ -657,7 +657,7 @@ static void unlock_door(void)
 		return;
 	}
 
-	ESP_LOGI(TAG, "Unlocking door");
+	ESP_LOGW(TAG, "Unlocking door");
 	current_lock_state = LOCK_STATE_UNLOCKED;
 
 	// TODO: Implement actual GPIO control or I2C command to unlock
