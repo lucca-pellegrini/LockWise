@@ -265,12 +265,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
 
-		// Publish power-on status message
-		mqtt_publish_status("POWER_ON");
+		// Publish connected
+		mqtt_publish_status("CONNECTED");
 		break;
 
 	case MQTT_EVENT_DISCONNECTED:
-		ESP_LOGI(TAG, "MQTT Disconnected");
+		ESP_LOGW(TAG, "MQTT Disconnected");
 		break;
 
 	case MQTT_EVENT_DATA:
