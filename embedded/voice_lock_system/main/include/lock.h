@@ -1,4 +1,5 @@
 /* Lock Control Header */
+#pragma once
 
 #ifndef LOCK_H
 #define LOCK_H
