@@ -65,9 +65,9 @@ manage_mqtt_certs() {
     echo "Port: $MQTT_PORT"
 
     # Create certs directory
-    mkdir -p main/certs
+    mkdir -p src/certs
 
-    CERT_FILE="main/certs/mqtt_ca.pem"
+    CERT_FILE="src/certs/mqtt_ca.pem"
     CERT_AGE_DAYS=365  # Root CA certificates are very stable, check annually
     NEED_DOWNLOAD=false
 
