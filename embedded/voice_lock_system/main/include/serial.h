@@ -1,4 +1,5 @@
 /* Serial Command Header */
+#pragma once
 
 #ifndef SERIAL_H
 #define SERIAL_H

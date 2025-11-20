@@ -1,4 +1,5 @@
 /* HTTP Management Header */
+#pragma once
 
 #ifndef HTTP_H
 #define HTTP_H
