@@ -5,17 +5,10 @@ set -e
 
 echo "=== Voice Lock System Build Script ==="
 
-# Check if ESP-IDF is sourced
-if [ -z "$IDF_PATH" ] || [ ! -d "$IDF_PATH" ]; then
+# Check if ESP-ADF is sourced
+if [ -z "$IDF_PATH" ] || [ ! -d "$IDF_PATH" ] || [ -z "$ADF_PATH" ] || [ ! -d "$ADF_PATH" ]; then
     echo "ERROR: ESP-IDF not found. Please source export.sh first:"
-    echo "  sh -c '. ~/src/vscode/pi/LockWise/embedded/esp-adf/export.sh && ./build.sh <command>'"
-    exit 1
-fi
-
-# Check if ESP-ADF is set
-if [ -z "$ADF_PATH" ] || [ ! -d "$ADF_PATH" ]; then
-    echo "ERROR: ADF_PATH not set properly. Please source export.sh first:"
-    echo "  sh -c '. ~/src/vscode/pi/LockWise/embedded/esp-adf/export.sh && ./build.sh <command>'"
+    echo "  sh -c '. ~/<PATH_TO_ESP-ADF>/export.sh && ./build.sh <command>'"
     exit 1
 fi
 
