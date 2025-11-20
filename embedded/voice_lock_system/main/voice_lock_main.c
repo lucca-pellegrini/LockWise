@@ -82,7 +82,7 @@ static bool have_connected = false;
 /* Configuration storage */
 static char wifi_ssid[32];
 static char wifi_password[64];
-static char device_id[32];
+static char device_id[64];
 static char backend_url[256];
 static char mqtt_broker_url[256];
 
@@ -231,7 +231,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	case MQTT_EVENT_CONNECTED:
 		ESP_LOGI(TAG, "MQTT Connected");
 		// Subscribe to device-specific topic
-		char topic[64];
+		char topic[96];
 		snprintf(topic, sizeof(topic), "lockwise/%s/control", device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
@@ -428,7 +428,7 @@ static void mqtt_publish_status(const char *status)
 		return;
 	}
 
-	char topic[64];
+	char topic[96];
 	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
 
 	uint8_t cbor_buffer[256];
