@@ -3,6 +3,7 @@
 #include "lock.h"
 #include "mqtt.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 
@@ -12,7 +13,7 @@ static const char *TAG = "LOCKWISE_LOCK";
 #define LOCK_TIMEOUT_MS 20000 // 20 seconds auto-lock
 
 /* Global lock state */
-lock_state_t current_lock_state = LOCK_STATE_LOCKED;
+lock_state_t current_lock_state = LOCK_STATE_UNLOCKED;
 
 /* Lock timer */
 static TimerHandle_t lock_timer;
@@ -34,11 +35,8 @@ void unlock_door(void)
 	ESP_LOGW(TAG, "Unlocking door");
 	current_lock_state = LOCK_STATE_UNLOCKED;
 
-	// TODO: Implement actual GPIO control or I2C command to unlock
-	// If using GPIO:
-	// gpio_set_level(LOCK_CONTROL_GPIO, 1);
-
-	// If using I2C GPIO expander, implement I2C write here
+	// Turn on LED to indicate door is open
+	gpio_set_level(LOCK_CONTROL_GPIO, 0);
 
 	// Start auto-lock timer
 	if (lock_timer == NULL) {
@@ -61,9 +59,8 @@ void lock_door(void)
 	ESP_LOGI(TAG, "Locking door");
 	current_lock_state = LOCK_STATE_LOCKED;
 
-	// TODO: Implement actual GPIO control or I2C command to lock
-	// If using GPIO:
-	// gpio_set_level(LOCK_CONTROL_GPIO, 0);
+	// Turn off LED to indicate door is closed
+	gpio_set_level(LOCK_CONTROL_GPIO, 1);
 
 	// Stop auto-lock timer
 	if (lock_timer != NULL) {
