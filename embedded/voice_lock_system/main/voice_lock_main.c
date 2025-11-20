@@ -29,6 +29,7 @@
 
 #include "esp_http_client.h"
 #include "mqtt_client.h"
+#include <cbor.h>
 #include "audio_event_iface.h"
 #include "audio_common.h"
 #include "audio_pipeline.h"
@@ -67,11 +68,7 @@ static const char *TAG = "LOCKWISE";
 #define LOCK_CONTROL_GPIO -1 // TODO: Define actual GPIO or I2C control
 
 /* Lock states */
-typedef enum {
-	LOCK_STATE_LOCKED,
-	LOCK_STATE_UNLOCKED,
-	LOCK_STATE_AUTHENTICATING
-} lock_state_t;
+typedef enum { LOCK_STATE_LOCKED, LOCK_STATE_UNLOCKED, LOCK_STATE_AUTHENTICATING } lock_state_t;
 
 /* Global handles */
 static audio_pipeline_handle_t pipeline;
@@ -88,9 +85,7 @@ static char backend_url[256];
 static char mqtt_broker_url[256];
 
 /* Audio buffer for recording */
-#define AUDIO_BUFFER_SIZE                                        \
-	(AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * (AUDIO_BITS / 8) * \
-	 (RECORD_DURATION_MS / 1000))
+#define AUDIO_BUFFER_SIZE (AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * (AUDIO_BITS / 8) * (RECORD_DURATION_MS / 1000))
 static uint8_t *audio_buffer = NULL;
 static size_t audio_buffer_len = 0;
 
@@ -120,82 +115,61 @@ static void load_config_from_nvs(void)
 
 	// Load WiFi SSID
 	size_t required_size = sizeof(wifi_ssid);
-	if (nvs_available && nvs_get_str(nvs_handle, "wifi_ssid", wifi_ssid,
-					 &required_size) == ESP_OK) {
+	if (nvs_available && nvs_get_str(nvs_handle, "wifi_ssid", wifi_ssid, &required_size) == ESP_OK) {
 		ESP_LOGI(TAG, "Loaded wifi_ssid from NVS: %s", wifi_ssid);
 	} else {
 		strcpy(wifi_ssid, DEFAULT_WIFI_SSID);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "wifi_ssid", wifi_ssid);
-			ESP_LOGW(
-				TAG,
-				"Using provisioned wifi_ssid and saved to NVS: %s",
-				wifi_ssid);
+			ESP_LOGW(TAG, "Using provisioned wifi_ssid and saved to NVS: %s", wifi_ssid);
 		}
 	}
 
 	// Load WiFi Password
 	required_size = sizeof(wifi_password);
-	if (nvs_available && nvs_get_str(nvs_handle, "wifi_pass", wifi_password,
-					 &required_size) == ESP_OK) {
+	if (nvs_available && nvs_get_str(nvs_handle, "wifi_pass", wifi_password, &required_size) == ESP_OK) {
 		ESP_LOGI(TAG, "Loaded wifi_pass from NVS: [REDACTED]");
 	} else {
 		strcpy(wifi_password, DEFAULT_WIFI_PASSWORD);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "wifi_pass", wifi_password);
-			ESP_LOGW(
-				TAG,
-				"Using provisioned wifi_pass and saved to NVS: [REDACTED]");
+			ESP_LOGW(TAG, "Using provisioned wifi_pass and saved to NVS: [REDACTED]");
 		}
 	}
 
 	// Load Device ID
 	required_size = sizeof(device_id);
-	if (nvs_available && nvs_get_str(nvs_handle, "device_id", device_id,
-					 &required_size) == ESP_OK) {
+	if (nvs_available && nvs_get_str(nvs_handle, "device_id", device_id, &required_size) == ESP_OK) {
 		ESP_LOGI(TAG, "Loaded device_id from NVS: %s", device_id);
 	} else {
 		strcpy(device_id, DEFAULT_DEVICE_ID);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "device_id", device_id);
-			ESP_LOGW(
-				TAG,
-				"Using provisioned device_id and saved to NVS: %s",
-				device_id);
+			ESP_LOGW(TAG, "Using provisioned device_id and saved to NVS: %s", device_id);
 		}
 	}
 
 	// Load Backend URL
 	required_size = sizeof(backend_url);
-	if (nvs_available && nvs_get_str(nvs_handle, "backend_url", backend_url,
-					 &required_size) == ESP_OK) {
+	if (nvs_available && nvs_get_str(nvs_handle, "backend_url", backend_url, &required_size) == ESP_OK) {
 		ESP_LOGI(TAG, "Loaded backend_url from NVS: %s", backend_url);
 	} else {
 		strcpy(backend_url, DEFAULT_BACKEND_URL);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "backend_url", backend_url);
-			ESP_LOGW(
-				TAG,
-				"Using provisioned backend_url and saved to NVS: %s",
-				backend_url);
+			ESP_LOGW(TAG, "Using provisioned backend_url and saved to NVS: %s", backend_url);
 		}
 	}
 
 	// Load MQTT Broker URL
 	required_size = sizeof(mqtt_broker_url);
-	if (nvs_available &&
-	    nvs_get_str(nvs_handle, "mqtt_broker", mqtt_broker_url,
-			&required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded mqtt_broker_url from NVS: %s",
-			 mqtt_broker_url);
+	if (nvs_available && nvs_get_str(nvs_handle, "mqtt_broker", mqtt_broker_url, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded mqtt_broker_url from NVS: %s", mqtt_broker_url);
 	} else {
 		strcpy(mqtt_broker_url, DEFAULT_MQTT_BROKER);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "mqtt_broker", mqtt_broker_url);
-			ESP_LOGW(
-				TAG,
-				"Using provisioned mqtt_broker_url and saved to NVS: %s",
-				mqtt_broker_url);
+			ESP_LOGW(TAG, "Using provisioned mqtt_broker_url and saved to NVS: %s", mqtt_broker_url);
 		}
 	}
 
@@ -221,10 +195,8 @@ static void wifi_init(void)
 	};
 
 	// Copy SSID and password to the config
-	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, wifi_ssid,
-		sizeof(wifi_cfg.wifi_config.sta.ssid));
-	strncpy((char *)wifi_cfg.wifi_config.sta.password, wifi_password,
-		sizeof(wifi_cfg.wifi_config.sta.password));
+	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, wifi_ssid, sizeof(wifi_cfg.wifi_config.sta.ssid));
+	strncpy((char *)wifi_cfg.wifi_config.sta.password, wifi_password, sizeof(wifi_cfg.wifi_config.sta.password));
 
 	esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
 	esp_periph_start(set, wifi_handle);
@@ -244,14 +216,12 @@ static void wifi_init(void)
 		// Get DNS server
 		esp_netif_dns_info_t dns_info;
 		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
-		ESP_LOGI(TAG, "DNS Server: " IPSTR,
-			 IP2STR(&dns_info.ip.u_addr.ip4));
+		ESP_LOGI(TAG, "DNS Server: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
 	}
 }
 
 /* MQTT Event Handler */
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
-			       int32_t event_id, void *event_data)
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
 	esp_mqtt_event_handle_t event = event_data;
 
@@ -260,8 +230,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 		ESP_LOGI(TAG, "MQTT Connected");
 		// Subscribe to device-specific topic
 		char topic[64];
-		snprintf(topic, sizeof(topic), "lockwise/%s/control",
-			 device_id);
+		snprintf(topic, sizeof(topic), "lockwise/%s/control", device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
 
@@ -274,37 +243,58 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 		break;
 
 	case MQTT_EVENT_DATA:
-		ESP_LOGI(TAG, "MQTT Data received: topic=%.*s, data=%.*s",
-			 event->topic_len, event->topic, event->data_len,
-			 event->data);
+		ESP_LOGI(TAG, "MQTT CBOR Data received: topic=%.*s", event->topic_len, event->topic);
 
-		// Check for unlock command
-		if (strncmp(event->data, "UNLOCK", event->data_len) == 0) {
-			ESP_LOGI(TAG, "Unlock command received via MQTT");
-			unlock_door();
-		} else if (strncmp(event->data, "LOCK", event->data_len) == 0) {
-			ESP_LOGI(TAG, "Lock command received via MQTT");
-			lock_door();
+		// Decode CBOR data
+		CborParser parser;
+		CborValue value, command_value;
+		CborError err = cbor_parser_init((const uint8_t *)event->data, event->data_len, 0, &parser, &value);
+		if (err != CborNoError) {
+			ESP_LOGW(TAG, "Invalid CBOR data received, error: %d, ignoring", err);
+			break;
+		}
+
+		ESP_LOGI(TAG, "payload len=%d", event->data_len);
+		for (int i = 0; i < event->data_len && i < 16; ++i) {
+			printf("%02x ", ((uint8_t *)event->data)[i]);
+		}
+		printf("\n");
+
+		ESP_LOGI(TAG, "CBOR parsed successfully");
+		if (cbor_value_is_map(&value)) {
+			CborValue cmd_val;
+			if (cbor_value_map_find_value(&value, "command", &cmd_val) == CborNoError &&
+			    cbor_value_is_text_string(&cmd_val)) {
+				char command[32];
+				size_t cmd_len = sizeof(command);
+
+				if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
+					ESP_LOGI(TAG, "Command: %s", command);
+
+					if (strcmp(command, "UNLOCK") == 0)
+						unlock_door();
+					else if (strcmp(command, "LOCK") == 0)
+						lock_door();
+				}
+			} else {
+				ESP_LOGW(TAG, "No 'command' field or not text");
+			}
+
+		} else {
+			ESP_LOGW(TAG, "CBOR is not a map");
 		}
 		break;
 
 	case MQTT_EVENT_ERROR:
 		ESP_LOGE(TAG, "MQTT Error event");
-		if (event->error_handle->error_type ==
-		    MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-			ESP_LOGE(TAG,
-				 "Last error code reported from esp-tls: 0x%x",
+		if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+			ESP_LOGE(TAG, "Last error code reported from esp-tls: 0x%x",
 				 event->error_handle->esp_tls_last_esp_err);
-			ESP_LOGE(TAG, "Last tls stack error number: 0x%x",
-				 event->error_handle->esp_tls_stack_err);
-			ESP_LOGE(TAG, "Last captured errno : %d (%s)",
-				 event->error_handle->esp_transport_sock_errno,
-				 strerror(event->error_handle
-						  ->esp_transport_sock_errno));
-		} else if (event->error_handle->error_type ==
-			   MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
-			ESP_LOGE(TAG, "Connection refused error: 0x%x",
-				 event->error_handle->connect_return_code);
+			ESP_LOGE(TAG, "Last tls stack error number: 0x%x", event->error_handle->esp_tls_stack_err);
+			ESP_LOGE(TAG, "Last captured errno : %d (%s)", event->error_handle->esp_transport_sock_errno,
+				 strerror(event->error_handle->esp_transport_sock_errno));
+		} else if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
+			ESP_LOGE(TAG, "Connection refused error: 0x%x", event->error_handle->connect_return_code);
 		}
 		break;
 
@@ -345,8 +335,7 @@ static void mqtt_init(void)
 			hostname[len] = '\0';
 
 			// Test DNS resolution
-			ESP_LOGI(TAG, "Testing DNS resolution for: %s",
-				 hostname);
+			ESP_LOGI(TAG, "Testing DNS resolution for: %s", hostname);
 			struct addrinfo hints = {
 				.ai_family = AF_UNSPEC,
 				.ai_socktype = SOCK_STREAM,
@@ -354,29 +343,20 @@ static void mqtt_init(void)
 			struct addrinfo *res;
 			int err = getaddrinfo(hostname, NULL, &hints, &res);
 			if (err != 0 || res == NULL) {
-				ESP_LOGE(TAG, "DNS lookup failed for %s: %d",
-					 hostname, err);
+				ESP_LOGE(TAG, "DNS lookup failed for %s: %d", hostname, err);
 			} else {
 				// Print resolved IP addresses
-				for (struct addrinfo *p = res; p != NULL;
-				     p = p->ai_next) {
+				for (struct addrinfo *p = res; p != NULL; p = p->ai_next) {
 					if (p->ai_family == AF_INET) {
-						struct sockaddr_in *ipv4 =
-							(struct sockaddr_in *)
-								p->ai_addr;
-						ESP_LOGI(
-							TAG,
-							"DNS resolved to: %s",
-							inet_ntoa(
-								ipv4->sin_addr));
+						struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+						ESP_LOGI(TAG, "DNS resolved to: %s", inet_ntoa(ipv4->sin_addr));
 					}
 				}
 				freeaddrinfo(res);
 			}
 
 			// Test TCP connection to MQTT broker
-			ESP_LOGI(TAG, "Testing TCP connection to %s:8883",
-				 hostname);
+			ESP_LOGI(TAG, "Testing TCP connection to %s:8883", hostname);
 			int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 			if (sock >= 0) {
 				struct sockaddr_in dest_addr;
@@ -385,55 +365,33 @@ static void mqtt_init(void)
 
 				// Resolve hostname again for connection test
 				struct addrinfo *res2;
-				err = getaddrinfo(hostname, "8883", &hints,
-						  &res2);
+				err = getaddrinfo(hostname, "8883", &hints, &res2);
 				if (err == 0 && res2) {
-					struct sockaddr_in *ipv4 =
-						(struct sockaddr_in *)
-							res2->ai_addr;
-					memcpy(&dest_addr.sin_addr,
-					       &ipv4->sin_addr,
-					       sizeof(dest_addr.sin_addr));
+					struct sockaddr_in *ipv4 = (struct sockaddr_in *)res2->ai_addr;
+					memcpy(&dest_addr.sin_addr, &ipv4->sin_addr, sizeof(dest_addr.sin_addr));
 
 					// Set socket timeout
-					struct timeval timeout = {
-						.tv_sec = 5, .tv_usec = 0
-					};
-					setsockopt(sock, SOL_SOCKET,
-						   SO_RCVTIMEO, &timeout,
-						   sizeof(timeout));
-					setsockopt(sock, SOL_SOCKET,
-						   SO_SNDTIMEO, &timeout,
-						   sizeof(timeout));
+					struct timeval timeout = { .tv_sec = 5, .tv_usec = 0 };
+					setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+					setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
-					int connect_result = connect(
-						sock,
-						(struct sockaddr *)&dest_addr,
-						sizeof(dest_addr));
+					int connect_result =
+						connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
 					if (connect_result == 0) {
-						ESP_LOGI(
-							TAG,
-							"TCP connection successful!");
+						ESP_LOGI(TAG, "TCP connection successful!");
 						close(sock);
 					} else {
-						ESP_LOGE(
-							TAG,
-							"TCP connection failed: errno=%d (%s)",
-							errno, strerror(errno));
+						ESP_LOGE(TAG, "TCP connection failed: errno=%d (%s)", errno,
+							 strerror(errno));
 						close(sock);
 					}
 					freeaddrinfo(res2);
 				} else {
-					ESP_LOGE(
-						TAG,
-						"DNS lookup failed for connection test: %d",
-						err);
+					ESP_LOGE(TAG, "DNS lookup failed for connection test: %d", err);
 					close(sock);
 				}
 			} else {
-				ESP_LOGE(TAG,
-					 "Failed to create socket: errno=%d",
-					 errno);
+				ESP_LOGE(TAG, "Failed to create socket: errno=%d", errno);
 			}
 		}
 	}
@@ -446,19 +404,14 @@ static void mqtt_init(void)
 
 	// If using mqtts://, configure TLS with embedded certificate
 	if (strncmp(mqtt_broker_url, "mqtts://", 8) == 0) {
-		mqtt_cfg.broker.verification.certificate =
-			(const char *)mqtt_ca_pem_start;
-		mqtt_cfg.broker.verification.certificate_len =
-			mqtt_ca_pem_end - mqtt_ca_pem_start;
-		ESP_LOGI(
-			TAG,
-			"MQTT TLS enabled with embedded CA certificate (%d bytes)",
-			(int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
+		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
+		mqtt_cfg.broker.verification.certificate_len = mqtt_ca_pem_end - mqtt_ca_pem_start;
+		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)",
+			 (int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
 	}
 
 	mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
-	esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID,
-				       mqtt_event_handler, NULL);
+	esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
 	esp_mqtt_client_start(mqtt_client);
 }
 
@@ -466,19 +419,26 @@ static void mqtt_init(void)
 static void mqtt_publish_status(const char *status)
 {
 	if (mqtt_client == NULL) {
-		ESP_LOGW(TAG,
-			 "MQTT client not initialized, cannot publish status");
+		ESP_LOGW(TAG, "MQTT client not initialized, cannot publish status");
 		return;
 	}
 
 	char topic[64];
 	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
 
-	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, status,
-					     strlen(status), 1, 0);
+	// Encode status as CBOR map {"status": status}
+	uint8_t cbor_buffer[256];
+	CborEncoder encoder, map_encoder;
+	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
+	cbor_encoder_create_map(&encoder, &map_encoder, 1);
+	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, status);
+	cbor_encoder_close_container(&encoder, &map_encoder);
+	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
+
+	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
 	if (msg_id >= 0) {
-		ESP_LOGI(TAG, "Published status to %s: %s (msg_id=%d)", topic,
-			 status, msg_id);
+		ESP_LOGI(TAG, "Published CBOR status to %s: %s (msg_id=%d)", topic, status, msg_id);
 	} else {
 		ESP_LOGE(TAG, "Failed to publish status");
 	}
@@ -489,8 +449,7 @@ static void mqtt_heartbeat_task(void *pvParameters)
 {
 #ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
 	const int interval_ms = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC * 1000;
-	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)",
-		 CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC);
+	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC);
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(interval_ms));
@@ -509,8 +468,7 @@ static void audio_pipeline_setup(void)
 
 	// Initialize audio board
 	audio_board_handle_t board_handle = audio_board_init();
-	audio_hal_ctrl_codec(board_handle->audio_hal,
-			     AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
+	audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
 
 	// Create pipeline
 	audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
@@ -579,9 +537,8 @@ static esp_err_t start_voice_recording(void)
 	int timeout_counter = 0;
 
 	while (audio_buffer_len < AUDIO_BUFFER_SIZE && timeout_counter < 100) {
-		bytes_read = raw_stream_read(
-			raw_writer, (char *)(audio_buffer + audio_buffer_len),
-			AUDIO_BUFFER_SIZE - audio_buffer_len);
+		bytes_read = raw_stream_read(raw_writer, (char *)(audio_buffer + audio_buffer_len),
+					     AUDIO_BUFFER_SIZE - audio_buffer_len);
 
 		if (bytes_read > 0) {
 			audio_buffer_len += bytes_read;
@@ -597,8 +554,7 @@ static esp_err_t start_voice_recording(void)
 	audio_pipeline_wait_for_stop(pipeline);
 	audio_pipeline_terminate(pipeline);
 
-	ESP_LOGI(TAG, "Recording complete, captured %zu bytes",
-		 audio_buffer_len);
+	ESP_LOGI(TAG, "Recording complete, captured %zu bytes", audio_buffer_len);
 
 	return ESP_OK;
 }
@@ -612,8 +568,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 	case HTTP_EVENT_ON_DATA:
 		if (!esp_http_client_is_chunked_response(evt->client)) {
 			if (evt->user_data) {
-				memcpy(evt->user_data + output_len, evt->data,
-				       evt->data_len);
+				memcpy(evt->user_data + output_len, evt->data, evt->data_len);
 				output_len += evt->data_len;
 			}
 		}
@@ -650,25 +605,21 @@ static esp_err_t send_audio_to_backend(void)
 	esp_http_client_handle_t client = esp_http_client_init(&config);
 
 	// Set headers
-	esp_http_client_set_header(client, "Content-Type",
-				   "application/octet-stream");
+	esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
 	esp_http_client_set_header(client, "X-Device-ID", device_id);
 
 	// Send audio data
-	esp_http_client_set_post_field(client, (const char *)audio_buffer,
-				       audio_buffer_len);
+	esp_http_client_set_post_field(client, (const char *)audio_buffer, audio_buffer_len);
 
 	esp_err_t err = esp_http_client_perform(client);
 
 	if (err == ESP_OK) {
 		int status_code = esp_http_client_get_status_code(client);
-		ESP_LOGI(TAG, "HTTP Status = %d, Response = %s", status_code,
-			 response_buffer);
+		ESP_LOGI(TAG, "HTTP Status = %d, Response = %s", status_code, response_buffer);
 
 		// Check if backend verified the voice
 		// Assuming backend returns JSON like: {"verified": true/false}
-		if (status_code == 200 &&
-		    strstr(response_buffer, "\"verified\":true") != NULL) {
+		if (status_code == 200 && strstr(response_buffer, "\"verified\":true") != NULL) {
 			ESP_LOGI(TAG, "Voice verified successfully!");
 			esp_http_client_cleanup(client);
 			unlock_door();
@@ -711,9 +662,8 @@ static void unlock_door(void)
 
 	// Start auto-lock timer
 	if (lock_timer == NULL) {
-		lock_timer = xTimerCreate("LockTimer",
-					  pdMS_TO_TICKS(LOCK_TIMEOUT_MS),
-					  pdFALSE, NULL, lock_timeout_callback);
+		lock_timer =
+			xTimerCreate("LockTimer", pdMS_TO_TICKS(LOCK_TIMEOUT_MS), pdFALSE, NULL, lock_timeout_callback);
 	}
 	xTimerStart(lock_timer, 0);
 
@@ -758,9 +708,7 @@ static void voice_recognition_task(void *pvParameters)
 		// TODO: Implement wake word detection using ESP-SR library
 		// For now, we'll trigger recording periodically for testing
 
-		ESP_LOGI(
-			TAG,
-			"Triggering voice authentication (TODO: replace with wake word)");
+		ESP_LOGI(TAG, "Triggering voice authentication (TODO: replace with wake word)");
 
 		if (start_voice_recording() == ESP_OK) {
 			send_audio_to_backend();
@@ -778,8 +726,7 @@ void app_main(void)
 
 	// Initialize NVS
 	esp_err_t err = nvs_flash_init();
-	if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
-	    err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+	if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 		ESP_ERROR_CHECK(nvs_flash_erase());
 		err = nvs_flash_init();
 	}
