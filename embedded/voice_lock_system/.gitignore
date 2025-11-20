@@ -1,3 +1,9 @@
 # Auto-downloaded certificates
 main/certs/*.pem
 !main/certs/.gitkeep
+
+sdkconfig
+sdkconfig.old
+build/
+.cache/
+managed_components/
