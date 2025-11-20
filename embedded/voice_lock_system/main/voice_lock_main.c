@@ -572,7 +572,7 @@ static esp_err_t start_voice_recording(void)
 	audio_pipeline_wait_for_stop(pipeline);
 	audio_pipeline_terminate(pipeline);
 
-	ESP_LOGI(TAG, "Recording complete, captured %d bytes",
+	ESP_LOGI(TAG, "Recording complete, captured %zu bytes",
 		 audio_buffer_len);
 
 	return ESP_OK;
