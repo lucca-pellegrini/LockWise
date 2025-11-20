@@ -56,6 +56,9 @@ void app_main(void)
 	// Load configuration
 	load_config_from_nvs();
 
+	// Start serial command task early to allow config updates before wifi connects
+	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
+
 	// Initialize WiFi
 	wifi_init();
 
@@ -80,9 +83,6 @@ void app_main(void)
 #ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
 	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
 #endif
-
-	// Start serial command task
-	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
 
 	// Main loop - can be used for button monitoring or other tasks
 	while (1) {
