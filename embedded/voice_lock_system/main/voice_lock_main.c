@@ -104,6 +104,7 @@ static esp_err_t send_audio_to_backend(void);
 static void unlock_door(void);
 static void lock_door(void);
 static void lock_timeout_callback(TimerHandle_t xTimer);
+static void handle_update_config_command(CborValue *map_value);
 
 /* NVS Configuration Management */
 static void load_config_from_nvs(void)
@@ -223,6 +224,45 @@ static void wifi_init(void)
 	}
 }
 
+static void process_cbor_command(CborValue *value)
+{
+	CborValue cmd_val;
+	if (cbor_value_map_find_value(value, "command", &cmd_val) == CborNoError &&
+	    cbor_value_is_text_string(&cmd_val)) {
+		char command[32];
+		size_t cmd_len = sizeof(command);
+
+		if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
+			ESP_LOGI(TAG, "Command: %s", command);
+
+			if (!strcmp(command, "UNLOCK")) {
+				unlock_door();
+			} else if (!strcmp(command, "LOCK")) {
+				lock_door();
+			} else if (!strcmp(command, "FLASH")) {
+				switch (nvs_flash_erase()) {
+				case ESP_OK:
+					mqtt_publish_status("NVS_ERASED");
+					break;
+				case ESP_ERR_NOT_FOUND:
+					mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
+					break;
+				default:
+					mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
+					break;
+				}
+			} else if (!strcmp(command, "REBOOT")) {
+				mqtt_publish_status("RESTARTING");
+				esp_restart();
+			} else if (!strcmp(command, "UPDATE_CONFIG")) {
+				handle_update_config_command(value);
+			}
+		}
+	} else {
+		ESP_LOGW(TAG, "No 'command' field or not text");
+	}
+}
+
 /* MQTT Event Handler */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -266,41 +306,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 		ESP_LOGI(TAG, "CBOR parsed successfully");
 		if (cbor_value_is_map(&value)) {
-			CborValue cmd_val;
-			if (cbor_value_map_find_value(&value, "command", &cmd_val) == CborNoError &&
-			    cbor_value_is_text_string(&cmd_val)) {
-				char command[32];
-				size_t cmd_len = sizeof(command);
-
-				if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
-					ESP_LOGI(TAG, "Command: %s", command);
-
-					if (!strcmp(command, "UNLOCK")) {
-						unlock_door();
-					} else if (!strcmp(command, "LOCK")) {
-						lock_door();
-					} else if (!strcmp(command, "FLASH")) {
-						switch (nvs_flash_erase()) {
-						case ESP_OK:
-							mqtt_publish_status("NVS_ERASED");
-							break;
-						case ESP_ERR_NOT_FOUND:
-							mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
-							break;
-						default:
-							mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
-							break;
-						}
-					} else if (!strcmp(command, "REBOOT")) {
-						mqtt_publish_status("RESTARTING");
-						esp_restart();
-					}
-				}
-			} else {
-				ESP_LOGW(TAG, "No 'command' field or not text");
-			}
-
+			process_cbor_command(&value);
 		} else {
+			mqtt_publish_status("INVALID_COMMAND");
 			ESP_LOGW(TAG, "CBOR is not a map");
 		}
 		break;
@@ -716,6 +724,44 @@ static void lock_door(void)
 
 	// Publish status to MQTT
 	mqtt_publish_status("LOCKED");
+}
+
+static void handle_update_config_command(CborValue *map_value)
+{
+	CborValue key_val, value_val;
+	char config_key[32];
+	char config_value[256];
+	size_t key_len = sizeof(config_key);
+	size_t value_len = sizeof(config_value);
+
+	if (cbor_value_map_find_value(map_value, "key", &key_val) == CborNoError &&
+	    cbor_value_map_find_value(map_value, "value", &value_val) == CborNoError &&
+	    cbor_value_is_text_string(&key_val) && cbor_value_is_text_string(&value_val) &&
+	    cbor_value_copy_text_string(&key_val, config_key, &key_len, NULL) == CborNoError &&
+	    cbor_value_copy_text_string(&value_val, config_value, &value_len, NULL) == CborNoError) {
+		// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker)
+		if (!strcmp(config_key, "wifi_ssid") || !strcmp(config_key, "wifi_pass") ||
+		    !strcmp(config_key, "backend_url") || !strcmp(config_key, "mqtt_broker")) {
+			nvs_handle_t nvs_handle;
+			esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
+			if (err == ESP_OK) {
+				nvs_set_str(nvs_handle, config_key, config_value);
+				nvs_commit(nvs_handle);
+				nvs_close(nvs_handle);
+				mqtt_publish_status("CONFIG_UPDATED");
+				ESP_LOGI(TAG, "Updated config %s in NVS", config_key);
+			} else {
+				mqtt_publish_status("CONFIG_UPDATE_FAILED");
+				ESP_LOGE(TAG, "Failed to open NVS for config update: %s", esp_err_to_name(err));
+			}
+		} else {
+			mqtt_publish_status("INVALID_CONFIG_KEY");
+			ESP_LOGW(TAG, "Invalid config key: %s", config_key);
+		}
+	} else {
+		mqtt_publish_status("INVALID_UPDATE_CONFIG_FORMAT");
+		ESP_LOGW(TAG, "Invalid UPDATE_CONFIG CBOR format");
+	}
 }
 
 /* Voice Recognition Task */
