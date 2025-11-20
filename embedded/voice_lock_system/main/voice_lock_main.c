@@ -13,6 +13,7 @@
  * - NVS storage for WiFi credentials and device ID
  */
 
+#include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -249,7 +250,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 		// Decode CBOR data
 		CborParser parser;
-		CborValue value, command_value;
+		CborValue value;
 		CborError err = cbor_parser_init((const uint8_t *)event->data, event->data_len, 0, &parser, &value);
 		if (err != CborNoError) {
 			ESP_LOGW(TAG, "Invalid CBOR data received, error: %d, ignoring", err);
@@ -424,13 +425,14 @@ static void mqtt_publish_status(const char *status)
 	char topic[64];
 	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
 
-	// Encode status as CBOR map {"status": status}
 	uint8_t cbor_buffer[256];
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
-	cbor_encoder_create_map(&encoder, &map_encoder, 1);
+	cbor_encoder_create_map(&encoder, &map_encoder, 2);
 	cbor_encode_text_stringz(&map_encoder, "status");
 	cbor_encode_text_stringz(&map_encoder, status);
+	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
+	cbor_encode_uint(&map_encoder, (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS);
 	cbor_encoder_close_container(&encoder, &map_encoder);
 	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
 
