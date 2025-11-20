@@ -13,6 +13,7 @@
  * - NVS storage for WiFi credentials and device ID
  */
 
+#include "esp_system.h"
 #include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -274,10 +275,26 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 				if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
 					ESP_LOGI(TAG, "Command: %s", command);
 
-					if (strcmp(command, "UNLOCK") == 0)
+					if (!strcmp(command, "UNLOCK")) {
 						unlock_door();
-					else if (strcmp(command, "LOCK") == 0)
+					} else if (!strcmp(command, "LOCK")) {
 						lock_door();
+					} else if (!strcmp(command, "FLASH")) {
+						switch (nvs_flash_erase()) {
+						case ESP_OK:
+							mqtt_publish_status("NVS_ERASED");
+							break;
+						case ESP_ERR_NOT_FOUND:
+							mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
+							break;
+						default:
+							mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
+							break;
+						}
+					} else if (!strcmp(command, "REBOOT")) {
+						mqtt_publish_status("RESTARTING");
+						esp_restart();
+					}
 				}
 			} else {
 				ESP_LOGW(TAG, "No 'command' field or not text");
