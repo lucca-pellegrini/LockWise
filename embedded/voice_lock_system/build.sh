@@ -75,62 +75,120 @@ manage_mqtt_certs() {
     mkdir -p main/certs
 
     CERT_FILE="main/certs/mqtt_ca.pem"
-    CERT_AGE_DAYS=3
+    CERT_AGE_DAYS=365  # Root CA certificates are very stable, check annually
     NEED_DOWNLOAD=false
 
-    # Check if certificate exists and age
+    # Check if CA certificates exist and age
     if [ -f "$CERT_FILE" ]; then
         CERT_AGE=$(( ($(date +%s) - $(stat -c %Y "$CERT_FILE" 2>/dev/null || stat -f %m "$CERT_FILE")) / 86400 ))
-        echo "Certificate found, age: $CERT_AGE days"
+        echo "CA certificates found, age: $CERT_AGE days"
 
         if [ $CERT_AGE -gt $CERT_AGE_DAYS ]; then
-            echo "Certificate is older than $CERT_AGE_DAYS days, will re-download"
+            echo "CA certificates are older than $CERT_AGE_DAYS days, will re-download"
             NEED_DOWNLOAD=true
         else
-            echo "Certificate is recent, skipping download"
+            echo "CA certificates are recent, skipping download"
         fi
     else
-        echo "Certificate not found, will download"
+        echo "CA certificates not found, will download"
         NEED_DOWNLOAD=true
     fi
 
-    # Download certificate if needed
+    # Download certificates if needed
     if [ "$NEED_DOWNLOAD" = true ]; then
-        echo "Downloading certificate chain from $MQTT_HOST:$MQTT_PORT..."
+        echo "Checking broker certificate chain..."
 
         # Use openssl to get the certificate chain
-        TEMP_CERT=$(mktemp)
+        TEMP_CHAIN=$(mktemp)
         if ! openssl s_client -showcerts -connect "$MQTT_HOST:$MQTT_PORT" -servername "$MQTT_HOST" </dev/null 2>/dev/null | \
-            sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > "$TEMP_CERT"; then
-            echo "ERROR: Failed to download certificate from $MQTT_HOST:$MQTT_PORT"
-            rm -f "$TEMP_CERT"
+            sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > "$TEMP_CHAIN"; then
+            echo "ERROR: Failed to download certificate chain from $MQTT_HOST:$MQTT_PORT"
+            rm -f "$TEMP_CHAIN"
             return 1
         fi
 
-        # Verify the certificate is valid
-        if ! openssl x509 -in "$TEMP_CERT" -text -noout > /dev/null 2>&1; then
-            echo "ERROR: Downloaded certificate is invalid"
-            rm -f "$TEMP_CERT"
-            return 1
-        fi
+        # Check if broker uses Let's Encrypt
+        if openssl crl2pkcs7 -nocrl -certfile "$TEMP_CHAIN" 2>/dev/null | openssl pkcs7 -print_certs -text | grep -q "Let's Encrypt\|ISRG"; then
+            echo "Broker uses Let's Encrypt CA, downloading root certificates..."
 
-        # Verify the certificate chain
-        echo "Validating certificate chain..."
-        if ! openssl s_client -connect "$MQTT_HOST:$MQTT_PORT" -servername "$MQTT_HOST" -CAfile "$TEMP_CERT" </dev/null 2>&1 | grep -q "Verify return code: 0"; then
-            echo "WARNING: Certificate chain validation returned non-zero (this may be OK if using self-signed certs)"
+            # Download ISRG Root X1 (RSA)
+            TEMP_X1=$(mktemp)
+            if ! wget -q -O "$TEMP_X1" "https://letsencrypt.org/certs/isrgrootx1.pem"; then
+                echo "ERROR: Failed to download ISRG Root X1"
+                rm -f "$TEMP_CHAIN" "$TEMP_X1"
+                return 1
+            fi
+
+            # Download and convert ISRG Root X2 (ECDSA)
+            TEMP_X2_DER=$(mktemp)
+            TEMP_X2=$(mktemp)
+            if ! wget -q -O "$TEMP_X2_DER" "https://letsencrypt.org/certs/isrg-root-x2-cross-signed.der"; then
+                echo "ERROR: Failed to download ISRG Root X2 DER"
+                rm -f "$TEMP_CHAIN" "$TEMP_X1" "$TEMP_X2_DER" "$TEMP_X2"
+                return 1
+            fi
+
+            if ! openssl x509 -in "$TEMP_X2_DER" -inform DER -out "$TEMP_X2" -outform PEM; then
+                echo "ERROR: Failed to convert ISRG Root X2 to PEM"
+                rm -f "$TEMP_CHAIN" "$TEMP_X1" "$TEMP_X2_DER" "$TEMP_X2"
+                return 1
+            fi
+
+            # Verify both certificates
+            for cert in "$TEMP_X1" "$TEMP_X2"; do
+                if ! openssl x509 -in "$cert" -text -noout | grep -q "CA:TRUE"; then
+                    echo "ERROR: Downloaded certificate is not a valid CA"
+                    rm -f "$TEMP_CHAIN" "$TEMP_X1" "$TEMP_X2_DER" "$TEMP_X2"
+                    return 1
+                fi
+            done
+
+            # Concatenate both root CAs
+            cat "$TEMP_X1" "$TEMP_X2" > "$CERT_FILE"
+            rm -f "$TEMP_CHAIN" "$TEMP_X1" "$TEMP_X2_DER" "$TEMP_X2"
+            echo "Let's Encrypt root CA certificates saved to $CERT_FILE"
+
+            # Show certificate info
+            echo ""
+            echo "Embedded CA Certificates:"
+            echo "1. ISRG Root X1 (RSA):"
+            openssl x509 -in "$CERT_FILE" -noout -subject -issuer -dates | head -3 | sed 's/^/  /'
+            echo "2. ISRG Root X2 (ECDSA):"
+            tail -n +$(($(grep -n -- "-----END CERTIFICATE-----" "$CERT_FILE" | head -1 | cut -d: -f1) + 1)) "$CERT_FILE" | openssl x509 -noout -subject -issuer -dates | sed 's/^/  /'
+            echo ""
+
         else
-            echo "Certificate chain validated successfully"
+            echo "Broker does not use Let's Encrypt CA, falling back to intermediate certificate extraction..."
+
+            # Verify the certificate chain is valid
+            if ! openssl verify -CAfile "$TEMP_CHAIN" "$TEMP_CHAIN" > /dev/null 2>&1; then
+                echo "ERROR: Downloaded certificate chain is invalid"
+                rm -f "$TEMP_CHAIN"
+                return 1
+            fi
+
+            # Extract the intermediate CA certificate (last certificate in the chain)
+            echo "Extracting intermediate CA certificate from chain..."
+            INTERMEDIATE_CERT=$(awk 'BEGIN{RS="-----END CERTIFICATE-----\n"} {cert=$0} END{print cert "-----END CERTIFICATE-----"}' "$TEMP_CHAIN")
+
+            # Verify the extracted certificate is a CA
+            if ! echo "$INTERMEDIATE_CERT" | openssl x509 -text -noout | grep -q "CA:TRUE"; then
+                echo "ERROR: Extracted certificate is not a CA certificate"
+                rm -f "$TEMP_CHAIN"
+                return 1
+            fi
+
+            # Save the intermediate CA certificate
+            echo "$INTERMEDIATE_CERT" > "$CERT_FILE"
+            rm -f "$TEMP_CHAIN"
+            echo "Intermediate CA certificate saved to $CERT_FILE"
+
+            # Show certificate info
+            echo ""
+            echo "Intermediate CA Certificate details:"
+            openssl x509 -in "$CERT_FILE" -noout -subject -issuer -dates | sed 's/^/  /'
+            echo ""
         fi
-
-        # Move to final location
-        mv "$TEMP_CERT" "$CERT_FILE"
-        echo "Certificate saved to $CERT_FILE"
-
-        # Show certificate info
-        echo ""
-        echo "Certificate details:"
-        openssl x509 -in "$CERT_FILE" -noout -subject -issuer -dates | sed 's/^/  /'
-        echo ""
     fi
 
     # Ensure SSL is enabled in sdkconfig.defaults
@@ -220,3 +278,5 @@ case $ACTION in
         exit 1
         ;;
 esac
+
+# vim: et ts=4 sts=4 sw=4
