@@ -28,6 +28,7 @@
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "driver/uart.h"
 
 #include "esp_http_client.h"
 #include "mqtt_client.h"
@@ -104,7 +105,9 @@ static esp_err_t send_audio_to_backend(void);
 static void unlock_door(void);
 static void lock_door(void);
 static void lock_timeout_callback(TimerHandle_t xTimer);
+static void update_config(const char *key, const char *value);
 static void handle_update_config_command(CborValue *map_value);
+static void serial_command_task(void *pvParameters);
 
 /* NVS Configuration Management */
 static void load_config_from_nvs(void)
@@ -726,6 +729,29 @@ static void lock_door(void)
 	mqtt_publish_status("LOCKED");
 }
 
+static void update_config(const char *key, const char *value)
+{
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker)
+	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
+	    !strcasecmp(key, "mqtt_broker")) {
+		nvs_handle_t nvs_handle;
+		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
+		if (err == ESP_OK) {
+			nvs_set_str(nvs_handle, key, value);
+			nvs_commit(nvs_handle);
+			nvs_close(nvs_handle);
+			mqtt_publish_status("CONFIG_UPDATED");
+			ESP_LOGI(TAG, "Updated config %s in NVS", key);
+		} else {
+			mqtt_publish_status("CONFIG_UPDATE_FAILED");
+			ESP_LOGE(TAG, "Failed to open NVS for config update: %s", esp_err_to_name(err));
+		}
+	} else {
+		mqtt_publish_status("INVALID_CONFIG_KEY");
+		ESP_LOGW(TAG, "Invalid config key: %s", key);
+	}
+}
+
 static void handle_update_config_command(CborValue *map_value)
 {
 	CborValue key_val, value_val;
@@ -739,25 +765,7 @@ static void handle_update_config_command(CborValue *map_value)
 	    cbor_value_is_text_string(&key_val) && cbor_value_is_text_string(&value_val) &&
 	    cbor_value_copy_text_string(&key_val, config_key, &key_len, NULL) == CborNoError &&
 	    cbor_value_copy_text_string(&value_val, config_value, &value_len, NULL) == CborNoError) {
-		// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker)
-		if (!strcmp(config_key, "wifi_ssid") || !strcmp(config_key, "wifi_pass") ||
-		    !strcmp(config_key, "backend_url") || !strcmp(config_key, "mqtt_broker")) {
-			nvs_handle_t nvs_handle;
-			esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
-			if (err == ESP_OK) {
-				nvs_set_str(nvs_handle, config_key, config_value);
-				nvs_commit(nvs_handle);
-				nvs_close(nvs_handle);
-				mqtt_publish_status("CONFIG_UPDATED");
-				ESP_LOGI(TAG, "Updated config %s in NVS", config_key);
-			} else {
-				mqtt_publish_status("CONFIG_UPDATE_FAILED");
-				ESP_LOGE(TAG, "Failed to open NVS for config update: %s", esp_err_to_name(err));
-			}
-		} else {
-			mqtt_publish_status("INVALID_CONFIG_KEY");
-			ESP_LOGW(TAG, "Invalid config key: %s", config_key);
-		}
+		update_config(config_key, config_value);
 	} else {
 		mqtt_publish_status("INVALID_UPDATE_CONFIG_FORMAT");
 		ESP_LOGW(TAG, "Invalid UPDATE_CONFIG CBOR format");
@@ -785,11 +793,79 @@ static void voice_recognition_task(void *pvParameters)
 	}
 }
 
+/* Serial Command Task */
+static void serial_command_task(void *pvParameters)
+{
+	ESP_LOGI(TAG, "Serial command task started");
+
+	char buffer[256];
+	int index = 0;
+
+	while (1) {
+		uint8_t data;
+		int len = uart_read_bytes(UART_NUM_0, &data, 1, pdMS_TO_TICKS(10));
+		if (len > 0) {
+			if (data == '\n' || data == '\r') {
+				buffer[index] = '\0';
+				if (index > 0) {
+					ESP_LOGI(TAG, "Received command: %s", buffer);
+
+					// Parse command
+					if (strncmp(buffer, "update_config ", 14) == 0) {
+						char key[32], value[256];
+						if (sscanf(buffer + 14, "%31s %255[^\n]", key, value) == 2) {
+							update_config(key, value);
+						} else {
+							ESP_LOGW(TAG, "Invalid update_config format");
+						}
+					} else if (strcasecmp(buffer, "unlock") == 0) {
+						unlock_door();
+					} else if (strcasecmp(buffer, "lock") == 0) {
+						lock_door();
+					} else if (strcasecmp(buffer, "reboot") == 0) {
+						mqtt_publish_status("RESTARTING");
+						esp_restart();
+					} else if (strcasecmp(buffer, "flash") == 0) {
+						switch (nvs_flash_erase()) {
+						case ESP_OK:
+							mqtt_publish_status("NVS_ERASED");
+							break;
+						case ESP_ERR_NOT_FOUND:
+							mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
+							break;
+						default:
+							mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
+							break;
+						}
+					} else {
+						ESP_LOGW(TAG, "Unknown command: %s", buffer);
+					}
+				}
+				index = 0;
+			} else if (index < sizeof(buffer) - 1) {
+				buffer[index++] = data;
+			}
+		}
+	}
+}
+
 /* Main Application */
 void app_main(void)
 {
 	esp_log_level_set("*", ESP_LOG_INFO);
 	esp_log_level_set(TAG, ESP_LOG_INFO);
+
+	// Configure UART for serial input
+	uart_config_t uart_config = {
+		.baud_rate = 115200,
+		.data_bits = UART_DATA_8_BITS,
+		.parity = UART_PARITY_DISABLE,
+		.stop_bits = UART_STOP_BITS_1,
+		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+		.source_clk = UART_SCLK_APB,
+	};
+	uart_param_config(UART_NUM_0, &uart_config);
+	uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
 
 	ESP_LOGI(TAG, "=== Voice-Controlled Lock System ===");
 
@@ -838,6 +914,9 @@ void app_main(void)
 #ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
 	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
 #endif
+
+	// Start serial command task
+	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
 
 	// Main loop - can be used for button monitoring or other tasks
 	while (1) {
