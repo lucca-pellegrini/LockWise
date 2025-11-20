@@ -77,6 +77,7 @@ static audio_element_handle_t i2s_reader, raw_writer;
 static esp_mqtt_client_handle_t mqtt_client;
 static TimerHandle_t lock_timer;
 static lock_state_t current_lock_state = LOCK_STATE_LOCKED;
+static bool have_connected = false;
 
 /* Configuration storage */
 static char wifi_ssid[32];
@@ -234,6 +235,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		snprintf(topic, sizeof(topic), "lockwise/%s/control", device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
+
+		if (!have_connected) {
+			have_connected = true;
+			mqtt_publish_status("POWER_ON");
+		}
 
 		// Publish connected
 		mqtt_publish_status("CONNECTED");
