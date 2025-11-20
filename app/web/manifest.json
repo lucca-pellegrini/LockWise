@@ -1,6 +1,6 @@
 {
-    "name": "lockwise",
-    "short_name": "lockwise",
+    "name": "fechaduraflow",
+    "short_name": "fechaduraflow",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
