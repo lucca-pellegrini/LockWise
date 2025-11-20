@@ -1,9 +1,9 @@
 /* Voice-Controlled Lock System
- * 
+ *
  * This application controls a door lock via:
  * 1. Voice authentication (record audio, send to backend for verification)
  * 2. MQTT commands from mobile app
- * 
+ *
  * Features:
  * - Audio recording from ESP32-LyraT microphones
  * - WiFi connectivity with stored credentials
@@ -47,7 +47,7 @@
 #include "tcpip_adapter.h"
 #endif
 
-static const char *TAG = "VOICE_LOCK";
+static const char *TAG = "LOCKWISE";
 
 /* Configuration - Use Kconfig values, can be overridden via NVS */
 #define DEFAULT_WIFI_SSID CONFIG_WIFI_SSID
@@ -373,9 +373,9 @@ static void mqtt_init(void)
 					       sizeof(dest_addr.sin_addr));
 
 					// Set socket timeout
-					struct timeval timeout = { .tv_sec = 5,
-								   .tv_usec =
-									   0 };
+					struct timeval timeout = {
+						.tv_sec = 5, .tv_usec = 0
+					};
 					setsockopt(sock, SOL_SOCKET,
 						   SO_RCVTIMEO, &timeout,
 						   sizeof(timeout));
@@ -388,8 +388,9 @@ static void mqtt_init(void)
 						(struct sockaddr *)&dest_addr,
 						sizeof(dest_addr));
 					if (connect_result == 0) {
-						ESP_LOGI(TAG,
-							 "TCP connection successful!");
+						ESP_LOGI(
+							TAG,
+							"TCP connection successful!");
 						close(sock);
 					} else {
 						ESP_LOGE(
@@ -400,13 +401,15 @@ static void mqtt_init(void)
 					}
 					freeaddrinfo(res2);
 				} else {
-					ESP_LOGE(TAG,
-						 "DNS lookup failed for connection test: %d",
-						 err);
+					ESP_LOGE(
+						TAG,
+						"DNS lookup failed for connection test: %d",
+						err);
 					close(sock);
 				}
 			} else {
-				ESP_LOGE(TAG, "Failed to create socket: errno=%d",
+				ESP_LOGE(TAG,
+					 "Failed to create socket: errno=%d",
 					 errno);
 			}
 		}
@@ -550,13 +553,12 @@ static esp_err_t start_voice_recording(void)
 
 	// Read data from raw stream into buffer
 	int bytes_read = 0;
-	int total_bytes = AUDIO_BUFFER_SIZE;
 	int timeout_counter = 0;
 
-	while (audio_buffer_len < total_bytes && timeout_counter < 100) {
+	while (audio_buffer_len < AUDIO_BUFFER_SIZE && timeout_counter < 100) {
 		bytes_read = raw_stream_read(
 			raw_writer, (char *)(audio_buffer + audio_buffer_len),
-			total_bytes - audio_buffer_len);
+			AUDIO_BUFFER_SIZE - audio_buffer_len);
 
 		if (bytes_read > 0) {
 			audio_buffer_len += bytes_read;
