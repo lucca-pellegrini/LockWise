@@ -239,11 +239,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		break;
 
 	case MQTT_EVENT_DISCONNECTED:
-		ESP_LOGW(TAG, "MQTT Disconnected");
+		ESP_LOGW(TAG, "MQTT Disconnected, attempting to reconnect");
+		esp_mqtt_client_reconnect(mqtt_client);
 		break;
 
 	case MQTT_EVENT_DATA:
 		ESP_LOGI(TAG, "MQTT CBOR Data received: topic=%.*s", event->topic_len, event->topic);
+		ESP_LOGD(TAG, "payload len=%d", event->data_len);
 
 		// Decode CBOR data
 		CborParser parser;
@@ -253,12 +255,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 			ESP_LOGW(TAG, "Invalid CBOR data received, error: %d, ignoring", err);
 			break;
 		}
-
-		ESP_LOGI(TAG, "payload len=%d", event->data_len);
-		for (int i = 0; i < event->data_len && i < 16; ++i) {
-			printf("%02x ", ((uint8_t *)event->data)[i]);
-		}
-		printf("\n");
 
 		ESP_LOGI(TAG, "CBOR parsed successfully");
 		if (cbor_value_is_map(&value)) {
@@ -400,6 +396,8 @@ static void mqtt_init(void)
 		.broker.address.uri = mqtt_broker_url,
 		.credentials.client_id = device_id,
 		.network.timeout_ms = 30000, // Increase timeout to 30 seconds
+		.network.reconnect_timeout_ms = 5000,
+		.session.keepalive = 60,
 	};
 
 	// If using mqtts://, configure TLS with embedded certificate
@@ -763,11 +761,11 @@ void app_main(void)
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
 
 	// Start voice recognition task
-	xTaskCreate(voice_recognition_task, "voice_rec", 4096, NULL, 5, NULL);
+	// xTaskCreate(voice_recognition_task, "voice_rec", 4096, NULL, 5, NULL);
 
 	// Start MQTT heartbeat task
 #ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
-	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 2048, NULL, 3, NULL);
+	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
 #endif
 
 	// Main loop - can be used for button monitoring or other tasks
