@@ -18,6 +18,7 @@ void load_config_from_nvs(void)
 	nvs_handle_t nvs_handle;
 	esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 	int nvs_available = (err == ESP_OK);
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 
 	if (!nvs_available) {
 		ESP_LOGW(TAG, "NVS unavailable, using all defaults");
