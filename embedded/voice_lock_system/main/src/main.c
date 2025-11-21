@@ -82,7 +82,7 @@ void app_main(void)
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
 
 	// Start MQTT heartbeat task
-	if (mqtt_heartbeat_enable) {
+	if (config.mqtt_heartbeat_enable) {
 		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
 	}
 

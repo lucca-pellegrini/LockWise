@@ -93,7 +93,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		ESP_LOGI(TAG, "MQTT Connected");
 		// Subscribe to device-specific topic
 		char topic[96];
-		snprintf(topic, sizeof(topic), "lockwise/%s/control", device_id);
+		snprintf(topic, sizeof(topic), "lockwise/%s/control", config.device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
 		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
 
@@ -153,11 +153,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void mqtt_init(void)
 {
-	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", mqtt_broker_url);
+	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", config.mqtt_broker_url);
 
 	// Extract hostname from URL for DNS testing
 	char hostname[128] = { 0 };
-	char *host_start = strstr(mqtt_broker_url, "://");
+	char *host_start = strstr(config.mqtt_broker_url, "://");
 	if (host_start) {
 		host_start += 3; // Skip "://"
 		char *port_start = strchr(host_start, ':');
@@ -239,15 +239,15 @@ void mqtt_init(void)
 	}
 
 	esp_mqtt_client_config_t mqtt_cfg = {
-		.broker.address.uri = mqtt_broker_url,
-		.credentials.client_id = device_id,
+		.broker.address.uri = config.mqtt_broker_url,
+		.credentials.client_id = config.device_id,
 		.network.timeout_ms = 30000, // Increase timeout to 30 seconds
 		.network.reconnect_timeout_ms = 5000,
 		.session.keepalive = 60,
 	};
 
 	// If using mqtts://, configure TLS with embedded certificate
-	if (strncmp(mqtt_broker_url, "mqtts://", 8) == 0) {
+	if (strncmp(config.mqtt_broker_url, "mqtts://", 8) == 0) {
 		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
 		mqtt_cfg.broker.verification.certificate_len = mqtt_ca_pem_end - mqtt_ca_pem_start;
 		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)",
@@ -267,7 +267,7 @@ void mqtt_publish_status(const char *status)
 	}
 
 	char topic[96];
-	snprintf(topic, sizeof(topic), "lockwise/%s/status", device_id);
+	snprintf(topic, sizeof(topic), "lockwise/%s/status", config.device_id);
 
 	uint8_t cbor_buffer[256];
 	CborEncoder encoder, map_encoder;
@@ -290,8 +290,8 @@ void mqtt_publish_status(const char *status)
 
 void mqtt_heartbeat_task(void *pvParameters)
 {
-	const int interval_ms = mqtt_heartbeat_interval_sec * 1000;
-	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", mqtt_heartbeat_interval_sec);
+	const int interval_ms = config.mqtt_heartbeat_interval_sec * 1000;
+	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", config.mqtt_heartbeat_interval_sec);
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(interval_ms));
