@@ -94,6 +94,10 @@ static void setup_pipeline(void)
 {
 	ESP_LOGI(TAG, "Setting up audio pipeline for streaming");
 
+	// Initialize audio board
+	audio_board_handle_t board_handle = audio_board_init();
+	audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
+
 	audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
 	pipeline = audio_pipeline_init(&pipeline_cfg);
 
@@ -102,8 +106,8 @@ static void setup_pipeline(void)
 	http_cfg.event_handle = _http_stream_event_handle;
 	http_stream_writer = http_stream_init(&http_cfg);
 
-	i2s_stream_cfg_t i2s_cfg =
-		I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(CODEC_ADC_I2S_PORT, 44100, 16, AUDIO_STREAM_READER, 1);
+	i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(
+		CODEC_ADC_I2S_PORT, AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_STREAM_READER, AUDIO_CHANNELS);
 	i2s_cfg.type = AUDIO_STREAM_READER;
 	i2s_cfg.out_rb_size = 16 * 1024;
 	i2s_stream_reader = i2s_stream_init(&i2s_cfg);
@@ -113,8 +117,6 @@ static void setup_pipeline(void)
 
 	const char *link_tag[2] = { "i2s", "http" };
 	audio_pipeline_link(pipeline, &link_tag[0], 2);
-
-	i2s_stream_set_clk(i2s_stream_reader, AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
 }
 
 static void teardown_pipeline(void)
