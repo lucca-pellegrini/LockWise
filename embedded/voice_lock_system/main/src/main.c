@@ -1,7 +1,6 @@
 /* Main Application */
 
 #include "config.h"
-#include "driver/i2c.h"
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "freertos/projdefs.h"
@@ -18,6 +17,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "board.h"
+#include "i2c_bus.h"
 
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 #include "esp_netif.h"
@@ -26,6 +27,8 @@
 #endif
 
 static const char *TAG = "LOCKWISE:MAIN";
+
+static i2c_master_bus_handle_t g_i2c_handle;
 
 void app_main(void)
 {
@@ -62,6 +65,10 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(err);
 
+	// Initialize audio board early to set up I2C
+	audio_board_handle_t board_handle = audio_board_init();
+	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
+
 	// Initialize network interface
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 	ESP_ERROR_CHECK(esp_netif_init());
@@ -93,19 +100,8 @@ void app_main(void)
 	}
 
 	ESP_LOGI(TAG, "Starting I²C scan…");
-	i2c_config_t old_cfg;
-	get_i2c_pins(I2C_NUM_0, &old_cfg);
-	i2c_master_bus_config_t bus_config = {
-		.i2c_port = I2C_NUM_0,
-		.sda_io_num = old_cfg.sda_io_num,
-		.scl_io_num = old_cfg.scl_io_num,
-		.clk_source = I2C_CLK_SRC_DEFAULT,
-		.glitch_ignore_cnt = 7,
-	};
-	i2c_master_bus_handle_t bus_handle;
-	i2c_new_master_bus(&bus_config, &bus_handle);
 	for (uint8_t addr = 1; addr < 127; ++addr) {
-		esp_err_t ret = i2c_master_probe(bus_handle, addr, 100);
+		esp_err_t ret = i2c_master_probe(g_i2c_handle, addr, 100);
 		if (ret == ESP_OK)
 			ESP_LOGI(TAG, "Found device at %02X", addr);
 	}
