@@ -19,6 +19,7 @@ static void run_command(char buffer[256]);
 
 void serial_command_task(void *pvParameters)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	ESP_LOGI(TAG, "Serial command task started");
 
 	char buffer[256];

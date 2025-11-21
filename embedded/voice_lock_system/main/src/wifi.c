@@ -17,6 +17,7 @@ static const char *TAG = "LOCKWISE:WIFI";
 
 void wifi_init(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	ESP_LOGI(TAG, "Initializing WiFi, SSID: %s", config.wifi_ssid);
 
 	esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();

@@ -27,6 +27,7 @@ static void lock_timeout_callback(TimerHandle_t xTimer)
 
 void unlock_door(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	if (current_lock_state == LOCK_STATE_UNLOCKED) {
 		ESP_LOGI(TAG, "Door already unlocked");
 		return;
@@ -51,6 +52,7 @@ void unlock_door(void)
 
 void lock_door(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	if (current_lock_state == LOCK_STATE_LOCKED) {
 		ESP_LOGI(TAG, "Door already locked");
 		return;
