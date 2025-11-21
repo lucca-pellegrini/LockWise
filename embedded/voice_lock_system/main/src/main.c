@@ -23,6 +23,14 @@ static const char *TAG = "LOCKWISE:MAIN";
 
 void app_main(void)
 {
+	// Initialize lock control GPIO (LED indicator)
+	gpio_config_t io_conf = {
+		.pin_bit_mask = (1ULL << LOCK_CONTROL_GPIO),
+		.mode = GPIO_MODE_OUTPUT,
+	};
+	gpio_config(&io_conf);
+	lock_door();
+
 	esp_log_level_set("*", ESP_LOG_WARN);
 	esp_log_level_set(TAG, ESP_LOG_INFO);
 
@@ -37,14 +45,6 @@ void app_main(void)
 	};
 	uart_param_config(UART_NUM_0, &uart_config);
 	uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-
-	// Initialize lock control GPIO (LED indicator)
-	gpio_config_t io_conf = {
-		.pin_bit_mask = (1ULL << LOCK_CONTROL_GPIO),
-		.mode = GPIO_MODE_OUTPUT,
-	};
-	gpio_config(&io_conf);
-	lock_door();
 
 	ESP_LOGI(TAG, "=== Voice-Controlled Lock System ===");
 
