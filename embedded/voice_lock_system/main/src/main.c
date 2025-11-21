@@ -1,6 +1,12 @@
 /* Main Application */
 
 #include "config.h"
+#include "driver/i2c.h"
+#include "driver/i2c_master.h"
+#include "esp_err.h"
+#include "freertos/projdefs.h"
+#include "hal/i2c_types.h"
+#include "board_pins_config.h"
 #include "wifi.h"
 #include "mqtt.h"
 #include "audio_stream.h"
@@ -85,6 +91,25 @@ void app_main(void)
 	if (config.mqtt_heartbeat_enable) {
 		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
 	}
+
+	ESP_LOGI(TAG, "Starting I²C scan…");
+	i2c_config_t old_cfg;
+	get_i2c_pins(I2C_NUM_0, &old_cfg);
+	i2c_master_bus_config_t bus_config = {
+		.i2c_port = I2C_NUM_0,
+		.sda_io_num = old_cfg.sda_io_num,
+		.scl_io_num = old_cfg.scl_io_num,
+		.clk_source = I2C_CLK_SRC_DEFAULT,
+		.glitch_ignore_cnt = 7,
+	};
+	i2c_master_bus_handle_t bus_handle;
+	i2c_new_master_bus(&bus_config, &bus_handle);
+	for (uint8_t addr = 1; addr < 127; ++addr) {
+		esp_err_t ret = i2c_master_probe(bus_handle, addr, 100);
+		if (ret == ESP_OK)
+			ESP_LOGI(TAG, "Found device at %02X", addr);
+	}
+	ESP_LOGI(TAG, "I²C scan complete!");
 
 	// Main loop - can be used for button monitoring or other tasks
 	while (1) {
