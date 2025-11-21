@@ -3,7 +3,7 @@
 #include "config.h"
 #include "wifi.h"
 #include "mqtt.h"
-#include "audio.h"
+#include "audio_stream.h"
 #include "serial.h"
 #include "lock.h"
 #include "esp_log.h"
@@ -75,8 +75,8 @@ void app_main(void)
 	// Initialize MQTT
 	mqtt_init();
 
-	// Initialize audio pipeline
-	audio_pipeline_setup();
+	// Initialize audio stream
+	audio_stream_init();
 
 	ESP_LOGI(TAG, "System initialized successfully");
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");

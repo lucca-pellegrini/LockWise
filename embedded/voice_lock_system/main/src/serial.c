@@ -4,6 +4,7 @@
 #include "config.h"
 #include "lock.h"
 #include "mqtt.h"
+#include "audio_stream.h"
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
@@ -55,6 +56,10 @@ static void run_command(char buffer[256])
 		unlock_door();
 	} else if (strcasecmp(buffer, "lock") == 0) {
 		lock_door();
+	} else if (strcasecmp(buffer, "record") == 0) {
+		audio_stream_send_cmd(AUDIO_STREAM_START);
+	} else if (strcasecmp(buffer, "stop") == 0) {
+		audio_stream_send_cmd(AUDIO_STREAM_STOP);
 	} else if (strcasecmp(buffer, "reboot") == 0) {
 		mqtt_publish_status("RESTARTING");
 		esp_restart();
