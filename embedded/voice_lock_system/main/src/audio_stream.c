@@ -1,5 +1,6 @@
 /* Audio Streaming Implementation */
 
+#include "sdkconfig.h"
 #include "audio_stream.h"
 #include "config.h"
 #include "esp_log.h"
@@ -14,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "esp_timer.h"
 #include <string.h>
 
 static const char *TAG = "AUDIO_STREAM";
@@ -27,6 +29,7 @@ static audio_pipeline_handle_t pipeline;
 static audio_element_handle_t i2s_stream_reader;
 static audio_element_handle_t http_stream_writer;
 static bool is_streaming = false;
+static esp_timer_handle_t stop_timer = NULL;
 
 esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 {
@@ -88,6 +91,11 @@ esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 		return ESP_OK;
 	}
 	return ESP_OK;
+}
+
+static void stop_timer_callback(void *arg)
+{
+	audio_stream_send_cmd(AUDIO_STREAM_STOP);
 }
 
 static void setup_pipeline(void)
@@ -152,6 +160,16 @@ static void start_streaming(void)
 
 	is_streaming = true;
 	ESP_LOGI(TAG, "Audio streaming started");
+
+	if (stop_timer == NULL) {
+		esp_timer_create_args_t timer_args = { .callback = &stop_timer_callback,
+						       .arg = NULL,
+						       .dispatch_method = ESP_TIMER_TASK,
+						       .name = "stop_timer" };
+		esp_timer_create(&timer_args, &stop_timer);
+	}
+	esp_timer_start_once(stop_timer,
+			     CONFIG_AUDIO_RECORD_TIMEOUT_SEC * 1000000); // CONFIG_AUDIO_RECORD_TIMEOUT_SEC seconds
 }
 
 static void stop_streaming(void)
@@ -162,6 +180,12 @@ static void stop_streaming(void)
 	}
 
 	ESP_LOGI(TAG, "Stopping audio streaming");
+
+	if (stop_timer) {
+		esp_timer_stop(stop_timer);
+		esp_timer_delete(stop_timer);
+		stop_timer = NULL;
+	}
 
 	audio_element_set_ringbuf_done(i2s_stream_reader);
 
