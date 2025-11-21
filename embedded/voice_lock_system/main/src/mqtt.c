@@ -290,6 +290,7 @@ void mqtt_publish_status(const char *status)
 
 void mqtt_heartbeat_task(void *pvParameters)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	const int interval_ms = config.mqtt_heartbeat_interval_sec * 1000;
 	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", config.mqtt_heartbeat_interval_sec);
 
