@@ -18,7 +18,7 @@
 
 static const char *TAG = "AUDIO_STREAM";
 
-#define AUDIO_SAMPLE_RATE 16000
+#define AUDIO_SAMPLE_RATE 44100
 #define AUDIO_BITS 16
 #define AUDIO_CHANNELS 1
 
@@ -106,10 +106,10 @@ static void setup_pipeline(void)
 	http_cfg.event_handle = _http_stream_event_handle;
 	http_stream_writer = http_stream_init(&http_cfg);
 
-	i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(
-		CODEC_ADC_I2S_PORT, AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_STREAM_READER, AUDIO_CHANNELS);
+	i2s_stream_cfg_t i2s_cfg =
+		I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(CODEC_ADC_I2S_PORT, 44100, 16, AUDIO_STREAM_READER, 1);
 	i2s_cfg.type = AUDIO_STREAM_READER;
-	i2s_cfg.out_rb_size = 16 * 1024;
+	i2s_cfg.out_rb_size = 64 * 1024; // Large buffer to prevent underruns
 	i2s_stream_reader = i2s_stream_init(&i2s_cfg);
 
 	audio_pipeline_register(pipeline, i2s_stream_reader, "i2s");
