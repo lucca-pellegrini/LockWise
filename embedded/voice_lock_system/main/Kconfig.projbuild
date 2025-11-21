@@ -63,4 +63,11 @@ menu "Voice Lock Configuration"
         help
             Interval in seconds between heartbeat messages (5-3600 seconds).
 
+    config AUDIO_RECORD_TIMEOUT_SEC
+        int "Audio Recording Timeout (seconds)"
+        default 5
+        range 1 60
+        help
+            Maximum duration for audio recording in seconds.
+
 endmenu
