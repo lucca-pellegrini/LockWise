@@ -19,7 +19,7 @@
 #include "tcpip_adapter.h"
 #endif
 
-static const char *TAG = "LOCKWISE_MAIN";
+static const char *TAG = "LOCKWISE:MAIN";
 
 void app_main(void)
 {

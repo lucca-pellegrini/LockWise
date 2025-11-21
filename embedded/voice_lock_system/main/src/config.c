@@ -8,7 +8,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 
-static const char *TAG = "LOCKWISE_CONFIG";
+static const char *TAG = "LOCKWISE:CONFIG";
 
 /* Configuration storage */
 config_t config;

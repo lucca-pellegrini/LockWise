@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
 
-static const char *TAG = "LOCKWISE_LOCK";
+static const char *TAG = "LOCKWISE:LOCK";
 
 /* Configuration */
 #define LOCK_TIMEOUT_MS 20000 // 20 seconds auto-lock
