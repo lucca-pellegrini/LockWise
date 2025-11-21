@@ -16,6 +16,9 @@ char wifi_password[64];
 char device_id[64];
 char backend_url[256];
 char mqtt_broker_url[256];
+bool mqtt_heartbeat_enable;
+int mqtt_heartbeat_interval_sec;
+int audio_record_timeout_sec;
 
 void load_config_from_nvs(void)
 {
@@ -87,6 +90,48 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load MQTT Heartbeat Enable
+	uint8_t enable_val;
+	if (nvs_available && nvs_get_u8(nvs_handle, "mqtt_hb_enable", &enable_val) == ESP_OK) {
+		mqtt_heartbeat_enable = enable_val;
+		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_enable from NVS: %d", mqtt_heartbeat_enable);
+	} else {
+		mqtt_heartbeat_enable = CONFIG_MQTT_HEARTBEAT_ENABLE;
+		if (nvs_available) {
+			nvs_set_u8(nvs_handle, "mqtt_hb_enable", mqtt_heartbeat_enable);
+			ESP_LOGW(TAG, "Using provisioned mqtt_heartbeat_enable and saved to NVS: %d",
+				 mqtt_heartbeat_enable);
+		}
+	}
+
+	// Load MQTT Heartbeat Interval
+	int32_t interval_val;
+	if (nvs_available && nvs_get_i32(nvs_handle, "mqtt_hb_interval", &interval_val) == ESP_OK) {
+		mqtt_heartbeat_interval_sec = interval_val;
+		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_interval_sec from NVS: %d", mqtt_heartbeat_interval_sec);
+	} else {
+		mqtt_heartbeat_interval_sec = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC;
+		if (nvs_available) {
+			nvs_set_i32(nvs_handle, "mqtt_hb_interval", mqtt_heartbeat_interval_sec);
+			ESP_LOGW(TAG, "Using provisioned mqtt_heartbeat_interval_sec and saved to NVS: %d",
+				 mqtt_heartbeat_interval_sec);
+		}
+	}
+
+	// Load Audio Record Timeout
+	int32_t timeout_val;
+	if (nvs_available && nvs_get_i32(nvs_handle, "audio_timeout", &timeout_val) == ESP_OK) {
+		audio_record_timeout_sec = timeout_val;
+		ESP_LOGI(TAG, "Loaded audio_record_timeout_sec from NVS: %d", audio_record_timeout_sec);
+	} else {
+		audio_record_timeout_sec = CONFIG_AUDIO_RECORD_TIMEOUT_SEC;
+		if (nvs_available) {
+			nvs_set_i32(nvs_handle, "audio_timeout", audio_record_timeout_sec);
+			ESP_LOGW(TAG, "Using provisioned audio_record_timeout_sec and saved to NVS: %d",
+				 audio_record_timeout_sec);
+		}
+	}
+
 	if (nvs_available) {
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
@@ -97,13 +142,28 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker, mqtt_hb_enable, mqtt_hb_interval, audio_timeout)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
-	    !strcasecmp(key, "mqtt_broker")) {
+	    !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_hb_enable") ||
+	    !strcasecmp(key, "mqtt_hb_interval") || !strcasecmp(key, "audio_timeout")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
-			nvs_set_str(nvs_handle, key, value);
+			if (!strcasecmp(key, "mqtt_hb_enable")) {
+				uint8_t enable_val = atoi(value) ? 1 : 0;
+				nvs_set_u8(nvs_handle, "mqtt_hb_enable", enable_val);
+				mqtt_heartbeat_enable = enable_val;
+			} else if (!strcasecmp(key, "mqtt_hb_interval")) {
+				int32_t interval_val = atoi(value);
+				nvs_set_i32(nvs_handle, "mqtt_hb_interval", interval_val);
+				mqtt_heartbeat_interval_sec = interval_val;
+			} else if (!strcasecmp(key, "audio_timeout")) {
+				int32_t timeout_val = atoi(value);
+				nvs_set_i32(nvs_handle, "audio_timeout", timeout_val);
+				audio_record_timeout_sec = timeout_val;
+			} else {
+				nvs_set_str(nvs_handle, key, value);
+			}
 			nvs_commit(nvs_handle);
 			nvs_close(nvs_handle);
 			ESP_LOGI(TAG, "Updated config %s in NVS", key);

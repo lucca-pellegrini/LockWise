@@ -169,7 +169,7 @@ static void start_streaming(void)
 		esp_timer_create(&timer_args, &stop_timer);
 	}
 	esp_timer_start_once(stop_timer,
-			     CONFIG_AUDIO_RECORD_TIMEOUT_SEC * 1000000); // CONFIG_AUDIO_RECORD_TIMEOUT_SEC seconds
+			     audio_record_timeout_sec * 1000000); // audio_record_timeout_sec seconds
 }
 
 static void stop_streaming(void)
