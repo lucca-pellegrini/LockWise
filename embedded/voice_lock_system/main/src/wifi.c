@@ -17,7 +17,7 @@ static const char *TAG = "LOCKWISE_WIFI";
 
 void wifi_init(void)
 {
-	ESP_LOGI(TAG, "Initializing WiFi, SSID: %s", wifi_ssid);
+	ESP_LOGI(TAG, "Initializing WiFi, SSID: %s", config.wifi_ssid);
 
 	esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
 	esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
@@ -28,8 +28,9 @@ void wifi_init(void)
 	};
 
 	// Copy SSID and password to the config
-	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, wifi_ssid, sizeof(wifi_cfg.wifi_config.sta.ssid));
-	strncpy((char *)wifi_cfg.wifi_config.sta.password, wifi_password, sizeof(wifi_cfg.wifi_config.sta.password));
+	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, config.wifi_ssid, sizeof(wifi_cfg.wifi_config.sta.ssid));
+	strncpy((char *)wifi_cfg.wifi_config.sta.password, config.wifi_password,
+		sizeof(wifi_cfg.wifi_config.sta.password));
 
 	esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
 	esp_periph_start(set, wifi_handle);

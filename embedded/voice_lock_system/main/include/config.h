@@ -7,15 +7,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef struct {
+	char wifi_ssid[32];
+	char wifi_password[64];
+	char device_id[64];
+	char backend_url[256];
+	char mqtt_broker_url[256];
+	bool mqtt_heartbeat_enable;
+	int mqtt_heartbeat_interval_sec;
+	int audio_record_timeout_sec;
+} config_t;
+
 /* Configuration storage */
-extern char wifi_ssid[32];
-extern char wifi_password[64];
-extern char device_id[64];
-extern char backend_url[256];
-extern char mqtt_broker_url[256];
-extern bool mqtt_heartbeat_enable;
-extern int mqtt_heartbeat_interval_sec;
-extern int audio_record_timeout_sec;
+extern config_t config;
 
 /* Function prototypes */
 void load_config_from_nvs(void);

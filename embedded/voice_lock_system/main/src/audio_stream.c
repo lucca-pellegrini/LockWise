@@ -149,12 +149,12 @@ static void start_streaming(void)
 		return;
 	}
 
-	ESP_LOGI(TAG, "Starting audio streaming to %s", backend_url);
+	ESP_LOGI(TAG, "Starting audio streaming to %s", config.backend_url);
 	ESP_LOGI(TAG, "Audio params: rate=%d, bits=%d, channels=%d", AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
 
 	setup_pipeline();
 
-	audio_element_set_uri(http_stream_writer, backend_url);
+	audio_element_set_uri(http_stream_writer, config.backend_url);
 
 	audio_pipeline_run(pipeline);
 
@@ -169,7 +169,7 @@ static void start_streaming(void)
 		esp_timer_create(&timer_args, &stop_timer);
 	}
 	esp_timer_start_once(stop_timer,
-			     audio_record_timeout_sec * 1000000); // audio_record_timeout_sec seconds
+			     config.audio_record_timeout_sec * 1000000); // config.audio_record_timeout_sec seconds
 }
 
 static void stop_streaming(void)
