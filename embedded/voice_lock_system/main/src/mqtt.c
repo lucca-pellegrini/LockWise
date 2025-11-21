@@ -290,16 +290,11 @@ void mqtt_publish_status(const char *status)
 
 void mqtt_heartbeat_task(void *pvParameters)
 {
-#ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
-	const int interval_ms = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC * 1000;
-	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC);
+	const int interval_ms = mqtt_heartbeat_interval_sec * 1000;
+	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", mqtt_heartbeat_interval_sec);
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(interval_ms));
 		mqtt_publish_status("HEARTBEAT");
 	}
-#else
-	ESP_LOGI(TAG, "Heartbeat disabled in configuration");
-	vTaskDelete(NULL);
-#endif
 }

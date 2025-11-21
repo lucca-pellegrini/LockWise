@@ -82,9 +82,9 @@ void app_main(void)
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
 
 	// Start MQTT heartbeat task
-#ifdef CONFIG_MQTT_HEARTBEAT_ENABLE
-	xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
-#endif
+	if (mqtt_heartbeat_enable) {
+		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
+	}
 
 	// Main loop - can be used for button monitoring or other tasks
 	while (1) {
