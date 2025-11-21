@@ -3,6 +3,7 @@
 #include "mqtt.h"
 #include "config.h"
 #include "lock.h"
+#include "audio_stream.h"
 #include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -43,6 +44,10 @@ static void process_cbor_command(CborValue *value)
 				unlock_door();
 			} else if (!strcasecmp(command, "LOCK")) {
 				lock_door();
+			} else if (!strcasecmp(command, "RECORD")) {
+				audio_stream_send_cmd(AUDIO_STREAM_START);
+			} else if (!strcasecmp(command, "STOP")) {
+				audio_stream_send_cmd(AUDIO_STREAM_STOP);
 			} else if (!strcasecmp(command, "FLASH")) {
 				// TODO: Handle flash erase
 			} else if (!strcasecmp(command, "REBOOT")) {
