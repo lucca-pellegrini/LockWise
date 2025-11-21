@@ -13,7 +13,7 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "LOCKWISE_SERIAL";
+static const char *TAG = "LOCKWISE:SERIAL";
 
 static void run_command(char buffer[256]);
 

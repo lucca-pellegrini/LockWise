@@ -13,7 +13,7 @@
 #include "tcpip_adapter.h"
 #endif
 
-static const char *TAG = "LOCKWISE_WIFI";
+static const char *TAG = "LOCKWISE:WIFI";
 
 void wifi_init(void)
 {

@@ -15,7 +15,7 @@
 #include "esp_system.h"
 #include <cbor.h>
 
-static const char *TAG = "LOCKWISE_MQTT";
+static const char *TAG = "LOCKWISE:MQTT";
 
 /* Global MQTT client handle */
 esp_mqtt_client_handle_t mqtt_client;
