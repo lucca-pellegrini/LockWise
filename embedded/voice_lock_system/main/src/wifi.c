@@ -35,7 +35,11 @@ void wifi_init(void)
 
 	esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
 	esp_periph_start(set, wifi_handle);
-	periph_wifi_wait_for_connected(wifi_handle, portMAX_DELAY);
+	esp_err_t wifi_result = periph_wifi_wait_for_connected(wifi_handle, 30000); // 30 second timeout
+	if (wifi_result != ESP_OK) {
+		ESP_LOGE(TAG, "WiFi connection failed within timeout, continuing without WiFi");
+		return;
+	}
 
 	ESP_LOGI(TAG, "WiFi connected successfully");
 

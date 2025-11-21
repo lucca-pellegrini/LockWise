@@ -1,5 +1,6 @@
 /* Audio Streaming Implementation */
 
+#include "mqtt.h"
 #include "sdkconfig.h"
 #include "audio_stream.h"
 #include "config.h"
@@ -18,7 +19,7 @@
 #include "esp_timer.h"
 #include <string.h>
 
-static const char *TAG = "AUDIO_STREAM";
+static const char *TAG = "LOCKWISE:AUDIO";
 
 #define AUDIO_SAMPLE_RATE 44100
 #define AUDIO_BITS 16
@@ -145,10 +146,12 @@ static void teardown_pipeline(void)
 static void start_streaming(void)
 {
 	if (is_streaming) {
+		mqtt_publish_status("ERR_ALREADY_STREAMING");
 		ESP_LOGW(TAG, "Already streaming");
 		return;
 	}
 
+	mqtt_publish_status("STREAMING");
 	ESP_LOGI(TAG, "Starting audio streaming to %s", config.backend_url);
 	ESP_LOGI(TAG, "Audio params: rate=%d, bits=%d, channels=%d", AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
 
@@ -175,10 +178,12 @@ static void start_streaming(void)
 static void stop_streaming(void)
 {
 	if (!is_streaming) {
+		mqtt_publish_status("ERR_NOT_STREAMING");
 		ESP_LOGW(TAG, "Not streaming");
 		return;
 	}
 
+	mqtt_publish_status("STOPPED_STREAMING");
 	ESP_LOGI(TAG, "Stopping audio streaming");
 
 	if (stop_timer) {
@@ -218,6 +223,7 @@ void audio_stream_task(void *pvParameters)
 
 void audio_stream_init(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	audio_stream_queue = xQueueCreate(10, sizeof(audio_stream_cmd_t));
 	xTaskCreate(audio_stream_task, "audio_stream", 4096, NULL, 5, NULL);
 }
