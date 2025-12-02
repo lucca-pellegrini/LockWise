@@ -72,6 +72,19 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load Backend Bearer Token
+	required_size = sizeof(config.backend_bearer_token);
+	if (nvs_available &&
+	    nvs_get_str(nvs_handle, "backend_bearer", config.backend_bearer_token, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded backend_bearer_token from NVS: [REDACTED]");
+	} else {
+		strcpy(config.backend_bearer_token, "");
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "backend_bearer", config.backend_bearer_token);
+			ESP_LOGW(TAG, "Using default backend_bearer_token and saved to NVS: [REDACTED]");
+		}
+	}
+
 	// Load MQTT Broker URL
 	required_size = sizeof(config.mqtt_broker_url);
 	if (nvs_available && nvs_get_str(nvs_handle, "mqtt_broker", config.mqtt_broker_url, &required_size) == ESP_OK) {
@@ -136,10 +149,11 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, mqtt_broker, mqtt_hb_enable, mqtt_hb_interval, audio_timeout)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_hb_enable, mqtt_hb_interval, audio_timeout)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
-	    !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_hb_enable") ||
-	    !strcasecmp(key, "mqtt_hb_interval") || !strcasecmp(key, "audio_timeout")) {
+	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") ||
+	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
+	    !strcasecmp(key, "audio_timeout")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -164,6 +178,19 @@ void update_config(const char *key, const char *value)
 				}
 			} else {
 				set_err = nvs_set_str(nvs_handle, key, value);
+				if (set_err == ESP_OK) {
+					if (!strcasecmp(key, "wifi_ssid")) {
+						strcpy(config.wifi_ssid, value);
+					} else if (!strcasecmp(key, "wifi_pass")) {
+						strcpy(config.wifi_password, value);
+					} else if (!strcasecmp(key, "backend_url")) {
+						strcpy(config.backend_url, value);
+					} else if (!strcasecmp(key, "backend_bearer")) {
+						strcpy(config.backend_bearer_token, value);
+					} else if (!strcasecmp(key, "mqtt_broker")) {
+						strcpy(config.mqtt_broker_url, value);
+					}
+				}
 			}
 			if (set_err == ESP_OK) {
 				esp_err_t commit_err = nvs_commit(nvs_handle);

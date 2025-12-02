@@ -51,6 +51,11 @@ esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 		snprintf(dat, sizeof(dat), "%d", AUDIO_CHANNELS);
 		esp_http_client_set_header(http, "x-audio-channels", dat);
 		esp_http_client_set_header(http, "Content-Type", "audio/raw");
+		if (strlen(config.backend_bearer_token) > 0) {
+			char auth_header[256 + 10];
+			snprintf(auth_header, sizeof(auth_header), "Bearer %s", config.backend_bearer_token);
+			esp_http_client_set_header(http, "Authorization", auth_header);
+		}
 		total_write = 0;
 		return ESP_OK;
 	}

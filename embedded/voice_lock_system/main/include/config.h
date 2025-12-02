@@ -12,6 +12,7 @@ typedef struct {
 	char wifi_password[64];
 	char device_id[64];
 	char backend_url[256];
+	char backend_bearer_token[256];
 	char mqtt_broker_url[256];
 	bool mqtt_heartbeat_enable;
 	int mqtt_heartbeat_interval_sec;
