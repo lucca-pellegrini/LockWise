@@ -5,13 +5,11 @@
 #define LOCK_H
 
 /* GPIO Configuration */
-#define LOCK_CONTROL_GPIO 22
+#define LOCK_INDICATOR_LED_GPIO 22
+#define LOCK_ACTUATOR_GPIO CONFIG_LOCK_GPIO
 
 /* Lock states */
 typedef enum { LOCK_STATE_LOCKED, LOCK_STATE_UNLOCKED, LOCK_STATE_AUTHENTICATING } lock_state_t;
-
-/* Global lock state */
-extern lock_state_t current_lock_state;
 
 /* Function prototypes */
 void lock_init(void);

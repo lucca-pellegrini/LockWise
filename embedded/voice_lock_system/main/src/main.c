@@ -32,12 +32,14 @@ static i2c_master_bus_handle_t g_i2c_handle;
 
 void app_main(void)
 {
-	// Initialize lock control GPIO (LED indicator)
-	gpio_config_t io_conf = {
-		.pin_bit_mask = (1ULL << LOCK_CONTROL_GPIO),
-		.mode = GPIO_MODE_OUTPUT,
-	};
-	gpio_config(&io_conf);
+	uint64_t pin_bit_mask; // GPIO bit mask
+	pin_bit_mask = (1ULL << LOCK_INDICATOR_LED_GPIO); // Enable indicator LED
+
+	// If an actual GPIO pin is set as the lock actuator, enable it too
+	pin_bit_mask |= (LOCK_ACTUATOR_GPIO >= 0) ? (1ULL << LOCK_ACTUATOR_GPIO) : 0;
+
+	// Apply configuration
+	gpio_config(&(gpio_config_t){ .pin_bit_mask = pin_bit_mask, .mode = GPIO_MODE_OUTPUT });
 
 	lock_init(); // Initialize lock mutex
 	lock_door(); // Lock door
