@@ -41,6 +41,9 @@ void app_main(void)
 	// Apply configuration
 	gpio_config(&(gpio_config_t){ .pin_bit_mask = pin_bit_mask, .mode = GPIO_MODE_OUTPUT });
 
+	// Ensure LED is off initially (not streaming)
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+
 	lock_init(); // Initialize lock mutex
 	lock_door(); // Lock door
 
