@@ -18,6 +18,7 @@ typedef struct {
 	bool mqtt_heartbeat_enable;
 	int mqtt_heartbeat_interval_sec;
 	int audio_record_timeout_sec;
+	int lock_timeout_ms;
 } config_t;
 
 /* Configuration storage */

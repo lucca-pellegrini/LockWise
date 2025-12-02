@@ -2,6 +2,7 @@
 
 #include "lock.h"
 #include "mqtt.h"
+#include "config.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
@@ -9,9 +10,6 @@
 #include "freertos/semphr.h"
 
 static const char *TAG = "LOCKWISE:LOCK";
-
-/* Configuration */
-#define LOCK_TIMEOUT_MS 20000 // 20 seconds auto-lock
 
 /* Global lock state */
 lock_state_t current_lock_state = LOCK_STATE_UNLOCKED;
@@ -50,19 +48,20 @@ void unlock_door(void)
 	ESP_LOGW(TAG, "Unlocking door");
 	current_lock_state = LOCK_STATE_UNLOCKED;
 
-	xSemaphoreGive(lock_state_mutex);
-
 	// Turn on LED to indicate door is open
 	gpio_set_level(LOCK_CONTROL_GPIO, 0);
 
 	// Start auto-lock timer
-	if (lock_timer == NULL)
-		lock_timer =
-			xTimerCreate("LockTimer", pdMS_TO_TICKS(LOCK_TIMEOUT_MS), pdFALSE, NULL, lock_timeout_callback);
+	if (lock_timer == NULL) {
+		lock_timer = xTimerCreate("LockTimer", pdMS_TO_TICKS(config.lock_timeout_ms), pdFALSE, NULL,
+					  lock_timeout_callback);
+	}
 	xTimerStart(lock_timer, 0);
 
 	// Publish status to MQTT
 	mqtt_publish_status("UNLOCKED");
+
+	xSemaphoreGive(lock_state_mutex);
 }
 
 void lock_door(void)
