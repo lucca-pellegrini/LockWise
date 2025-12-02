@@ -46,9 +46,6 @@ void unlock_door(void)
 		ESP_LOGW(TAG, "Unlocking door");
 		lock_ctx.state = LOCK_STATE_UNLOCKED;
 
-		// Turn off LED to indicate door is open
-		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
-
 		// Unlock the lock actuator
 		gpio_set_level(LOCK_ACTUATOR_GPIO, 0);
 
@@ -87,9 +84,6 @@ void lock_door(void)
 	lock_ctx.state = LOCK_STATE_LOCKED;
 
 	xSemaphoreGive(lock_ctx.mutex);
-
-	// Turn on LED to indicate door is closed
-	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
 
 	// Lock the lock actuator
 	gpio_set_level(LOCK_ACTUATOR_GPIO, 1);

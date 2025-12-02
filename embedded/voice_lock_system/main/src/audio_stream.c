@@ -5,6 +5,8 @@
 #include "audio_stream.h"
 #include "config.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
+#include "lock.h"
 #include "esp_http_client.h"
 #include "audio_element.h"
 #include "audio_pipeline.h"
@@ -167,6 +169,7 @@ static void start_streaming(void)
 	audio_pipeline_run(pipeline);
 
 	is_streaming = true;
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
 	ESP_LOGI(TAG, "Audio streaming started");
 
 	if (!stop_timer) {
@@ -202,6 +205,7 @@ static void stop_streaming(void)
 	teardown_pipeline();
 
 	is_streaming = false;
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
 	ESP_LOGI(TAG, "Audio streaming stopped");
 }
 
