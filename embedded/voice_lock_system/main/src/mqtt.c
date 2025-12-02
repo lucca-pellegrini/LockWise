@@ -241,6 +241,8 @@ void mqtt_init(void)
 	esp_mqtt_client_config_t mqtt_cfg = {
 		.broker.address.uri = config.mqtt_broker_url,
 		.credentials.client_id = config.device_id,
+		.credentials.username = config.device_id,
+		.credentials.authentication.password = config.mqtt_broker_password,
 		.network.timeout_ms = 30000, // Increase timeout to 30 seconds
 		.network.reconnect_timeout_ms = 5000,
 		.session.keepalive = 60,

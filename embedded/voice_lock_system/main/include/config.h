@@ -14,6 +14,7 @@ typedef struct {
 	char backend_url[256];
 	char backend_bearer_token[256];
 	char mqtt_broker_url[256];
+	char mqtt_broker_password[256];
 	bool mqtt_heartbeat_enable;
 	int mqtt_heartbeat_interval_sec;
 	int audio_record_timeout_sec;
