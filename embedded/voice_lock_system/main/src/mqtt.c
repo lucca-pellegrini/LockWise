@@ -195,11 +195,11 @@ void mqtt_init(void)
 			};
 			struct addrinfo *res;
 			int err = getaddrinfo(hostname, NULL, &hints, &res);
-			if (err != 0 || res == NULL) {
+			if (err != 0 || !res) {
 				ESP_LOGE(TAG, "DNS lookup failed for %s: %d", hostname, err);
 			} else {
 				// Print resolved IP addresses
-				for (struct addrinfo *p = res; p != NULL; p = p->ai_next) {
+				for (struct addrinfo *p = res; p; p = p->ai_next) {
 					if (p->ai_family == AF_INET) {
 						struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
 						ESP_LOGI(TAG, "DNS resolved to: %s", inet_ntoa(ipv4->sin_addr));
@@ -274,7 +274,7 @@ void mqtt_init(void)
 
 void mqtt_publish_status(const char *status)
 {
-	if (mqtt_client == NULL) {
+	if (!mqtt_client) {
 		ESP_LOGW(TAG, "MQTT client not initialized, cannot publish status");
 		return;
 	}
