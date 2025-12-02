@@ -4,6 +4,7 @@
 #include "config.h"
 #include "lock.h"
 #include "audio_stream.h"
+#include "nvs_flash.h"
 #include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -49,7 +50,17 @@ static void process_cbor_command(CborValue *value)
 			} else if (!strcasecmp(command, "STOP")) {
 				audio_stream_send_cmd(AUDIO_STREAM_STOP);
 			} else if (!strcasecmp(command, "FLASH")) {
-				// TODO: Handle flash erase
+				switch (nvs_flash_erase()) {
+				case ESP_OK:
+					mqtt_publish_status("NVS_ERASED");
+					break;
+				case ESP_ERR_NOT_FOUND:
+					mqtt_publish_status("NVS_ERASE_FAILED_NO_SUCH");
+					break;
+				default:
+					mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
+					break;
+				}
 			} else if (!strcasecmp(command, "REBOOT")) {
 				mqtt_publish_status("RESTARTING");
 				esp_restart();
