@@ -169,7 +169,7 @@ static void start_streaming(void)
 	is_streaming = true;
 	ESP_LOGI(TAG, "Audio streaming started");
 
-	if (stop_timer == NULL) {
+	if (!stop_timer) {
 		esp_timer_create_args_t timer_args = { .callback = &stop_timer_callback,
 						       .arg = NULL,
 						       .dispatch_method = ESP_TIMER_TASK,
