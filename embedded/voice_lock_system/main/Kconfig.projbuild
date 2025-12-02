@@ -34,7 +34,7 @@ menu "Voice Lock Configuration"
         int "Lock Control GPIO Pin"
         default -1
         help
-            GPIO pin for controlling the lock (-1 if using I2C).
+            GPIO pin for controlling the lock (-1 when prototyping).
 
     config USE_I2C_LOCK
         bool "Use I2C GPIO Expander for Lock Control"

@@ -12,7 +12,7 @@
 static const char *TAG = "LOCKWISE:LOCK";
 
 /* Global lock state */
-lock_state_t current_lock_state = LOCK_STATE_UNLOCKED;
+static lock_state_t current_lock_state = LOCK_STATE_UNLOCKED;
 
 /* Mutex for lock state */
 static SemaphoreHandle_t lock_state_mutex;
@@ -22,6 +22,7 @@ static TimerHandle_t lock_timer;
 
 void lock_init(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
 	if (lock_state_mutex == NULL)
 		lock_state_mutex = xSemaphoreCreateMutex();
 }
@@ -35,8 +36,6 @@ static void lock_timeout_callback(TimerHandle_t xTimer)
 
 void unlock_door(void)
 {
-	esp_log_level_set(TAG, ESP_LOG_INFO);
-
 	xSemaphoreTake(lock_state_mutex, portMAX_DELAY);
 
 	if (current_lock_state == LOCK_STATE_UNLOCKED) {
@@ -48,8 +47,11 @@ void unlock_door(void)
 	ESP_LOGW(TAG, "Unlocking door");
 	current_lock_state = LOCK_STATE_UNLOCKED;
 
-	// Turn on LED to indicate door is open
-	gpio_set_level(LOCK_CONTROL_GPIO, 0);
+	// Turn off LED to indicate door is open
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+
+	// Unlock the lock actuator
+	gpio_set_level(LOCK_ACTUATOR_GPIO, 0);
 
 	// Start auto-lock timer
 	if (lock_timer == NULL) {
@@ -66,8 +68,6 @@ void unlock_door(void)
 
 void lock_door(void)
 {
-	esp_log_level_set(TAG, ESP_LOG_INFO);
-
 	xSemaphoreTake(lock_state_mutex, portMAX_DELAY);
 
 	if (current_lock_state == LOCK_STATE_LOCKED) {
@@ -81,8 +81,11 @@ void lock_door(void)
 
 	xSemaphoreGive(lock_state_mutex);
 
-	// Turn off LED to indicate door is closed
-	gpio_set_level(LOCK_CONTROL_GPIO, 1);
+	// Turn on LED to indicate door is closed
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
+
+	// Lock the lock actuator
+	gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
 
 	// Stop auto-lock timer
 	if (lock_timer != NULL) {
