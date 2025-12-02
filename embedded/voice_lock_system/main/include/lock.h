@@ -14,6 +14,7 @@ typedef enum { LOCK_STATE_LOCKED, LOCK_STATE_UNLOCKED, LOCK_STATE_AUTHENTICATING
 extern lock_state_t current_lock_state;
 
 /* Function prototypes */
+void lock_init(void);
 void unlock_door(void);
 void lock_door(void);
 

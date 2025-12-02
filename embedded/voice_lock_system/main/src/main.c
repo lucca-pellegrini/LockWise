@@ -38,7 +38,9 @@ void app_main(void)
 		.mode = GPIO_MODE_OUTPUT,
 	};
 	gpio_config(&io_conf);
-	lock_door();
+
+	lock_init(); // Initialize lock mutex
+	lock_door(); // Lock door
 
 	esp_log_level_set("*", ESP_LOG_WARN);
 	esp_log_level_set(TAG, ESP_LOG_INFO);
