@@ -70,4 +70,11 @@ menu "Voice Lock Configuration"
         help
             Maximum duration for audio recording in seconds.
 
+    config LOCK_TIMEOUT_MS
+        int "Lock Auto-Lock Timeout (milliseconds)"
+        default 20000
+        range 5000 300000
+        help
+            Time in milliseconds after unlocking before auto-locking the door.
+
 endmenu
