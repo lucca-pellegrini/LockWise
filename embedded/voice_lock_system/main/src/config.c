@@ -97,6 +97,19 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load MQTT Broker Password
+	required_size = sizeof(config.mqtt_broker_password);
+	if (nvs_available &&
+	    nvs_get_str(nvs_handle, "mqtt_pass", config.mqtt_broker_password, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded mqtt_broker_password from NVS: [REDACTED]");
+	} else {
+		strcpy(config.mqtt_broker_password, "");
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "mqtt_pass", config.mqtt_broker_password);
+			ESP_LOGW(TAG, "Using default mqtt_broker_password and saved to NVS: [REDACTED]");
+		}
+	}
+
 	// Load MQTT Heartbeat Enable
 	uint8_t enable_val;
 	if (nvs_available && nvs_get_u8(nvs_handle, "mqtt_hb_enable", &enable_val) == ESP_OK) {
@@ -149,9 +162,9 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_hb_enable, mqtt_hb_interval, audio_timeout)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
-	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") ||
+	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
 	    !strcasecmp(key, "audio_timeout")) {
 		nvs_handle_t nvs_handle;
@@ -189,6 +202,8 @@ void update_config(const char *key, const char *value)
 						strcpy(config.backend_bearer_token, value);
 					} else if (!strcasecmp(key, "mqtt_broker")) {
 						strcpy(config.mqtt_broker_url, value);
+					} else if (!strcasecmp(key, "mqtt_pass")) {
+						strcpy(config.mqtt_broker_password, value);
 					}
 				}
 			}
