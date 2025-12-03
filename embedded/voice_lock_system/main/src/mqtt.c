@@ -1,21 +1,21 @@
 /* MQTT Management Implementation */
 
-#include "mqtt.h"
-#include "config.h"
-#include "lock.h"
 #include "audio_stream.h"
 #include "bluetooth.h"
-#include "nvs_flash.h"
-#include <string.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <errno.h>
-#include <arpa/inet.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "config.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "lock.h"
+#include "mqtt.h"
+#include "nvs_flash.h"
+#include <arpa/inet.h>
 #include <cbor.h>
+#include <errno.h>
+#include <netdb.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <time.h>
 
 static const char *TAG = "LOCKWISE:MQTT";

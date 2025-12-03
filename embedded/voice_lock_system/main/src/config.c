@@ -1,12 +1,12 @@
 /* Configuration Management Implementation */
 
 #include "config.h"
-#include "esp_system.h"
-#include <string.h>
-#include "freertos/FreeRTOS.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
 #include "nvs.h"
+#include "nvs_flash.h"
+#include <string.h>
 
 static const char *TAG = "LOCKWISE:CONFIG";
 

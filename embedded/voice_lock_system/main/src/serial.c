@@ -1,18 +1,18 @@
 /* Serial Command Implementation */
 
-#include "serial.h"
-#include "config.h"
-#include "lock.h"
-#include "mqtt.h"
 #include "audio_stream.h"
 #include "bluetooth.h"
-#include "esp_log.h"
+#include "config.h"
 #include "driver/uart.h"
+#include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <string.h>
-#include "esp_system.h"
+#include "lock.h"
+#include "mqtt.h"
 #include "nvs_flash.h"
+#include "serial.h"
+#include <string.h>
 
 static const char *TAG = "LOCKWISE:SERIAL";
 

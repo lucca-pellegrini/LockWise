@@ -4,8 +4,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
 	char wifi_ssid[32];
