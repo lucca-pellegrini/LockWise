@@ -18,17 +18,18 @@ typedef struct {
 	TimerHandle_t timer;
 } lock_context_t;
 
-static lock_context_t lock_ctx = {
-	.state = LOCK_STATE_UNLOCKED,
-	.mutex = NULL,
-	.timer = NULL,
-};
+static lock_context_t lock_ctx;
 
 void lock_init(void)
 {
+	gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
 	esp_log_level_set(TAG, ESP_LOG_INFO);
-	if (!lock_ctx.mutex)
-		lock_ctx.mutex = xSemaphoreCreateMutex();
+
+	lock_ctx = (lock_context_t){
+		.state = LOCK_STATE_LOCKED,
+		.mutex = xSemaphoreCreateMutex(),
+		.timer = NULL,
+	};
 }
 
 /* Lock Timer Callback */
@@ -36,6 +37,18 @@ static void lock_timeout_callback(TimerHandle_t xTimer)
 {
 	ESP_LOGI(TAG, "Lock timeout reached, auto-locking door");
 	lock_door();
+}
+
+/* Blink Task */
+void blink(void *param)
+{
+	int delay_ms = (int)param;
+	for (;;) {
+		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
+		vTaskDelay(pdMS_TO_TICKS(delay_ms));
+		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+		vTaskDelay(pdMS_TO_TICKS(delay_ms));
+	}
 }
 
 void unlock_door(void)

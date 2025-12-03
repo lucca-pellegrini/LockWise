@@ -5,6 +5,7 @@
 #include "lock.h"
 #include "mqtt.h"
 #include "audio_stream.h"
+#include "bluetooth.h"
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
@@ -25,7 +26,7 @@ void serial_command_task(void *pvParameters)
 	char buffer[256];
 	int index = 0;
 
-	while (1) {
+	for (;;) {
 		uint8_t data;
 		int len = uart_read_bytes(UART_NUM_0, &data, 1, pdMS_TO_TICKS(10));
 		if (len > 0) {
@@ -76,6 +77,8 @@ static void run_command(char buffer[256])
 			mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
 			break;
 		}
+	} else if (strcasecmp(buffer, "pair") == 0) {
+		bluetooth_enter_pairing_mode();
 	} else {
 		ESP_LOGW(TAG, "Unknown command: %s", buffer);
 	}

@@ -15,5 +15,6 @@ typedef enum { LOCK_STATE_LOCKED, LOCK_STATE_UNLOCKED, LOCK_STATE_AUTHENTICATING
 void lock_init(void);
 void unlock_door(void);
 void lock_door(void);
+void blink(void *param);
 
 #endif /* LOCK_H */

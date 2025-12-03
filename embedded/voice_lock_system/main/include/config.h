@@ -19,6 +19,7 @@ typedef struct {
 	int mqtt_heartbeat_interval_sec;
 	int audio_record_timeout_sec;
 	int lock_timeout_ms;
+	char user_pub_key[256]; // Paired user's public key (PEM format)
 } config_t;
 
 /* Configuration storage */
