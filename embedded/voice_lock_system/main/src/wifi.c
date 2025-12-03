@@ -1,11 +1,11 @@
 /* WiFi Management Implementation */
 
-#include "wifi.h"
 #include "config.h"
-#include <string.h>
 #include "esp_log.h"
 #include "esp_peripherals.h"
 #include "periph_wifi.h"
+#include "wifi.h"
+#include <string.h>
 
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 #include "esp_netif.h"

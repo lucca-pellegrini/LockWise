@@ -1,32 +1,25 @@
 /* Main Application */
 
-#include "config.h"
-#include "driver/i2c_master.h"
-#include "esp_err.h"
-#include "freertos/projdefs.h"
-#include "hal/i2c_types.h"
-#include "board_pins_config.h"
-#include "wifi.h"
-#include "mqtt.h"
 #include "audio_stream.h"
-#include "serial.h"
-#include "lock.h"
 #include "bluetooth.h"
-#include "esp_log.h"
-#include "driver/uart.h"
-#include "driver/gpio.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "nvs_flash.h"
 #include "board.h"
-#include "i2c_bus.h"
-#include "esp_netif_sntp.h"
-
-#if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
+#include "config.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
+#include "driver/uart.h"
+#include "esp_err.h"
+#include "esp_log.h"
 #include "esp_netif.h"
-#else
-#include "tcpip_adapter.h"
-#endif
+#include "esp_netif_sntp.h"
+#include "freertos/projdefs.h"
+#include "freertos/task.h"
+#include "hal/i2c_types.h"
+#include "i2c_bus.h"
+#include "lock.h"
+#include "mqtt.h"
+#include "nvs_flash.h"
+#include "serial.h"
+#include "wifi.h"
 
 static const char *TAG = "LOCKWISE:MAIN";
 

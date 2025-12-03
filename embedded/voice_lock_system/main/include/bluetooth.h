@@ -6,8 +6,8 @@
 #define BLUETOOTH_H
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* Function prototypes */
 void bluetooth_init(void);

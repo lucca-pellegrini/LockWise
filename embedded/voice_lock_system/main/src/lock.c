@@ -1,13 +1,13 @@
 /* Lock Control Implementation */
 
+#include "config.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/timers.h"
 #include "lock.h"
 #include "mqtt.h"
-#include "config.h"
-#include "esp_log.h"
-#include "driver/gpio.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
-#include "freertos/semphr.h"
 
 static const char *TAG = "LOCKWISE:LOCK";
 

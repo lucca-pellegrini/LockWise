@@ -2,23 +2,23 @@
 
 #include "bluetooth.h"
 #include "config.h"
-#include "lock.h"
-#include "esp_log.h"
 #include "esp_bt.h"
-#include "esp_bt_main.h"
-#include "esp_gatts_api.h"
 #include "esp_bt_device.h"
+#include "esp_bt_main.h"
 #include "esp_gap_ble_api.h"
+#include "esp_gatts_api.h"
 #include "esp_http_client.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lock.h"
+#include "mbedtls/ctr_drbg.h"
 #include "mbedtls/ecdsa.h"
+#include "mbedtls/entropy.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/sha256.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 static const char *TAG = "LOCKWISE:BLE";
 
