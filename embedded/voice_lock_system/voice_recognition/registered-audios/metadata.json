@@ -1,0 +1,16 @@
+{
+  "Felipe_20251028_100457.wav": {
+    "speaker_name": "Felipe",
+    "original_filename": "audio_20251028_100443.aac",
+    "original_format": "aac",
+    "registered_at": "2025-10-28T10:04:58.111260",
+    "file_size": 256044
+  },
+  "Lucca_20251028_110255.wav": {
+    "speaker_name": "Lucca",
+    "original_filename": "audio_20251028_110237.aac",
+    "original_format": "aac",
+    "registered_at": "2025-10-28T11:02:56.077899",
+    "file_size": 221228
+  }
+}
