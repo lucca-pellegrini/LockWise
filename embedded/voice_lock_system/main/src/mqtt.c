@@ -4,6 +4,7 @@
 #include "config.h"
 #include "lock.h"
 #include "audio_stream.h"
+#include "bluetooth.h"
 #include "nvs_flash.h"
 #include <string.h>
 #include <sys/socket.h>
@@ -15,6 +16,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include <cbor.h>
+#include <time.h>
 
 static const char *TAG = "LOCKWISE:MQTT";
 
@@ -66,6 +68,8 @@ static void process_cbor_command(CborValue *value)
 				esp_restart();
 			} else if (!strcasecmp(command, "UPDATE_CONFIG")) {
 				handle_update_config_command(value);
+			} else if (!strcasecmp(command, "PAIR")) {
+				bluetooth_enter_pairing_mode();
 			}
 		}
 	} else {
@@ -162,8 +166,26 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	}
 }
 
+static void log_embedded_cert_info(void)
+{
+	size_t len = (size_t)(mqtt_ca_pem_end - mqtt_ca_pem_start);
+	ESP_LOGE(TAG, "Embedded cert pointer: %p len=%u", mqtt_ca_pem_start, (unsigned)len);
+	if (len > 0) {
+		// print first line (safely)
+		char first[64];
+		size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
+		memcpy(first, mqtt_ca_pem_start, n);
+		first[n] = '\0';
+		ESP_LOGE(TAG, "First bytes: '%s'", first);
+	} else {
+		ESP_LOGE(TAG, "No embedded certificate found (len == 0)");
+	}
+}
+
 void mqtt_init(void)
 {
+	esp_log_level_set(TAG, ESP_LOG_INFO);
+	// log_embedded_cert_info();
 	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", config.mqtt_broker_url);
 
 	// Extract hostname from URL for DNS testing
@@ -262,7 +284,7 @@ void mqtt_init(void)
 	// If using mqtts://, configure TLS with embedded certificate
 	if (strncmp(config.mqtt_broker_url, "mqtts://", 8) == 0) {
 		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
-		mqtt_cfg.broker.verification.certificate_len = mqtt_ca_pem_end - mqtt_ca_pem_start;
+		mqtt_cfg.broker.verification.certificate_len = 0;
 		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)",
 			 (int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
 	}
@@ -285,11 +307,13 @@ void mqtt_publish_status(const char *status)
 	uint8_t cbor_buffer[256];
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
-	cbor_encoder_create_map(&encoder, &map_encoder, 2);
+	cbor_encoder_create_map(&encoder, &map_encoder, 3);
 	cbor_encode_text_stringz(&map_encoder, "status");
 	cbor_encode_text_stringz(&map_encoder, status);
 	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
 	cbor_encode_uint(&map_encoder, (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS);
+	cbor_encode_text_stringz(&map_encoder, "timestamp");
+	cbor_encode_uint(&map_encoder, (uint64_t)time(NULL));
 	cbor_encoder_close_container(&encoder, &map_encoder);
 	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
 
@@ -303,11 +327,10 @@ void mqtt_publish_status(const char *status)
 
 void mqtt_heartbeat_task(void *pvParameters)
 {
-	esp_log_level_set(TAG, ESP_LOG_INFO);
 	const int interval_ms = config.mqtt_heartbeat_interval_sec * 1000;
 	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", config.mqtt_heartbeat_interval_sec);
 
-	while (1) {
+	for (;;) {
 		vTaskDelay(pdMS_TO_TICKS(interval_ms));
 		mqtt_publish_status("HEARTBEAT");
 	}

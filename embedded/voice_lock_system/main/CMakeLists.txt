@@ -1,11 +1,12 @@
 idf_component_register(SRCS
-	"src/main.c"
-	"src/config.c"
-	"src/wifi.c"
-	"src/mqtt.c"
 	"src/audio_stream.c"
+	"src/bluetooth.c"
+	"src/config.c"
 	"src/lock.c"
+	"src/main.c"
+	"src/mqtt.c"
 	"src/serial.c"
+	"src/wifi.c"
 	INCLUDE_DIRS "include"
-	REQUIRES mqtt esp_peripherals audio_pipeline esp_http_client driver audio_stream
+	REQUIRES mqtt esp_peripherals audio_pipeline esp_http_client driver audio_stream bt mbedtls esp_netif
 	EMBED_TXTFILES "certs/mqtt_ca.pem")

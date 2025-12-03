@@ -165,6 +165,18 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load User Public Key
+	required_size = sizeof(config.user_pub_key);
+	if (nvs_available && nvs_get_str(nvs_handle, "user_pub_key", config.user_pub_key, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded user_pub_key from NVS");
+	} else {
+		strcpy(config.user_pub_key, "");
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "user_pub_key", config.user_pub_key);
+			ESP_LOGW(TAG, "Using default user_pub_key and saved to NVS");
+		}
+	}
+
 	if (nvs_available) {
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
@@ -175,11 +187,11 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_pub_key)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
-	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout")) {
+	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_pub_key")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -208,6 +220,11 @@ void update_config(const char *key, const char *value)
 				if (set_err == ESP_OK) {
 					config.lock_timeout_ms = lock_timeout_val;
 				}
+			} else if (!strcasecmp(key, "user_pub_key")) {
+				set_err = nvs_set_str(nvs_handle, "user_pub_key", value);
+				if (set_err == ESP_OK) {
+					strcpy(config.user_pub_key, value);
+				}
 			} else {
 				set_err = nvs_set_str(nvs_handle, key, value);
 				if (set_err == ESP_OK) {
@@ -223,6 +240,8 @@ void update_config(const char *key, const char *value)
 						strcpy(config.mqtt_broker_url, value);
 					} else if (!strcasecmp(key, "mqtt_pass")) {
 						strcpy(config.mqtt_broker_password, value);
+					} else if (!strcasecmp(key, "user_pub_key")) {
+						strcpy(config.user_pub_key, value);
 					}
 				}
 			}

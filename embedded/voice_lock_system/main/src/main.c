@@ -11,6 +11,7 @@
 #include "audio_stream.h"
 #include "serial.h"
 #include "lock.h"
+#include "bluetooth.h"
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
@@ -19,6 +20,7 @@
 #include "nvs_flash.h"
 #include "board.h"
 #include "i2c_bus.h"
+#include "esp_netif_sntp.h"
 
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 #include "esp_netif.h"
@@ -29,9 +31,14 @@
 static const char *TAG = "LOCKWISE:MAIN";
 
 static i2c_master_bus_handle_t g_i2c_handle;
+static TaskHandle_t setup_blink_task = NULL;
 
 void app_main(void)
 {
+	// Set log level
+	esp_log_level_set("*", ESP_LOG_WARN);
+	esp_log_level_set(TAG, ESP_LOG_INFO);
+
 	uint64_t pin_bit_mask; // GPIO bit mask
 	pin_bit_mask = (1ULL << LOCK_INDICATOR_LED_GPIO); // Enable indicator LED
 
@@ -44,11 +51,11 @@ void app_main(void)
 	// Ensure LED is off initially (not streaming)
 	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
 
-	lock_init(); // Initialize lock mutex
-	lock_door(); // Lock door
+	// Initialize lock mutex and lock door
+	lock_init();
 
-	esp_log_level_set("*", ESP_LOG_WARN);
-	esp_log_level_set(TAG, ESP_LOG_INFO);
+	// Start setup blink
+	xTaskCreate(blink, "setup_blink", 1024, (void *)200, 1, &setup_blink_task);
 
 	// Configure UART for serial input
 	uart_config_t uart_config = {
@@ -89,8 +96,18 @@ void app_main(void)
 	// Start serial command task early to allow config updates before wifi connects
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
 
+	// Initialize Bluetooth
+	bluetooth_init();
+
 	// Initialize WiFi
 	wifi_init();
+
+	// Initialize system clock
+	esp_sntp_config_t ntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+	ESP_LOGI(TAG, "Initializing system clock via SNTP: %s", *ntp_config.servers);
+	esp_netif_sntp_init(&ntp_config);
+	if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK)
+		ESP_LOGE(TAG, "Failed to update system time within 15s timeout");
 
 	// Initialize MQTT
 	mqtt_init();
@@ -114,8 +131,15 @@ void app_main(void)
 	}
 	ESP_LOGI(TAG, "I²C scan complete!");
 
+	// Stop setup blink
+	if (setup_blink_task) {
+		vTaskDelete(setup_blink_task);
+		setup_blink_task = NULL;
+		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+	}
+
 	// Main loop - can be used for button monitoring or other tasks
-	while (1) {
+	for (;;) {
 		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }

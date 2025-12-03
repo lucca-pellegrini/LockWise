@@ -52,9 +52,17 @@ void wifi_init(void)
 		ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&ip_info.gw));
 		ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
 
-		// Get DNS server
+		// Set static DNS servers
+		esp_netif_dns_info_t dns_main = { .ip = { .u_addr = { .ip4 = { .addr = 0x01010101 } } } };
+		esp_netif_dns_info_t dns_backup = { .ip = { .u_addr = { .ip4 = { .addr = 0x08080808 } } } };
+		esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+		esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+
+		// Get and log DNS servers
 		esp_netif_dns_info_t dns_info;
 		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
 		ESP_LOGI(TAG, "DNS Server: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_info);
+		ESP_LOGI(TAG, "DNS Backup: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
 	}
 }

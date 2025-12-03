@@ -213,7 +213,7 @@ void audio_stream_task(void *pvParameters)
 {
 	audio_stream_cmd_t cmd;
 
-	while (1) {
+	for (;;) {
 		if (xQueueReceive(audio_stream_queue, &cmd, portMAX_DELAY) == pdTRUE) {
 			switch (cmd) {
 			case AUDIO_STREAM_START:
