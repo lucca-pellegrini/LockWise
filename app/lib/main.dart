@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'PaginaBoasVindas.dart';
+import 'PaginaInicial.dart';
 import 'firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'models/AssetPreloader.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
@@ -38,7 +40,23 @@ class MyApp extends StatelessWidget {
         future: AssetPreloader.preloadAssets(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            return const BoasVindas();
+            return StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              builder: (context, authSnapshot) {
+                if (authSnapshot.connectionState == ConnectionState.active) {
+                  final user = authSnapshot.data;
+                  if (user != null) {
+                    return Inicial(usuarioId: user.uid);
+                  } else {
+                    return const BoasVindas();
+                  }
+                } else {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+              },
+            );
           } else {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
