@@ -2,10 +2,9 @@ import 'package:fechaduraflow/PaginaEsqueci.dart';
 import 'package:flutter/material.dart';
 import 'PaginaInicial.dart';
 import 'PaginaCadastro.dart';
-import 'models/database.dart';
 import 'models/LocalService.dart';
-import 'models/SyncService.dart';
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -73,8 +72,6 @@ class _LoginPageState extends State<LoginPage> {
 
       if (userId != null) {
         // Já está logado, ir direto para tela inicial
-
-        SyncService.instance.sincronizarTudo(userId);
 
         Navigator.pushReplacement(
           context,
@@ -480,29 +477,11 @@ class _LoginPageState extends State<LoginPage> {
         manterConectado: _manterConectado,
       );
 
-      //==================== Exibir todos os usuários no console - Debug ===================
-
-      final usuarios = await DB.instance.listarTodosUsuarios();
-
-      print('Total de usuários: ${usuarios.length}');
-
-      for (var usuario in usuarios) {
-        print('ID: ${usuario['id']}');
-        print('Nome: ${usuario['nome']}');
-        print('Email: ${usuario['email']}');
-        print('Senha: ${usuario['senha']}');
-        print('---');
-      }
-      //==================================================================================
-
       if (resultado['success'] == true) {
         // Login bem-sucedido
         final usuario = resultado['user'];
 
         if (mounted) {
-          // Sincronizar dados do usuário com Firebase
-          SyncService.instance.sincronizarTudo(usuario['id']);
-
           // Navegar para página inicial
           Navigator.pushReplacement(
             context,
@@ -536,4 +515,3 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 }
-

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'models/database.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PaginaConvites extends StatefulWidget {
   const PaginaConvites({super.key});
@@ -38,7 +38,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
       _usuario = await LocalService.getUsuarioLogado();
 
       if (_usuario != null) {
-        final usuarioId = _usuario!['id'] as int;
+        final usuarioId = _usuario!['id'] as String;
 
         // Carregar convites enviados com informações da fechadura e destinatário
         final enviados = await _carregarConvitesEnviados(usuarioId);
@@ -57,18 +57,28 @@ class _PaginaConvitesState extends State<PaginaConvites>
   }
 
   Future<List<Map<String, dynamic>>> _carregarConvitesEnviados(
-    int usuarioId,
+    String usuarioId,
   ) async {
-    final convites = await DB.instance.listarConvitesDoRemetente(usuarioId);
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('convites')
+        .where('remetente_id', isEqualTo: usuarioId)
+        .get();
+    final convites = querySnapshot.docs.map((doc) => doc.data()).toList();
     final List<Map<String, dynamic>> convitesCompletos = [];
 
     for (final convite in convites) {
-      final fechadura = await DB.instance.buscarFechadura(
-        convite['fechadura_id'],
-      );
-      final destinatario = await DB.instance.buscarUsuarioPorId(
-        convite['destinatario_id'],
-      );
+      final fechaduraDoc = await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .doc(convite['fechadura_id'])
+          .get();
+      final fechadura = fechaduraDoc.exists ? fechaduraDoc.data() : null;
+      final destinatarioDoc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(convite['destinatario_id'])
+          .get();
+      final destinatario = destinatarioDoc.exists
+          ? destinatarioDoc.data()
+          : null;
 
       convitesCompletos.add({
         ...convite,
@@ -81,18 +91,26 @@ class _PaginaConvitesState extends State<PaginaConvites>
   }
 
   Future<List<Map<String, dynamic>>> _carregarConvitesRecebidos(
-    int usuarioId,
+    String usuarioId,
   ) async {
-    final convites = await DB.instance.listarConvitesDoDestinatario(usuarioId);
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('convites')
+        .where('destinatario_id', isEqualTo: usuarioId)
+        .get();
+    final convites = querySnapshot.docs.map((doc) => doc.data()).toList();
     final List<Map<String, dynamic>> convitesCompletos = [];
 
     for (final convite in convites) {
-      final fechadura = await DB.instance.buscarFechadura(
-        convite['fechadura_id'],
-      );
-      final remetente = await DB.instance.buscarUsuarioPorId(
-        convite['remetente_id'],
-      );
+      final fechaduraDoc = await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .doc(convite['fechadura_id'])
+          .get();
+      final fechadura = fechaduraDoc.exists ? fechaduraDoc.data() : null;
+      final remetenteDoc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(convite['remetente_id'])
+          .get();
+      final remetente = remetenteDoc.exists ? remetenteDoc.data() : null;
 
       convitesCompletos.add({
         ...convite,
@@ -536,7 +554,10 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
     if (confirma == true) {
       try {
-        await DB.instance.deletarConvite(convite['id']);
+        await FirebaseFirestore.instance
+            .collection('convites')
+            .doc(convite['id'])
+            .delete();
         _mostrarSucesso('Convite revogado com sucesso');
         await _carregarDados();
       } catch (e) {
@@ -627,9 +648,12 @@ class _PaginaConvitesState extends State<PaginaConvites>
         final agora = DateTime.now();
         final novaDataExpiracao = _calcularDataExpiracao(agora, novaData);
 
-        await DB.instance.atualizarConvite(convite['id'], {
-          'data_expiracao': novaDataExpiracao.millisecondsSinceEpoch,
-        });
+        await FirebaseFirestore.instance
+            .collection('convites')
+            .doc(convite['id'])
+            .update({
+              'data_expiracao': novaDataExpiracao.millisecondsSinceEpoch,
+            });
 
         _mostrarSucesso('Data de expiração alterada com sucesso');
         await _carregarDados();
@@ -645,17 +669,21 @@ class _PaginaConvitesState extends State<PaginaConvites>
       final temPermissoesAdmin = convite['permissoes_admin'] == 1;
 
       // Atualizar status do convite
-      await DB.instance.atualizarConvite(
-        convite['id'],
-        {'status': 1}, // 1 = aceito
-      );
+      await FirebaseFirestore.instance
+          .collection('convites')
+          .doc(convite['id'])
+          .update({
+            'status': 1, // 1 = aceito
+          });
 
       // Se tem permissões de admin, adiciona como administrador
       if (temPermissoesAdmin) {
-        await DB.instance.inserirAdministradorFechadura({
-          'fechadura_id': convite['fechadura_id'],
-          'usuario_id': _usuario!['id'],
-        });
+        await FirebaseFirestore.instance
+            .collection('administradores_fechaduras')
+            .add({
+              'fechadura_id': convite['fechadura_id'],
+              'usuario_id': _usuario!['id'],
+            });
         _mostrarSucesso(
           'Convite aceito! Você agora é administrador da fechadura.',
         );
@@ -672,12 +700,12 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
   Future<void> _recusarConvite(Map<String, dynamic> convite) async {
     try {
-      await DB.instance.atualizarConvite(
-        convite['id'],
-        {'status': 2}, // 2 = recusado
-      );
-
-      final deletar = convite['status'] == 2;
+      await FirebaseFirestore.instance
+          .collection('convites')
+          .doc(convite['id'])
+          .update({
+            'status': 2, // 2 = recusado
+          });
 
       _mostrarSucesso('Convite recusado');
       await _carregarDados();
@@ -777,4 +805,3 @@ class _GlassButton extends StatelessWidget {
     );
   }
 }
-

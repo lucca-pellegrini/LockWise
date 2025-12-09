@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'PaginaChave.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EsqueciSenha extends StatefulWidget {
   const EsqueciSenha({super.key});
@@ -227,12 +228,29 @@ class _EsqueciSenhaState extends State<EsqueciSenha> {
       );
 
       if (resultado['success'] == true) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => Chave(contato: _contatoController.text),
-          ),
-        );
+        // Enviar email de redefinição de senha
+        if (_contatoController.text.contains('@')) {
+          await FirebaseAuth.instance.sendPasswordResetEmail(
+            email: _contatoController.text,
+          );
+          setState(() {
+            _errorMessage = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Email de redefinição enviado! Verifique sua caixa de entrada.',
+              ),
+            ),
+          );
+          Navigator.pop(context);
+        } else {
+          setState(() {
+            _errorMessage =
+                'Redefinição por telefone não suportada. Use email.';
+          });
+          _formKey.currentState?.validate();
+        }
       } else {
         setState(() {
           _errorMessage = resultado['message'] ?? 'Contato não encontrado';
@@ -251,4 +269,3 @@ class _EsqueciSenhaState extends State<EsqueciSenha> {
     }
   }
 }
-

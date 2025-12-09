@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'PaginaLogin.dart';
-import 'models/database.dart';
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Cadastro extends StatefulWidget {
   const Cadastro({super.key});
@@ -464,13 +465,31 @@ class _CadastroState extends State<Cadastro> {
                                             String nome =
                                                 '${_nomeController.text} ${_sobrenomeController.text}';
 
-                                            await DB.instance.inserirUsuario({
-                                              'nome': nome,
-                                              'email': _emailController.text,
-                                              'telefone':
-                                                  _telefoneController.text,
-                                              'senha': _senhaController.text,
-                                            });
+                                            // Criar usuário no Firebase Auth
+                                            UserCredential
+                                            userCredential = await FirebaseAuth
+                                                .instance
+                                                .createUserWithEmailAndPassword(
+                                                  email: _emailController.text,
+                                                  password:
+                                                      _senhaController.text,
+                                                );
+
+                                            // Salvar dados adicionais no Firestore
+                                            await FirebaseFirestore.instance
+                                                .collection('usuarios')
+                                                .doc(userCredential.user!.uid)
+                                                .set({
+                                                  'id':
+                                                      userCredential.user!.uid,
+                                                  'nome': nome,
+                                                  'email':
+                                                      _emailController.text,
+                                                  'telefone':
+                                                      _telefoneController.text,
+                                                  'created_at':
+                                                      FieldValue.serverTimestamp(),
+                                                });
 
                                             _isLoading = false;
 
@@ -488,7 +507,7 @@ class _CadastroState extends State<Cadastro> {
                                             _senhaConfirmController.clear();
                                           } catch (e) {
                                             print(
-                                              'Erro ao adicionar fechadura: $e',
+                                              'Erro ao adicionar usuario: $e',
                                             );
                                             ScaffoldMessenger.of(
                                               context,

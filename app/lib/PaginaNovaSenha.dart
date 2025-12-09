@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'PaginaLogin.dart';
 import 'PaginaEsqueci.dart';
-import 'models/database.dart';
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class NovaSenha extends StatefulWidget {
   final String contato;
@@ -287,23 +288,49 @@ class _NovaSenhaState extends State<NovaSenha> {
     setState(() => _isLoading = true);
 
     try {
-      final linhasAfetadas = await DB.instance.atualizarSenha(
-        widget.contato,
-        _senhaController.text,
-      );
+      // Buscar usuário no Firebase
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('email', isEqualTo: widget.contato)
+          .get();
 
-      if (linhasAfetadas > 0 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Senha atualizada com sucesso!')),
-        );
+      Map<String, dynamic>? userData;
+      String? userId;
 
-        _senhaController.clear();
-        _senhaConfirmController.clear();
+      if (querySnapshot.docs.isNotEmpty) {
+        userData = querySnapshot.docs.first.data();
+        userId = querySnapshot.docs.first.id;
+      } else {
+        final querySnapshotTel = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .where('telefone', isEqualTo: widget.contato)
+            .get();
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => LoginPage()),
-        );
+        if (querySnapshotTel.docs.isNotEmpty) {
+          userData = querySnapshotTel.docs.first.data();
+          userId = querySnapshotTel.docs.first.id;
+        }
+      }
+
+      if (userId != null) {
+        await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(userId)
+            .update({'senha': _senhaController.text});
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Senha atualizada com sucesso!')),
+          );
+
+          _senhaController.clear();
+          _senhaConfirmController.clear();
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => LoginPage()),
+          );
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(
           context,

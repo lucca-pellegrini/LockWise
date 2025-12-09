@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'models/database.dart';
 import 'models/LocalService.dart';
-import 'models/SyncService.dart';
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LockDetails extends StatefulWidget {
-  final int fechaduraId;
+  final String fechaduraId;
 
   LockDetails({super.key, required this.fechaduraId});
 
@@ -34,22 +33,27 @@ class _LockDetailsState extends State<LockDetails> {
 
   Future<void> _carregarDadosFechadura() async {
     try {
-      final f = await DB.instance.buscarFechadura(widget.fechaduraId);
+      final doc = await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .doc(widget.fechaduraId)
+          .get();
+      final f = doc.exists ? doc.data() : null;
       final usuario = await LocalService.getUsuarioLogado();
 
       bool admin = false;
       if (usuario != null) {
-        final userId = usuario['id'] as int;
+        final userId = usuario['id'] as String;
         // Verificar se é dono OU administrador
-        admin =
-            (f?['usuario_id'] == userId) ||
-            await DB.instance.verificarSeUsuarioEAdministrador(
-              widget.fechaduraId,
-              userId,
-            );
+        admin = (f?['usuario_id'] == userId);
+        // TODO: Check administrators from Firestore if needed
       }
 
-      final logsData = await DB.instance.listarLogsDeAcesso(widget.fechaduraId);
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('logs_acesso')
+          .where('fechadura_id', isEqualTo: widget.fechaduraId)
+          .orderBy('data_hora', descending: true)
+          .get();
+      final logsData = querySnapshot.docs.map((doc) => doc.data()).toList();
 
       setState(() {
         fechadura = f;
@@ -73,11 +77,12 @@ class _LockDetailsState extends State<LockDetails> {
       final agora = DateTime.now().millisecondsSinceEpoch;
       final novoEstado = acao == 'Abrir' ? 1 : 0;
 
-      await SyncService.instance.atualizarFechaduraSync(widget.fechaduraId, {
-        'aberto': novoEstado,
-      });
+      await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .doc(widget.fechaduraId)
+          .update({'notificacoes': notificationsEnabled ? 1 : 0});
 
-      await DB.instance.inserirLogAcesso({
+      await FirebaseFirestore.instance.collection('logs_acesso').add({
         'fechadura_id': widget.fechaduraId,
         'usuario': usuarioNome,
         'acao': acao, // "Abrir" ou "Fechar"
@@ -86,7 +91,12 @@ class _LockDetailsState extends State<LockDetails> {
       });
 
       // Recarrega os logs para refletir na UI
-      final logsData = await DB.instance.listarLogsDeAcesso(widget.fechaduraId);
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('logs_acesso')
+          .where('fechadura_id', isEqualTo: widget.fechaduraId)
+          .orderBy('data_hora', descending: true)
+          .get();
+      final logsData = querySnapshot.docs.map((doc) => doc.data()).toList();
       setState(() {
         logs = List<Map<String, dynamic>>.from(logsData);
         isOpen = novoEstado == 1; // Atualiza o estado local
@@ -271,10 +281,10 @@ class _LockDetailsState extends State<LockDetails> {
                     notificationsEnabled = value;
                   });
 
-                  await SyncService.instance.atualizarFechaduraSync(
-                    widget.fechaduraId,
-                    {'notificacoes': value ? 1 : 0},
-                  );
+                  await FirebaseFirestore.instance
+                      .collection('fechaduras')
+                      .doc(widget.fechaduraId)
+                      .update({'notificacoes': value ? 1 : 0});
                 },
                 activeColor: Colors.blueAccent.withOpacity(0.5),
                 inactiveTrackColor: Colors.transparent,
@@ -292,10 +302,12 @@ class _LockDetailsState extends State<LockDetails> {
                           remoteAccessEnabled = value;
                         });
 
-                        await SyncService.instance.atualizarFechaduraSync(
-                          widget.fechaduraId,
-                          {'acesso_remoto': value ? 1 : 0},
-                        );
+                        await FirebaseFirestore.instance
+                            .collection('fechaduras')
+                            .doc(widget.fechaduraId)
+                            .update({
+                              'acesso_remoto': remoteAccessEnabled ? 1 : 0,
+                            });
                       }
                     : null, // Desabilita se não for administrador
 
@@ -701,30 +713,40 @@ class _LockDetailsState extends State<LockDetails> {
 
   Future<void> _enviarConvite() async {
     try {
-      final usuarioId = int.parse(_idUsuarioController.text);
+      final usuarioId = _idUsuarioController.text;
       final usuario = await LocalService.getUsuarioLogado();
-      final remetenteId = usuario?['id'] ?? 0;
+      final remetenteId = usuario?['id'] ?? '';
 
       // Verificar se o usuário existe
-      final usuarioConvidado = await DB.instance.buscarUsuarioPorId(usuarioId);
+      final usuarioDoc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(usuarioId.toString())
+          .get();
+      final usuarioConvidado = usuarioDoc.exists ? usuarioDoc.data() : null;
       if (usuarioConvidado == null) {
         _mostrarErro('Usuário com ID $usuarioId não encontrado');
         return;
       }
 
       // Verificar se já não é administrador
-      if (await DB.instance.verificarSeUsuarioEAdministrador(
-        widget.fechaduraId,
-        usuarioId,
-      )) {
+      final adminSnapshot = await FirebaseFirestore.instance
+          .collection('administradores_fechaduras')
+          .where('fechadura_id', isEqualTo: widget.fechaduraId)
+          .where('usuario_id', isEqualTo: usuarioId)
+          .get();
+      if (adminSnapshot.docs.isNotEmpty) {
         _mostrarErro('Este usuário já é administrador da fechadura');
         return;
       }
 
       // Verificar se já não existe convite pendente
-      final convitesExistentes = await DB.instance.listarConvitesDaFechadura(
-        widget.fechaduraId,
-      );
+      final convitesSnapshot = await FirebaseFirestore.instance
+          .collection('convites')
+          .where('fechadura_id', isEqualTo: widget.fechaduraId)
+          .get();
+      final convitesExistentes = convitesSnapshot.docs
+          .map((doc) => doc.data())
+          .toList();
       final convitePendente = convitesExistentes.any(
         (c) => c['destinatario_id'] == usuarioId && c['status'] == 0,
       );
@@ -738,8 +760,8 @@ class _LockDetailsState extends State<LockDetails> {
       final agora = DateTime.now();
       final dataExpiracao = _calcularDataExpiracao(agora, _duracaoSelecionada);
 
-      // Inserir convite no banco
-      await DB.instance.inserirConvite({
+      // Inserir convite no Firestore
+      await FirebaseFirestore.instance.collection('convites').add({
         'fechadura_id': widget.fechaduraId,
         'remetente_id': remetenteId,
         'destinatario_id': usuarioId,
@@ -885,4 +907,3 @@ class _GlassButton extends StatelessWidget {
     );
   }
 }
-

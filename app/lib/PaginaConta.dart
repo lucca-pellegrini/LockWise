@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'models/database.dart';
 import 'models/LocalService.dart';
-import 'models/SyncService.dart';
 import 'PaginaLogin.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PaginaConta extends StatefulWidget {
   const PaginaConta({super.key});
@@ -311,13 +311,11 @@ class _PaginaContaState extends State<PaginaConta> {
                           }
 
                           try {
-                            await DB.instance.atualizarUsuario(usuario!['id'], {
-                              'telefone': novoTelefone,
-                            });
+                            await FirebaseFirestore.instance
+                                .collection('usuarios')
+                                .doc(FirebaseAuth.instance.currentUser!.uid)
+                                .update({'telefone': novoTelefone});
 
-                            await SyncService.instance.sincronizarUsuario(
-                              usuario!['id'],
-                            );
                             await _carregarUsuario();
                             Navigator.of(context).pop();
                             _mostrarSucesso('Telefone atualizado com sucesso!');
@@ -473,19 +471,10 @@ class _PaginaContaState extends State<PaginaConta> {
                             return;
                           }
 
-                          if (usuario!['senha'] != senhaAtual) {
-                            _mostrarErro('Senha atual incorreta');
-                            return;
-                          }
-
                           try {
-                            await DB.instance.atualizarUsuario(usuario!['id'], {
-                              'senha': novaSenha,
-                            });
+                            await FirebaseAuth.instance.currentUser!
+                                .updatePassword(novaSenha);
 
-                            await SyncService.instance.sincronizarUsuario(
-                              usuario!['id'],
-                            );
                             await _carregarUsuario();
                             Navigator.of(context).pop();
                             _mostrarSucesso('Senha redefinida com sucesso!');
@@ -595,21 +584,21 @@ class _PaginaContaState extends State<PaginaConta> {
                           }
 
                           try {
-                            final fechaduras = await DB.instance
-                                .listarFechadurasDoUsuario(usuario!['id']);
-                            for (final fechadura in fechaduras) {
-                              await DB.instance.deletarFechadura(
-                                fechadura['id'],
-                              );
+                            final fechadurasSnapshot = await FirebaseFirestore
+                                .instance
+                                .collection('fechaduras')
+                                .where('usuario_id', isEqualTo: usuario!['id'])
+                                .get();
+                            for (final doc in fechadurasSnapshot.docs) {
+                              await doc.reference.delete();
                             }
 
-                            await DB.instance.deletarConvitesDoRemetente(
-                              usuario!['id'],
-                            );
-                            await DB.instance.deletarConvitesDoDestinatario(
-                              usuario!['id'],
-                            );
-                            await DB.instance.deletarUsuario(usuario!['id']);
+                            // Delete user from Firebase Auth and Firestore
+                            await FirebaseFirestore.instance
+                                .collection('usuarios')
+                                .doc(usuario!['id'])
+                                .delete();
+                            await FirebaseAuth.instance.currentUser!.delete();
                             await LocalService.logout();
 
                             Navigator.of(context).pop();
@@ -786,4 +775,3 @@ class _GlassDialogButton extends StatelessWidget {
     );
   }
 }
-

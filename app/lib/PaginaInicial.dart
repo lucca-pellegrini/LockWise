@@ -4,15 +4,14 @@ import 'PaginaDetalhe.dart';
 import 'PaginaConfig.dart';
 import 'PaginaNotificação.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
-import 'models/database.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
 import 'models/nav_item_model.dart';
 import 'PaginaTemporaria.dart';
-import 'models/SyncService.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Inicial extends StatefulWidget {
-  final int usuarioId;
+  final String usuarioId;
 
   Inicial({super.key, required this.usuarioId});
 
@@ -23,7 +22,6 @@ class Inicial extends StatefulWidget {
 class _InicialState extends State<Inicial> {
   bool _showExtraButtons = false;
   bool _isLoading = false;
-  final DB db = DB.instance;
   List<Map<String, dynamic>> cartoes = [];
   int selectedNavIndex = 0;
   List<rive.SMIBool?> riveIconInput = List<rive.SMIBool?>.filled(
@@ -41,7 +39,6 @@ class _InicialState extends State<Inicial> {
   void initState() {
     super.initState();
     _carregarFechaduras();
-    SyncService.instance.iniciarSincronizacaoAutomatica(widget.usuarioId);
   }
 
   void animateTheIcon(int index) {
@@ -88,7 +85,6 @@ class _InicialState extends State<Inicial> {
     for (var controller in riveControllers) {
       controller?.dispose();
     }
-    SyncService.instance.pararSincronizacaoAutomatica();
     super.dispose();
   }
 
@@ -355,8 +351,10 @@ class _InicialState extends State<Inicial> {
                                         () {},
                                       ); // força rebuild do dialog
 
-                                      await SyncService.instance
-                                          .deletarFechaduraSync(cartao['id']);
+                                      await FirebaseFirestore.instance
+                                          .collection('fechaduras')
+                                          .doc(cartao['id'])
+                                          .delete();
                                       await _carregarFechaduras(); // recarrega lista (parent)
 
                                       setStateDialog(
@@ -590,22 +588,21 @@ class _InicialState extends State<Inicial> {
                                     int iconeCodePoint =
                                         iconeSelecionado.codePoint;
 
-                                    final fechaduraId = await SyncService
+                                    final docRef = await FirebaseFirestore
                                         .instance
-                                        .criarFechaduraSync({
-                                          //Captura o ID da fechadura inserida
+                                        .collection('fechaduras')
+                                        .add({
                                           'usuario_id': widget.usuarioId,
                                           'nome': nomeController.text,
                                           'icone_code_point': iconeCodePoint,
                                           'notificacoes': 1,
                                           'acesso_remoto': 1,
+                                          'aberto': 1,
+                                          'updated_at':
+                                              FieldValue.serverTimestamp(),
                                         });
 
-                                    await DB.instance
-                                        .inserirAdministradorFechadura({
-                                          'fechadura_id': fechaduraId,
-                                          'usuario_id': widget.usuarioId,
-                                        });
+                                    final fechaduraId = docRef.id;
 
                                     await _carregarFechaduras();
                                     Navigator.of(context).pop();
@@ -682,10 +679,14 @@ class _InicialState extends State<Inicial> {
 
     try {
       print('Buscando fechaduras para usuário ID: ${widget.usuarioId}');
-      // Buscar fechaduras do banco de dados
-      final fechaduras = await DB.instance.listarFechadurasDoUsuario(
-        widget.usuarioId,
-      );
+      // Buscar fechaduras do Firestore
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .where('usuario_id', isEqualTo: widget.usuarioId)
+          .get();
+      final fechaduras = querySnapshot.docs
+          .map((doc) => doc.data()..['id'] = doc.id)
+          .toList();
       print('Fechaduras encontradas: ${fechaduras.length}');
 
       setState(() {
@@ -852,7 +853,7 @@ class _GlassDialogButton extends StatelessWidget {
 class _ConteudoCartao extends StatelessWidget {
   final String Name;
   final IconData icon;
-  final int fechaduraId;
+  final String fechaduraId;
 
   const _ConteudoCartao({
     required this.Name,

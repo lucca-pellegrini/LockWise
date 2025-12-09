@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'models/database.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
 import 'PaginaDetalhe.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Temporaria extends StatefulWidget {
   const Temporaria({super.key});
@@ -49,12 +49,17 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
       _usuario = await LocalService.getUsuarioLogado();
 
       if (_usuario != null) {
-        final usuarioId = _usuario!['id'] as int;
+        final usuarioId = _usuario!['id'] as String;
 
         // Buscar convites aceitos do usuário
-        final convitesAceitos = await DB.instance.listarConvitesDoDestinatario(
-          usuarioId,
-        );
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('convites')
+            .where('destinatario_id', isEqualTo: usuarioId)
+            .where('status', isEqualTo: 1)
+            .get();
+        final convitesAceitos = querySnapshot.docs
+            .map((doc) => doc.data())
+            .toList();
         final fechadurasComAcesso = <Map<String, dynamic>>[];
 
         for (final convite in convitesAceitos) {
@@ -71,15 +76,23 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                         .add(Duration(days: 30000))
                         .millisecondsSinceEpoch) {
               // Buscar dados da fechadura
-              final fechadura = await DB.instance.buscarFechadura(
-                convite['fechadura_id'],
-              );
+              final fechaduraDoc = await FirebaseFirestore.instance
+                  .collection('fechaduras')
+                  .doc(convite['fechadura_id'].toString())
+                  .get();
+              final fechadura = fechaduraDoc.exists
+                  ? fechaduraDoc.data()
+                  : null;
 
               if (fechadura != null) {
                 // Buscar dados do proprietário
-                final proprietario = await DB.instance.buscarUsuarioPorId(
-                  convite['remetente_id'],
-                );
+                final proprietarioDoc = await FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(convite['remetente_id'].toString())
+                    .get();
+                final proprietario = proprietarioDoc.exists
+                    ? proprietarioDoc.data()
+                    : null;
 
                 fechadurasComAcesso.add({
                   'fechadura': fechadura,

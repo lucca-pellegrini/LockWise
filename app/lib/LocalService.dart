@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LocalService {
   static const String _keyAccessToken = 'access_token';
@@ -9,29 +10,53 @@ class LocalService {
   static final _secureStorage = FlutterSecureStorage();
 
   // ==================== LOGIN ====================
-  static Future<Map<String, dynamic>> login(String email, String senha) async {
+  static Future<Map<String, dynamic>> login(
+    String email,
+    String senha, {
+    bool manterConectado = false,
+  }) async {
     try {
-      // Validar credenciais no banco
-      final usuario = await DB.instance.buscarUsuarioPorEmailESenha(
-        email,
-        senha,
-      );
+      // Fazer login no Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: senha);
 
-      if (usuario == null) {
-        return {'success': false, 'message': 'Email ou senha incorretos'};
+      // Buscar dados do usuário no Firestore
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (!doc.exists) {
+        return {
+          'success': false,
+          'message': 'Dados do usuário não encontrados',
+        };
       }
 
-      // Criar sessão (gerar tokens)
-      final tokens = await DB.instance.criarSessao(usuario['id'] as int);
+      final usuario = doc.data()!;
+      usuario['id'] = userCredential.user!.uid;
+
+      // Criar sessão (gerar tokens) - ainda usando local para compatibilidade
+      final tokens = await DB.instance.criarSessao(
+        int.parse(userCredential.user!.uid),
+      );
 
       // Salvar tokens de forma segura
       await _salvarTokens(
         accessToken: tokens['access_token']!,
         refreshToken: tokens['refresh_token']!,
-        userId: usuario['id'].toString(),
+        userId: usuario['id'],
       );
 
       return {'success': true, 'user': usuario, 'tokens': tokens};
+    } on FirebaseAuthException catch (e) {
+      String message = 'Erro ao fazer login';
+      if (e.code == 'user-not-found') {
+        message = 'Usuário não encontrado';
+      } else if (e.code == 'wrong-password') {
+        message = 'Senha incorreta';
+      }
+      return {'success': false, 'message': message};
     } catch (e) {
       return {'success': false, 'message': 'Erro ao fazer login: $e'};
     }
@@ -41,9 +66,28 @@ class LocalService {
 
   static Future<Map<String, dynamic>> validarContato(String contato) async {
     try {
-      final usuario = await DB.instance.buscarUsuarioPorEmailOuTelefone(
-        contato,
-      );
+      // Verificar se é email ou telefone
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('email', isEqualTo: contato)
+          .get();
+
+      Map<String, dynamic>? usuario;
+
+      if (querySnapshot.docs.isNotEmpty) {
+        usuario = querySnapshot.docs.first.data();
+        usuario['id'] = querySnapshot.docs.first.id;
+      } else {
+        final querySnapshotTel = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .where('telefone', isEqualTo: contato)
+            .get();
+
+        if (querySnapshotTel.docs.isNotEmpty) {
+          usuario = querySnapshotTel.docs.first.data();
+          usuario['id'] = querySnapshotTel.docs.first.id;
+        }
+      }
 
       if (usuario == null) {
         return {'success': false, 'message': 'Contato não encontrado'};
@@ -134,15 +178,26 @@ class LocalService {
 
   // ==================== OBTER USUÁRIO LOGADO ====================
   static Future<Map<String, dynamic>?> getUsuarioLogado() async {
-    final userId = await getUserId();
-    if (userId == null) return null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
 
-    return await DB.instance.buscarUsuarioPorId(userId);
+    final doc = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid)
+        .get();
+
+    if (!doc.exists) return null;
+
+    final usuario = doc.data()!;
+    usuario['id'] = user.uid;
+
+    return usuario;
   }
 
   // ==================== LOGOUT ====================
   static Future<void> logout() async {
     try {
+      await FirebaseAuth.instance.signOut();
       final accessToken = await _secureStorage.read(key: _keyAccessToken);
 
       // Deletar sessão do banco

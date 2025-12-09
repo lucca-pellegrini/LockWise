@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LocalService {
   static const String _keyAccessToken = 'access_token';
@@ -25,15 +26,25 @@ class LocalService {
     bool manterConectado = false,
   }) async {
     try {
-      // Buscar usuário no banco
-      final usuario = await DB.instance.buscarUsuarioPorEmailESenha(
-        email,
-        senha,
-      );
+      // Fazer login no Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: senha);
 
-      if (usuario == null) {
-        return {'success': false, 'message': 'E-mail ou senha incorretos'};
+      // Buscar dados do usuário no Firestore
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (!doc.exists) {
+        return {
+          'success': false,
+          'message': 'Dados do usuário não encontrados',
+        };
       }
+
+      final usuario = doc.data()!;
+      usuario['id'] = userCredential.user!.uid;
 
       // Salvar preferência
       await setManterConectado(manterConectado);
@@ -41,24 +52,28 @@ class LocalService {
       // Se escolheu manter conectado, salva os tokens
       if (manterConectado) {
         // Criar tokens de sessão
-        final tokens = await DB.instance.criarSessao(usuario['id']);
+        final tokens = await _criarSessao(usuario['id']);
 
         // Salvar tokens
-        await _storage.write(
-          key: _keyAccessToken,
-          value: tokens['access_token'],
+        await _salvarTokens(
+          accessToken: tokens['access_token']!,
+          refreshToken: tokens['refresh_token']!,
+          userId: usuario['id'],
         );
-        await _storage.write(
-          key: _keyRefreshToken,
-          value: tokens['refresh_token'],
-        );
-        await _storage.write(key: _keyUserId, value: usuario['id'].toString());
       } else {
         // Se não escolheu manter conectado, limpa qualquer token existente
         await logout();
       }
 
       return {'success': true, 'user': usuario};
+    } on FirebaseAuthException catch (e) {
+      String message = 'Erro ao fazer login';
+      if (e.code == 'user-not-found') {
+        message = 'Usuário não encontrado';
+      } else if (e.code == 'wrong-password') {
+        message = 'Senha incorreta';
+      }
+      return {'success': false, 'message': message};
     } catch (e) {
       return {'success': false, 'message': 'Erro ao fazer login: $e'};
     }
@@ -68,9 +83,28 @@ class LocalService {
 
   static Future<Map<String, dynamic>> validarContato(String contato) async {
     try {
-      final usuario = await DB.instance.buscarUsuarioPorEmailOuTelefone(
-        contato,
-      );
+      // Verificar se é email ou telefone
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('email', isEqualTo: contato)
+          .get();
+
+      Map<String, dynamic>? usuario;
+
+      if (querySnapshot.docs.isNotEmpty) {
+        usuario = querySnapshot.docs.first.data();
+        usuario['id'] = querySnapshot.docs.first.id;
+      } else {
+        final querySnapshotTel = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .where('telefone', isEqualTo: contato)
+            .get();
+
+        if (querySnapshotTel.docs.isNotEmpty) {
+          usuario = querySnapshotTel.docs.first.data();
+          usuario['id'] = querySnapshotTel.docs.first.id;
+        }
+      }
 
       if (usuario == null) {
         return {'success': false, 'message': 'Contato não encontrado'};
@@ -102,8 +136,8 @@ class LocalService {
 
     if (accessToken == null) return null;
 
-    // Validar token no banco
-    final usuarioId = await DB.instance.validarAccessToken(accessToken);
+    // Validar token
+    final usuarioId = await validarAccessToken(accessToken);
 
     if (usuarioId == null) {
       // Token inválido ou expirado, tentar renovar
@@ -124,19 +158,19 @@ class LocalService {
 
       if (refreshToken == null) return false;
 
-      // Renovar token no banco
-      final novosTokens = await DB.instance.renovarToken(refreshToken);
-
-      if (novosTokens == null) return false;
-
-      // Obter userId do token antigo antes de substituir
+      // Obter userId
       final userId = await _storage.read(key: _keyUserId);
+
+      if (userId == null) return false;
+
+      // Criar novos tokens
+      final novosTokens = await _criarSessao(userId);
 
       // Salvar novos tokens
       await _salvarTokens(
         accessToken: novosTokens['access_token']!,
         refreshToken: novosTokens['refresh_token']!,
-        userId: userId ?? '0',
+        userId: userId,
       );
 
       return true;
@@ -162,7 +196,7 @@ class LocalService {
       }
 
       // Validar o token
-      final usuarioId = await DB.instance.validarAccessToken(accessToken);
+      final usuarioId = await validarAccessToken(accessToken);
 
       if (usuarioId == null) {
         // Token inválido, tentar renovar
@@ -172,22 +206,12 @@ class LocalService {
           return false;
         }
 
-        final novosTokens = await DB.instance.renovarToken(refreshToken);
+        final novosTokens = await _renovarToken();
 
         if (novosTokens == null) {
           await logout();
           return false;
         }
-
-        // Salvar novos tokens
-        await _storage.write(
-          key: _keyAccessToken,
-          value: novosTokens['access_token'],
-        );
-        await _storage.write(
-          key: _keyRefreshToken,
-          value: novosTokens['refresh_token'],
-        );
 
         return true;
       }
@@ -199,22 +223,28 @@ class LocalService {
   }
 
   // ==================== OBTER USER ID ====================
-  static Future<int?> getUserId() async {
-    try {
-      final userIdString = await _storage.read(key: _keyUserId);
-      return userIdString != null ? int.parse(userIdString) : null;
-    } catch (e) {
-      return null;
-    }
+  static Future<String?> getUserId() async {
+    final userIdString = await _storage.read(key: _keyUserId);
+    return userIdString;
   }
 
   // ==================== OBTER USUÁRIO LOGADO ====================
   static Future<Map<String, dynamic>?> getUsuarioLogado() async {
     try {
-      final userId = await getUserId();
-      if (userId == null) return null;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return null;
 
-      return await DB.instance.buscarUsuarioPorId(userId);
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .get();
+
+      if (!doc.exists) return null;
+
+      final usuario = doc.data()!;
+      usuario['id'] = user.uid;
+
+      return usuario;
     } catch (e) {
       return null;
     }
@@ -223,11 +253,7 @@ class LocalService {
   // ==================== LOGOUT ====================
   static Future<void> logout() async {
     try {
-      final accessToken = await _storage.read(key: _keyAccessToken);
-
-      if (accessToken != null) {
-        await DB.instance.deletarSessao(accessToken);
-      }
+      await FirebaseAuth.instance.signOut();
 
       // Limpar todos os dados armazenados
       await _storage.deleteAll();
@@ -235,5 +261,69 @@ class LocalService {
       print('Erro ao fazer logout: $e');
     }
   }
-}
 
+  // ==================== CRIAR SESSAO ====================
+  static Future<Map<String, String>> _criarSessao(String usuarioId) async {
+    final accessToken = _gerarToken(usuarioId, 'access');
+    final refreshToken = _gerarToken(usuarioId, 'refresh');
+
+    final agora = DateTime.now().millisecondsSinceEpoch;
+    final expiraEm = DateTime.now()
+        .add(Duration(days: 30))
+        .millisecondsSinceEpoch;
+
+    // Salvar expiração
+    await _storage.write(
+      key: '${_keyAccessToken}_exp',
+      value: expiraEm.toString(),
+    );
+    await _storage.write(
+      key: '${_keyRefreshToken}_exp',
+      value: expiraEm.toString(),
+    );
+
+    return {
+      'access_token': accessToken,
+      'refresh_token': refreshToken,
+      'expires_in': '2592000',
+    };
+  }
+
+  static String _gerarToken(String usuarioId, String tipo) {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final random = DateTime.now().microsecondsSinceEpoch;
+    final data = '$usuarioId-$tipo-$timestamp-$random';
+    return data.hashCode.toString();
+  }
+
+  static Future<String?> validarAccessToken(String accessToken) async {
+    final expStr = await _storage.read(key: '${_keyAccessToken}_exp');
+    if (expStr == null) return null;
+
+    final expiraEm = int.tryParse(expStr);
+    if (expiraEm == null) return null;
+
+    final agora = DateTime.now().millisecondsSinceEpoch;
+    if (agora > expiraEm) {
+      await _deletarSessao(accessToken);
+      return null;
+    }
+
+    final userId = await _storage.read(key: _keyUserId);
+    return userId;
+  }
+
+  static Future<Map<String, String>?> renovarToken(String refreshToken) async {
+    final userId = await _storage.read(key: _keyUserId);
+    if (userId == null) return null;
+
+    return await _criarSessao(userId);
+  }
+
+  static Future<void> _deletarSessao(String accessToken) async {
+    await _storage.delete(key: _keyAccessToken);
+    await _storage.delete(key: _keyRefreshToken);
+    await _storage.delete(key: '${_keyAccessToken}_exp');
+    await _storage.delete(key: '${_keyRefreshToken}_exp');
+  }
+}

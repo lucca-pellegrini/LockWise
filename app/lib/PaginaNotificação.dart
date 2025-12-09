@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'models/database.dart';
 import 'models/LocalService.dart';
 import 'main.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Notificacao extends StatefulWidget {
   const Notificacao({super.key});
@@ -61,9 +61,23 @@ class _NotificacaoState extends State<Notificacao>
         });
         return;
       }
-      final usuarioId = user['id'] as int;
-      // Busca logs de todas as fechaduras do usuário, já com fechadura_nome
-      final result = await DB.instance.listarLogsDoUsuario(usuarioId);
+      final usuarioId = user['id'] as String;
+      // Busca fechaduras do usuário
+      final fechadurasSnapshot = await FirebaseFirestore.instance
+          .collection('fechaduras')
+          .where('usuario_id', isEqualTo: usuarioId)
+          .get();
+      final fechaduraIds = fechadurasSnapshot.docs
+          .map((doc) => doc.id)
+          .toList();
+
+      // Busca logs das fechaduras
+      final logsSnapshot = await FirebaseFirestore.instance
+          .collection('logs_acesso')
+          .where('fechadura_id', whereIn: fechaduraIds)
+          .orderBy('data_hora', descending: true)
+          .get();
+      final result = logsSnapshot.docs.map((doc) => doc.data()).toList();
       setState(() {
         logs = result;
         _isLoading = false;
@@ -306,4 +320,3 @@ class GlassCard extends StatelessWidget {
     );
   }
 }
-
