@@ -505,6 +505,7 @@ class _CadastroState extends State<Cadastro> {
                                       },
 
                                       child: Container(
+                                        alignment: Alignment.center,
                                         padding: EdgeInsets.symmetric(
                                           horizontal: 30,
                                           vertical: 10,
