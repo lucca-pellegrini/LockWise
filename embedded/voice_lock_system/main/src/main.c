@@ -1,7 +1,6 @@
 /* Main Application */
 
 #include "audio_stream.h"
-#include "bluetooth.h"
 #include "board.h"
 #include "config.h"
 #include "driver/gpio.h"
@@ -88,9 +87,6 @@ void app_main(void)
 
 	// Start serial command task early to allow config updates before wifi connects
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
-
-	// Initialize Bluetooth
-	bluetooth_init();
 
 	// Initialize WiFi
 	wifi_init();

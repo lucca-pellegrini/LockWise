@@ -1,7 +1,6 @@
 /* Serial Command Implementation */
 
 #include "audio_stream.h"
-#include "bluetooth.h"
 #include "config.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -77,8 +76,6 @@ static void run_command(char buffer[256])
 			mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
 			break;
 		}
-	} else if (strcasecmp(buffer, "pair") == 0) {
-		bluetooth_enter_pairing_mode();
 	} else {
 		ESP_LOGW(TAG, "Unknown command: %s", buffer);
 	}

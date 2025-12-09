@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
+#include "mqtt.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include <string.h>
@@ -249,18 +250,23 @@ void update_config(const char *key, const char *value)
 				esp_err_t commit_err = nvs_commit(nvs_handle);
 				if (commit_err == ESP_OK) {
 					ESP_LOGI(TAG, "Updated config %s in NVS", key);
+					mqtt_publish_status("CONFIG_UPDATED");
 				} else {
 					ESP_LOGE(TAG, "Failed to commit config %s to NVS: %s", key,
 						 esp_err_to_name(commit_err));
+					mqtt_publish_status("COMMIT_CONFIG_FAILED");
 				}
 			} else {
 				ESP_LOGE(TAG, "Failed to set config %s in NVS: %s", key, esp_err_to_name(set_err));
+				mqtt_publish_status("UPDATE_CONFIG_FAILED");
 			}
 			nvs_close(nvs_handle);
 		} else {
 			ESP_LOGE(TAG, "Failed to open NVS for config update: %s", esp_err_to_name(err));
+			mqtt_publish_status("NVM_OPEN_FAILED");
 		}
 	} else {
 		ESP_LOGW(TAG, "Invalid config key: %s", key);
+		mqtt_publish_status("INVALID_CONFIG_KEY");
 	}
 }

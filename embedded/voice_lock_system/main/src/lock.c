@@ -22,7 +22,7 @@ static lock_context_t lock_ctx;
 
 void lock_init(void)
 {
-	gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
+	gpio_set_level(LOCK_ACTUATOR_GPIO, 0);
 	esp_log_level_set(TAG, ESP_LOG_INFO);
 
 	lock_ctx = (lock_context_t){
@@ -60,7 +60,7 @@ void unlock_door(void)
 		lock_ctx.state = LOCK_STATE_UNLOCKED;
 
 		// Unlock the lock actuator
-		gpio_set_level(LOCK_ACTUATOR_GPIO, 0);
+		gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
 
 		// Publish status to MQTT
 		mqtt_publish_status("UNLOCKED");
@@ -69,14 +69,13 @@ void unlock_door(void)
 	}
 
 	// Start or restart auto-lock timer
-	if (!lock_ctx.timer) {
+	if (!lock_ctx.timer)
 		lock_ctx.timer = xTimerCreate("LockTimer", pdMS_TO_TICKS(config.lock_timeout_ms), pdFALSE, NULL,
 					      lock_timeout_callback);
-	} else {
+	else
 		xTimerStop(lock_ctx.timer, 0);
-		xTimerStart(lock_ctx.timer, 0);
-	}
 
+	xTimerStart(lock_ctx.timer, 0);
 	xSemaphoreGive(lock_ctx.mutex);
 }
 
@@ -99,7 +98,7 @@ void lock_door(void)
 	xSemaphoreGive(lock_ctx.mutex);
 
 	// Lock the lock actuator
-	gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
+	gpio_set_level(LOCK_ACTUATOR_GPIO, 0);
 
 	// Stop auto-lock timer
 	if (lock_ctx.timer)

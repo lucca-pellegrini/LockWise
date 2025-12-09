@@ -1,7 +1,6 @@
 /* MQTT Management Implementation */
 
 #include "audio_stream.h"
-#include "bluetooth.h"
 #include "config.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -68,8 +67,6 @@ static void process_cbor_command(CborValue *value)
 				esp_restart();
 			} else if (!strcasecmp(command, "UPDATE_CONFIG")) {
 				handle_update_config_command(value);
-			} else if (!strcasecmp(command, "PAIR")) {
-				bluetooth_enter_pairing_mode();
 			}
 		}
 	} else {
@@ -91,7 +88,6 @@ static void handle_update_config_command(CborValue *map_value)
 	    cbor_value_copy_text_string(&key_val, config_key, &key_len, NULL) == CborNoError &&
 	    cbor_value_copy_text_string(&value_val, config_value, &value_len, NULL) == CborNoError) {
 		update_config(config_key, config_value);
-		mqtt_publish_status("CONFIG_UPDATED");
 	} else {
 		mqtt_publish_status("INVALID_UPDATE_CONFIG_FORMAT");
 		ESP_LOGW(TAG, "Invalid UPDATE_CONFIG CBOR format");
