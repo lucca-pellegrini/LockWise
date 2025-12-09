@@ -862,7 +862,7 @@ class _GlassButton extends StatelessWidget {
                   : () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Opção desabilitado'),
+                          content: Text('Opção desabilitada'),
                           backgroundColor: Colors.orange,
                           duration: Duration(seconds: 2),
                         ),
