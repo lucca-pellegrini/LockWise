@@ -515,7 +515,10 @@ class _InicialState extends State<Inicial> {
                     ),
                     SizedBox(height: 10),
 
-                    Text('Selecione um ícone:'),
+                    Text(
+                      'Selecione um ícone:',
+                      style: TextStyle(color: Colors.white),
+                    ),
                     SizedBox(height: 8),
 
                     Wrap(
@@ -561,13 +564,15 @@ class _InicialState extends State<Inicial> {
                       ],
                     ),
 
+                    SizedBox(height: 20),
+
                     Align(
-                      alignment: Alignment.centerRight,
+                      alignment: Alignment.center,
                       child: Padding(
-                        padding: EdgeInsets.only(right: 20, bottom: 10),
+                        padding: EdgeInsets.only(bottom: 10),
 
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.center,
 
                           children: [
                             _GlassDialogButton(
@@ -1078,4 +1083,3 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
     );
   }
 }
-
