@@ -3,6 +3,7 @@ import 'package:introduction_screen/introduction_screen.dart';
 import 'PaginaLogin.dart';
 import 'PaginaCadastro.dart';
 import 'dart:ui';
+import 'models/AssetPreloader.dart';
 
 class BoasVindas extends StatefulWidget {
   const BoasVindas({super.key});
@@ -13,6 +14,16 @@ class BoasVindas extends StatefulWidget {
 
 class _BoasVindasState extends State<BoasVindas> {
   final introKey = GlobalKey<IntroductionScreenState>();
+  bool _assetsReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await AssetPreloader.preloadAll(context);
+      if (mounted) setState(() => _assetsReady = true);
+    });
+  }
 
   Widget _buildImage(String assetName, [double width = 400]) {
     return Image.asset('images/$assetName', width: width);
@@ -30,6 +41,7 @@ class _BoasVindasState extends State<BoasVindas> {
     );
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           Container(
@@ -240,6 +252,7 @@ class _BoasVindasState extends State<BoasVindas> {
               ),
 
               PageViewModel(
+                // última página (botões) substitui enquanto carrega
                 title: '',
                 bodyWidget: GlassCard(
                   child: Column(
@@ -256,9 +269,10 @@ class _BoasVindasState extends State<BoasVindas> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 35),
-
                       Text(
-                        "Crie sua conta e configure sua primeira fechadura LockWise em minutos.",
+                        _assetsReady
+                            ? "Crie sua conta e configure sua primeira fechadura LockWise em minutos."
+                            : "Carregando recursos...",
                         style: TextStyle(
                           fontSize: 20,
                           color: Colors.white.withOpacity(0.9),
@@ -266,19 +280,19 @@ class _BoasVindasState extends State<BoasVindas> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 50),
-
                       SizedBox(
                         width: double.infinity,
-
                         child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => LoginPage(),
-                              ),
-                            );
-                          },
+                          onPressed: _assetsReady
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const LoginPage(),
+                                    ),
+                                  );
+                                }
+                              : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: Colors.black,
@@ -288,22 +302,39 @@ class _BoasVindasState extends State<BoasVindas> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          child: const Text('Fazer Login'),
+                          child: _assetsReady
+                              ? const Text('Fazer Login')
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text('Carregando...'),
+                                  ],
+                                ),
                         ),
                       ),
                       const SizedBox(height: 25),
-
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => Cadastro(),
-                              ),
-                            );
-                          },
+                          onPressed: _assetsReady
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const Cadastro(),
+                                    ),
+                                  );
+                                }
+                              : null,
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: Colors.black,
@@ -450,3 +481,4 @@ class GlassCard extends StatelessWidget {
     );
   }
 }
+

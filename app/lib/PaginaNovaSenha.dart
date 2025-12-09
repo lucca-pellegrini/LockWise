@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'PaginaLogin.dart';
 import 'PaginaEsqueci.dart';
-import 'database.dart';
+import 'models/database.dart';
 import 'dart:ui';
 
 class NovaSenha extends StatefulWidget {

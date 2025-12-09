@@ -1,7 +1,7 @@
 import 'package:fechaduraflow/PaginaLogin.dart';
 import 'package:flutter/material.dart';
 import 'PaginaChave.dart';
-import 'LocalService.dart';
+import 'models/LocalService.dart';
 import 'dart:ui';
 
 class EsqueciSenha extends StatefulWidget {

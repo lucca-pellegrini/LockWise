@@ -1,22 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'dart:ui';
 
 class Sobre extends StatelessWidget {
   const Sobre({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(0xFFfdfdfd),
-      appBar: AppBar(
-        title: Text('Sobre', style: TextStyle(color: Colors.blueAccent)),
-        centerTitle: true,
-        backgroundColor: Color(0xFFfdfdfd),
-
-        iconTheme: IconThemeData(color: Colors.blueAccent, size: 30.0),
+    return Container(
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('images/Fundo9.jpg'),
+          fit: BoxFit.cover,
+          colorFilter: ColorFilter.mode(
+            Colors.black.withOpacity(0.0),
+            BlendMode.srcOver,
+          ),
+        ),
       ),
 
-      body: content(context), // Passando context para calcular altura
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+
+        appBar: AppBar(
+          title: Text('Sobre', style: TextStyle(color: Colors.white)),
+          centerTitle: true,
+          backgroundColor: Colors.transparent,
+          iconTheme: IconThemeData(size: 30.0),
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () {
+              Navigator.pop(context);
+            },
+          ),
+        ),
+
+        body: content(context), // Passando context para calcular altura
+      ),
     );
   }
 }
@@ -30,18 +50,30 @@ Widget content(BuildContext context) {
           "O LockWise controla suas fechaduras de forma inteligentes segura e prática",
       color: Colors.blue,
       icon: Icons.home_outlined,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Controle por Senha",
       description: "Acesse sua casa usando senha numérica personalizada",
       color: Colors.green,
       icon: Icons.lock_outline,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Comando de Voz",
       description: "Abra e feche as portas usando comandos de voz inteligentes",
       color: Colors.orange,
       icon: Icons.mic,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Tecnologia NFC",
@@ -49,6 +81,10 @@ Widget content(BuildContext context) {
           "Use cartões ou dispositivos NFC para acesso rápido e seguro",
       color: Colors.purple,
       icon: Icons.nfc_outlined,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Monitoramento 24/7",
@@ -56,19 +92,30 @@ Widget content(BuildContext context) {
           "Receba notificações em tempo real sobre acessos e status das fechaduras",
       color: Colors.red,
       icon: Icons.notifications_outlined,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Responsáveis pelo App",
-      description:
-          "Amanda Canizela, Ariel Inácio, Lucas Alvarenga, Lucca Pellegrini",
+      description: "Amanda Canizela, Ariel Inácio, Lucca Pellegrini",
       color: Colors.blueGrey,
       icon: Icons.code_outlined,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
     SlideData(
       title: "Responsáveis pela Fechadura",
       description: "Felipe de Mello, Lucca Pellegrini",
       color: Colors.pinkAccent,
       icon: Icons.build_outlined,
+      gradientColors: [
+        Colors.blue.withOpacity(0.30),
+        Colors.blue.withOpacity(0.10),
+      ],
     ),
   ];
 
@@ -83,14 +130,8 @@ Widget content(BuildContext context) {
     height: availableHeight,
     child: CarouselSlider(
       items: slidesData.map((slideData) {
-        return Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 7),
-          decoration: BoxDecoration(
-            color: slideData.color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: slideData.color, width: 3),
-          ),
+        return GlassCard(
+          gradientColors: slideData.gradientColors,
           child: Padding(
             padding: const EdgeInsets.all(50.0),
             child: Column(
@@ -110,7 +151,7 @@ Widget content(BuildContext context) {
                 SizedBox(height: 20),
                 Text(
                   slideData.description,
-                  style: TextStyle(fontSize: 18, color: Colors.grey[700]),
+                  style: TextStyle(fontSize: 18, color: Colors.white),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -136,12 +177,76 @@ class SlideData {
   final String description;
   final Color color;
   final IconData icon;
+  final List<Color>? gradientColors;
 
   SlideData({
     required this.title,
     required this.description,
     required this.color,
     required this.icon,
+    this.gradientColors,
   });
+}
+
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final double? width;
+  final double? height;
+  final EdgeInsets? padding;
+  final double borderRadius;
+  final double blurIntensity;
+  final List<Color>? gradientColors;
+
+  const GlassCard({
+    Key? key,
+    required this.child,
+    this.width,
+    this.height,
+    this.padding,
+    this.borderRadius = 20.0,
+    this.blurIntensity = 10.0,
+    this.gradientColors,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: blurIntensity,
+            sigmaY: blurIntensity,
+          ),
+
+          child: Container(
+            width: width ?? MediaQuery.of(context).size.width * 0.9,
+            height: height ?? MediaQuery.of(context).size.height * 0.78,
+            padding: padding ?? const EdgeInsets.all(30),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors:
+                    gradientColors ??
+                    [
+                      Colors.white.withOpacity(0.25),
+                      Colors.white.withOpacity(0.1),
+                    ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(borderRadius),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
 }
 

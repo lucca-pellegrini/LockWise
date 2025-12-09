@@ -17,16 +17,10 @@ class DB {
   Future<Database> _initDatabase() async {
     return await openDatabase(
       join(await getDatabasesPath(), 'fechadura.db'),
-      version: 2,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
-  }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute(_tokens);
-    }
+      version: 3,
+      onCreate: _onCreate,
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -35,6 +29,8 @@ class DB {
     await db.execute(_tokens);
     await db.execute(_fechaduras);
     await db.execute(_logAcesso);
+    await db.execute(_convites);
+    await db.execute(_administradoresFechaduras);
   }
 
   // Tabela de usuários
@@ -44,7 +40,8 @@ class DB {
       nome TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       telefone TEXT,
-      senha TEXT NOT NULL
+      senha TEXT NOT NULL,
+      updated_at INTEGER DEFAULT 0
     )
   ''';
 
@@ -70,6 +67,8 @@ class DB {
       icone_code_point INTEGER NOT NULL,
       notificacoes INTEGER NOT NULL DEFAULT 1,
       acesso_remoto INTEGER NOT NULL DEFAULT 1,
+      aberto INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER DEFAULT 0,
       FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
     )
   ''';
@@ -84,6 +83,34 @@ class DB {
       data_hora INTEGER NOT NULL,
       tipo_acesso TEXT NOT NULL,
       FOREIGN KEY (fechadura_id) REFERENCES fechaduras (id) ON DELETE CASCADE
+    )
+  ''';
+
+  //Tabela de convites (referencia o usuário e a fechadura)
+  String get _convites => '''
+    CREATE TABLE convites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fechadura_id INTEGER NOT NULL,
+      remetente_id INTEGER NOT NULL,
+      destinatario_id INTEGER NOT NULL,
+      data_convite INTEGER NOT NULL,
+      data_expiracao INTEGER NOT NULL,
+      status INTEGER NOT NULL,
+      permissoes_admin INTEGER NOT NULL,
+      FOREIGN KEY (fechadura_id) REFERENCES fechaduras (id) ON DELETE CASCADE,
+      FOREIGN KEY (remetente_id) REFERENCES usuarios (id) ON DELETE CASCADE,
+      FOREIGN KEY (destinatario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+    )
+  ''';
+
+  //Tabela de adminstradores de fechaduras (referencia o usuário e a fechadura)
+  String get _administradoresFechaduras => '''
+    CREATE TABLE administradores_fechaduras (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fechadura_id INTEGER NOT NULL,
+      usuario_id INTEGER NOT NULL,
+      FOREIGN KEY (fechadura_id) REFERENCES fechaduras (id) ON DELETE CASCADE,
+      FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
     )
   ''';
 
@@ -230,9 +257,49 @@ class DB {
     FROM log_acesso
     INNER JOIN fechaduras ON log_acesso.fechadura_id = fechaduras.id
     WHERE fechaduras.usuario_id = ?
+       OR fechaduras.id IN (
+         SELECT c.fechadura_id 
+         FROM convites c 
+         WHERE c.destinatario_id = ? 
+         AND c.status = 1
+         AND c.data_expiracao > ?
+       )
+       OR fechaduras.id IN (
+         SELECT af.fechadura_id 
+         FROM administradores_fechaduras af 
+         WHERE af.usuario_id = ?
+       )
     ORDER BY log_acesso.data_hora DESC
   ''',
-      [usuarioId],
+      [
+        usuarioId, // Fechaduras próprias
+        usuarioId, // Convites aceitos
+        DateTime.now().millisecondsSinceEpoch, // Convites não expirados
+        usuarioId, // Fechaduras onde é administrador
+      ],
+    );
+  }
+
+  Future<int> deletarLog(int id) async {
+    final db = await database;
+    return await db.delete('log_acesso', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deletarLogsDaFechadura(int fechaduraId) async {
+    final db = await database;
+    return await db.delete(
+      'log_acesso',
+      where: 'fechadura_id = ?',
+      whereArgs: [fechaduraId],
+    );
+  }
+
+  Future<int> deletarLogsDoUsuario(int usuarioId) async {
+    final db = await database;
+    return await db.delete(
+      'log_acesso',
+      where: 'fechadura_id IN (SELECT id FROM fechaduras WHERE usuario_id = ?)',
+      whereArgs: [usuarioId],
     );
   }
 
@@ -351,5 +418,151 @@ class DB {
     final agora = DateTime.now().millisecondsSinceEpoch;
 
     await db.delete('tokens', where: 'data_expiracao < ?', whereArgs: [agora]);
+  }
+
+  // ==================== OPERAÇÕES COM CONVITES ====================
+
+  Future<int> inserirConvite(Map<String, dynamic> convite) async {
+    final db = await database;
+    return await db.insert('convites', convite);
+  }
+
+  Future<List<Map<String, dynamic>>> listarConvitesDoRemetente(
+    int remetenteId,
+  ) async {
+    final db = await database;
+    return await db.query(
+      'convites',
+      where: 'remetente_id = ?',
+      whereArgs: [remetenteId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listarConvitesDoDestinatario(
+    int destinatarioId,
+  ) async {
+    final db = await database;
+    return await db.query(
+      'convites',
+      where: 'destinatario_id = ?',
+      whereArgs: [destinatarioId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listarConvitesDaFechadura(
+    int fechaduraId,
+  ) async {
+    final db = await database;
+    return await db.query(
+      'convites',
+      where: 'fechadura_id = ?',
+      whereArgs: [fechaduraId],
+    );
+  }
+
+  Future<int> atualizarConvite(int id, Map<String, dynamic> convite) async {
+    final db = await database;
+    return await db.update(
+      'convites',
+      convite,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deletarConvite(int id) async {
+    final db = await database;
+    return await db.delete('convites', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deletarConvitesDaFechadura(int fechaduraId) async {
+    final db = await database;
+    return await db.delete(
+      'convites',
+      where: 'fechadura_id = ?',
+      whereArgs: [fechaduraId],
+    );
+  }
+
+  Future<int> deletarConvitesDoRemetente(int remetenteId) async {
+    final db = await database;
+    return await db.delete(
+      'convites',
+      where: 'remetente_id = ?',
+      whereArgs: [remetenteId],
+    );
+  }
+
+  Future<int> deletarConvitesDoDestinatario(int destinatarioId) async {
+    final db = await database;
+    return await db.delete(
+      'convites',
+      where: 'destinatario_id = ?',
+      whereArgs: [destinatarioId],
+    );
+  }
+
+  Future<Map<String, dynamic>?> buscarConvitePorId(int id) async {
+    final db = await database;
+    final results = await db.query(
+      'convites',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  // =================== OPERAÇÕES COM ADMINISTRADORES ====================
+
+  Future<int> inserirAdministradorFechadura(Map<String, dynamic> admin) async {
+    final db = await DB.instance.database;
+    return await db.insert('administradores_fechaduras', admin);
+  }
+
+  Future<int> deletarAdministradorFechadura(
+    int fechaduraId,
+    int usuarioId,
+  ) async {
+    final db = await DB.instance.database;
+    return await db.delete(
+      'administradores_fechaduras',
+      where: 'fechadura_id = ? AND usuario_id = ?',
+      whereArgs: [fechaduraId, usuarioId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listarAdministradoresDaFechadura(
+    int fechaduraId,
+  ) async {
+    final db = await DB.instance.database;
+    return await db.query(
+      'administradores_fechaduras',
+      where: 'fechadura_id = ?',
+      whereArgs: [fechaduraId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listarFechadurasDoAdministradasPeloUsuario(
+    int usuarioId,
+  ) async {
+    final db = await DB.instance.database;
+    return await db.query(
+      'administradores_fechaduras',
+      where: 'usuario_id = ?',
+      whereArgs: [usuarioId],
+    );
+  }
+
+  Future<bool> verificarSeUsuarioEAdministrador(
+    int fechaduraId,
+    int usuarioId,
+  ) async {
+    final db = await DB.instance.database;
+    final result = await db.query(
+      'administradores_fechaduras',
+      where: 'fechadura_id = ? AND usuario_id = ?',
+      whereArgs: [fechaduraId, usuarioId],
+    );
+    return result.isNotEmpty;
   }
 }

@@ -42,7 +42,6 @@ class _ChaveState extends State<Chave> {
 
       child: Scaffold(
         backgroundColor: Colors.transparent,
-
         appBar: AppBar(
           title: Text(
             'Esqueci minha senha',

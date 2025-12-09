@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'PaginaLogin.dart';
-import 'database.dart';
+import 'models/database.dart';
 import 'dart:ui';
 
 class Cadastro extends StatefulWidget {

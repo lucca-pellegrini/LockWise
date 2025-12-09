@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart' as rive;
 import 'PaginaDetalhe.dart';
-import 'PaginaSobre.dart';
+import 'PaginaConfig.dart';
 import 'PaginaNotificação.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
-import 'database.dart';
-import 'LocalService.dart';
+import 'models/database.dart';
+import 'models/LocalService.dart';
 import 'dart:ui';
 import 'models/nav_item_model.dart';
+import 'PaginaTemporaria.dart';
+import 'models/SyncService.dart';
 
 class Inicial extends StatefulWidget {
   final int usuarioId;
@@ -39,6 +41,7 @@ class _InicialState extends State<Inicial> {
   void initState() {
     super.initState();
     _carregarFechaduras();
+    SyncService.instance.iniciarSincronizacaoAutomatica(widget.usuarioId);
   }
 
   void animateTheIcon(int index) {
@@ -85,8 +88,108 @@ class _InicialState extends State<Inicial> {
     for (var controller in riveControllers) {
       controller?.dispose();
     }
+    SyncService.instance.pararSincronizacaoAutomatica();
     super.dispose();
   }
+
+  Widget _buildHome() {
+    // Se está carregando, mostra loading
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator(color: Colors.blueAccent));
+    }
+
+    // Se não tem fechaduras, mostra estado vazio
+    if (cartoes.isEmpty) {
+      return _buildEmptyStateHome();
+    }
+
+    // Se tem fechaduras, mostra o grid normal
+    return ReorderableGridView.builder(
+      padding: const EdgeInsets.all(16.0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 10.0,
+        crossAxisSpacing: 10.0,
+        childAspectRatio: 3 / 2,
+      ),
+      itemCount: cartoes.length,
+      dragStartDelay: const Duration(milliseconds: 150),
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (newIndex > oldIndex) newIndex -= 1;
+          final item = cartoes.removeAt(oldIndex);
+          cartoes.insert(newIndex, item);
+        });
+      },
+      dragWidgetBuilder: (index, child) => Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.blueAccent, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blueAccent.withOpacity(0.5),
+              blurRadius: 10,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: child,
+      ),
+      itemBuilder: (context, index) {
+        final cartao = cartoes[index];
+        return Card.outlined(
+          key: ValueKey(cartao['id']),
+          color: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.blueAccent.withOpacity(0.3),
+                      Colors.blueAccent.withOpacity(0.1),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.5),
+                    width: 1,
+                  ),
+                ),
+                child: _ConteudoCartao(
+                  Name: cartao['name'],
+                  icon: cartao['icon'],
+                  fechaduraId: cartao['id'],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> get _pages => [
+    _buildHome(), // index 0
+    const Notificacao(), // index 1
+    const Config(), // index 2
+    const Temporaria(), // index 3
+  ];
+
+  final List<String> _appBarTitles = [
+    'Minhas LockWise', // index 0
+    'Notificações', // index 1
+    'Configuracao', // index 2
+    'Acessos Temporários', // index 3
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -109,148 +212,58 @@ class _InicialState extends State<Inicial> {
           backgroundColor: Colors.transparent,
           appBar: AppBar(
             title: Text(
-              'Minhas LockWise',
+              _appBarTitles[selectedNavIndex],
               style: TextStyle(color: Colors.white),
             ),
             centerTitle: true,
             backgroundColor: Colors.transparent,
-
+            automaticallyImplyLeading: false,
             iconTheme: IconThemeData(color: Colors.white, size: 40.0),
           ),
 
-          drawer: NavigationDrawer(usuarioId: widget.usuarioId),
+          body: IndexedStack(index: selectedNavIndex, children: _pages),
 
-          body: OrientationBuilder(
-            builder: (context, orientation) {
-              final gridDelegate = orientation == Orientation.portrait
-                  ? SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 10.0,
-                      crossAxisSpacing: 10.0,
-                      childAspectRatio: 3 / 2,
-                    )
-                  : SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 10.0,
-                      crossAxisSpacing: 10.0,
-                      childAspectRatio: 3 / 2,
-                    );
+          floatingActionButton: selectedNavIndex == 0
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
 
-              return ReorderableGridView.builder(
-                padding: const EdgeInsets.all(16.0),
-                gridDelegate: gridDelegate,
-                itemCount: cartoes.length,
-                dragStartDelay: const Duration(milliseconds: 150),
-                onReorder: (oldIndex, newIndex) {
-                  setState(() {
-                    if (newIndex > oldIndex) newIndex -= 1;
-                    final item = cartoes.removeAt(oldIndex);
-                    cartoes.insert(newIndex, item);
-                  });
-                },
-
-                dragWidgetBuilder: (index, child) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.blueAccent, width: 3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blueAccent.withOpacity(0.5),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: child,
-                  );
-                },
-
-                itemBuilder: (context, index) {
-                  final cartao = cartoes[index];
-
-                  return Card.outlined(
-                    key: ValueKey(cartao['id']),
-                    color: Colors.transparent,
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.blueAccent.withOpacity(0.3),
-                                Colors.blueAccent.withOpacity(0.1),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.5),
-                              width: 1,
-                            ),
-                          ),
-                          child: _ConteudoCartao(
-                            Name: cartao['name'],
-                            icon: cartao['icon'],
-                            fechaduraId: cartao['id'],
-                          ),
-                        ),
+                  children: [
+                    if (_showExtraButtons) ...[
+                      _buildGlassFloatingButton(
+                        icon: Icons.add,
+                        heroTag: "add",
+                        mini: true,
+                        onPressed: () {
+                          setState(() {
+                            _showAddCardDialog();
+                          });
+                        },
                       ),
+                      SizedBox(height: 10),
+                      _buildGlassFloatingButton(
+                        icon: Icons.close,
+                        heroTag: "delete",
+                        onPressed: () {
+                          if (cartoes.isNotEmpty) {
+                            _showRemoveCardDialog();
+                          }
+                        },
+                      ),
+                      SizedBox(height: 10),
+                    ],
+                    _buildGlassFloatingButton(
+                      icon: Icons.edit,
+                      heroTag: "edit",
+                      onPressed: () {
+                        setState(() {
+                          _showExtraButtons = !_showExtraButtons;
+                        });
+                      },
+                      mini: false,
                     ),
-                  );
-                },
-              );
-            },
-          ),
-
-          floatingActionButton: Column(
-            mainAxisSize: MainAxisSize.min,
-
-            children: [
-              if (_showExtraButtons) ...[
-                _buildGlassFloatingButton(
-                  icon: Icons.add,
-                  heroTag: "add",
-                  mini: true,
-                  onPressed: () {
-                    setState(() {
-                      _showAddCardDialog();
-                    });
-                  },
-                ),
-                SizedBox(height: 10),
-
-                _buildGlassFloatingButton(
-                  icon: Icons.close,
-                  heroTag: "delete",
-                  onPressed: () {
-                    if (cartoes.isNotEmpty) {
-                      _showRemoveCardDialog();
-                    }
-                  },
-                ),
-                SizedBox(height: 10),
-              ],
-
-              _buildGlassFloatingButton(
-                icon: Icons.edit,
-                heroTag: "edit",
-                onPressed: () {
-                  setState(() {
-                    _showExtraButtons = !_showExtraButtons;
-                  });
-                },
-                mini: false,
-              ),
-            ],
-          ),
+                  ],
+                )
+              : null,
 
           bottomNavigationBar: CurvedGlassNavigationBar(
             selectedIndex: selectedNavIndex,
@@ -276,6 +289,7 @@ class _InicialState extends State<Inicial> {
 
     showDialog(
       context: context,
+
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
@@ -284,6 +298,7 @@ class _InicialState extends State<Inicial> {
               child: _GlassDialog(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+
                   children: [
                     Align(
                       alignment: Alignment.center,
@@ -299,7 +314,9 @@ class _InicialState extends State<Inicial> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 20),
+
                     SizedBox(
                       width: double.maxFinite,
                       height: 220,
@@ -313,11 +330,13 @@ class _InicialState extends State<Inicial> {
                               itemCount: cartoes.length,
                               itemBuilder: (context, index) {
                                 final cartao = cartoes[index];
+
                                 return ListTile(
                                   leading: Icon(
                                     cartao['icon'],
                                     color: Colors.white,
                                   ),
+
                                   title: Text(
                                     cartao['name'],
                                     style: const TextStyle(color: Colors.white),
@@ -326,6 +345,7 @@ class _InicialState extends State<Inicial> {
                                     Icons.delete,
                                     color: Colors.red,
                                   ),
+
                                   onTap: () async {
                                     try {
                                       setState(
@@ -335,9 +355,8 @@ class _InicialState extends State<Inicial> {
                                         () {},
                                       ); // força rebuild do dialog
 
-                                      await DB.instance.deletarFechadura(
-                                        cartao['id'],
-                                      );
+                                      await SyncService.instance
+                                          .deletarFechaduraSync(cartao['id']);
                                       await _carregarFechaduras(); // recarrega lista (parent)
 
                                       setStateDialog(
@@ -376,6 +395,7 @@ class _InicialState extends State<Inicial> {
                             ),
                     ),
                     const SizedBox(height: 16),
+
                     Align(
                       alignment: Alignment.centerRight,
                       child: Padding(
@@ -564,13 +584,24 @@ class _InicialState extends State<Inicial> {
                                   try {
                                     int iconeCodePoint =
                                         iconeSelecionado.codePoint;
-                                    await DB.instance.inserirFechadura({
-                                      'usuario_id': widget.usuarioId,
-                                      'nome': nomeController.text,
-                                      'icone_code_point': iconeCodePoint,
-                                      'notificacoes': 1,
-                                      'acesso_remoto': 1,
-                                    });
+
+                                    final fechaduraId = await SyncService
+                                        .instance
+                                        .criarFechaduraSync({
+                                          //Captura o ID da fechadura inserida
+                                          'usuario_id': widget.usuarioId,
+                                          'nome': nomeController.text,
+                                          'icone_code_point': iconeCodePoint,
+                                          'notificacoes': 1,
+                                          'acesso_remoto': 1,
+                                        });
+
+                                    await DB.instance
+                                        .inserirAdministradorFechadura({
+                                          'fechadura_id': fechaduraId,
+                                          'usuario_id': widget.usuarioId,
+                                        });
+
                                     await _carregarFechaduras();
                                     Navigator.of(context).pop();
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -677,6 +708,75 @@ class _InicialState extends State<Inicial> {
       setState(() => _isLoading = false);
     }
   }
+
+  Widget _buildEmptyStateHome() {
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(20, 40, 20, 40),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.blueAccent.withOpacity(0.2),
+                  Colors.blueAccent.withOpacity(0.1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 64, color: Colors.white54),
+                SizedBox(height: 16),
+                Text(
+                  'Nenhuma fechadura',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Você não possui nenhuma fechadura no momento.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _showAddCardDialog();
+                  },
+                  icon: Icon(Icons.add, color: Colors.white),
+                  label: Text(
+                    'Adicionar Fechadura',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent.withOpacity(0.7),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _GlassDialog extends StatelessWidget {
@@ -714,13 +814,11 @@ class _GlassDialogButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
   final Color color;
-  final double? opacity;
 
   const _GlassDialogButton({
     required this.text,
     required this.onPressed,
     required this.color,
-    this.opacity,
   });
 
   @override
@@ -731,7 +829,7 @@ class _GlassDialogButton extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: Container(
           decoration: BoxDecoration(
-            color: color.withOpacity(opacity ?? 0.13),
+            color: color.withOpacity(0.13),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
           ),
@@ -747,14 +845,15 @@ class _GlassDialogButton extends StatelessWidget {
 }
 
 class _ConteudoCartao extends StatelessWidget {
+  final String Name;
+  final IconData icon;
+  final int fechaduraId;
+
   const _ConteudoCartao({
     required this.Name,
     required this.icon,
     required this.fechaduraId,
   });
-  final String Name;
-  final IconData icon;
-  final int fechaduraId;
 
   @override
   Widget build(BuildContext context) {
@@ -784,140 +883,6 @@ class _ConteudoCartao extends StatelessWidget {
       ),
     );
   }
-}
-
-class NavigationDrawer extends StatefulWidget {
-  final int usuarioId;
-
-  const NavigationDrawer({super.key, required this.usuarioId});
-
-  @override
-  State<NavigationDrawer> createState() => _NavigationDrawerState();
-}
-
-class _NavigationDrawerState extends State<NavigationDrawer> {
-  Map<String, dynamic>? usuario;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _carregarUsuario();
-  }
-
-  Future<void> _carregarUsuario() async {
-    try {
-      final user = await DB.instance.buscarUsuarioPorId(widget.usuarioId);
-      setState(() {
-        usuario = user;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('Erro ao carregar dados do usuário: $e');
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Drawer(
-    child: SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[buildHeader(context), buildMenuItems(context)],
-      ),
-    ),
-  );
-
-  Widget buildHeader(BuildContext context) => Container(
-    color: Colors.blueAccent,
-    padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-    child: Column(
-      children: <Widget>[
-        const SizedBox(height: 12),
-        CircleAvatar(
-          radius: 52,
-          backgroundColor: Colors.white,
-          child: Icon(Icons.person, size: 50, color: Colors.grey),
-        ),
-        const SizedBox(height: 12),
-        _isLoading
-            ? CircularProgressIndicator(color: Colors.blueAccent)
-            : Text(
-                usuario != null ? usuario!['nome'] : 'Usuário',
-                style: TextStyle(fontSize: 20, color: Colors.white),
-              ),
-        const SizedBox(height: 12),
-      ],
-    ),
-  );
-
-  Widget buildMenuItems(BuildContext context) => Container(
-    padding: const EdgeInsets.all(24),
-    child: Wrap(
-      runSpacing: 16,
-      children: <Widget>[
-        ListTile(
-          leading: const Icon(Icons.home_outlined, color: Colors.blueAccent),
-          title: const Text('Início'),
-          onTap: () => Navigator.of(context).pop(),
-        ),
-        ListTile(
-          leading: const Icon(
-            Icons.notifications_outlined,
-            color: Colors.blueAccent,
-          ),
-          title: const Text('Notificações'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const Notificacao()),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.info_outline, color: Colors.blueAccent),
-          title: const Text('Sobre'),
-          onTap: () {
-            Navigator.of(context).pop();
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const Sobre()),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(
-            Icons.no_accounts_outlined,
-            color: Colors.blueAccent,
-          ),
-          title: const Text('Deletar Conta'),
-          onTap: () async {
-            try {
-              await DB.instance.deletarUsuario(widget.usuarioId);
-              print('Conta deletada com sucesso.');
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-            } catch (e) {
-              print('Erro ao deletar conta: $e');
-            }
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout, color: Colors.blueAccent),
-          title: const Text('Sair'),
-          onTap: () async {
-            Navigator.of(context).pop();
-            Navigator.of(context).pop();
-
-            await LocalService.logout();
-          },
-        ),
-      ],
-    ),
-  );
 }
 
 Widget _buildGlassFloatingButton({
@@ -1005,8 +970,8 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.19),
-                          Colors.white.withOpacity(0.13),
+                          Colors.blueAccent.withOpacity(0.3),
+                          Colors.blueAccent.withOpacity(0.1),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
