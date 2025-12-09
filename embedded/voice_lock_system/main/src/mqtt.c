@@ -46,6 +46,9 @@ static void process_cbor_command(CborValue *value)
 				unlock_door();
 			} else if (!strcasecmp(command, "LOCK")) {
 				lock_door();
+
+			} else if (!strcasecmp(command, "PING")) {
+				mqtt_publish_status("PONG");
 			} else if (!strcasecmp(command, "RECORD")) {
 				audio_stream_send_cmd(AUDIO_STREAM_START);
 			} else if (!strcasecmp(command, "STOP")) {
