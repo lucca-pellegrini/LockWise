@@ -372,6 +372,8 @@ class _InicialState extends State<Inicial> {
 
                                       await FirebaseFirestore.instance
                                           .collection('fechaduras')
+                                          .doc(widget.usuarioId)
+                                          .collection('devices')
                                           .doc(cartao['id'])
                                           .delete();
                                       await _carregarFechaduras(); // recarrega lista (parent)
@@ -734,10 +736,10 @@ class _InicialState extends State<Inicial> {
 
                                                 await FirebaseFirestore.instance
                                                     .collection('fechaduras')
+                                                    .doc(widget.usuarioId)
+                                                    .collection('devices')
                                                     .doc(deviceUuid)
                                                     .set({
-                                                      'usuario_id':
-                                                          widget.usuarioId,
                                                       'nome':
                                                           nomeController.text,
                                                       'icone_code_point':
@@ -858,7 +860,8 @@ class _InicialState extends State<Inicial> {
       // Buscar fechaduras do Firestore
       final querySnapshot = await FirebaseFirestore.instance
           .collection('fechaduras')
-          .where('usuario_id', isEqualTo: widget.usuarioId)
+          .doc(widget.usuarioId)
+          .collection('devices')
           .get();
       final fechaduras = querySnapshot.docs
           .map((doc) => doc.data()..['id'] = doc.id)

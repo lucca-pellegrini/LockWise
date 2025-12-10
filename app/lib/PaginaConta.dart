@@ -587,7 +587,8 @@ class _PaginaContaState extends State<PaginaConta> {
                             final fechadurasSnapshot = await FirebaseFirestore
                                 .instance
                                 .collection('fechaduras')
-                                .where('usuario_id', isEqualTo: usuario!['id'])
+                                .doc(usuario!['id'])
+                                .collection('devices')
                                 .get();
                             for (final doc in fechadurasSnapshot.docs) {
                               await doc.reference.delete();

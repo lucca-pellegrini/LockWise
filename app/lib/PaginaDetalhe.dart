@@ -33,20 +33,23 @@ class _LockDetailsState extends State<LockDetails> {
 
   Future<void> _carregarDadosFechadura() async {
     try {
+      final usuario = await LocalService.getUsuarioLogado();
+      bool admin = false;
+      String userId = '';
+      if (usuario != null) {
+        userId = usuario['id'] as String;
+      }
       final doc = await FirebaseFirestore.instance
           .collection('fechaduras')
+          .doc(userId)
+          .collection('devices')
           .doc(widget.fechaduraId)
           .get();
       final f = doc.exists ? doc.data() : null;
-      final usuario = await LocalService.getUsuarioLogado();
 
-      bool admin = false;
-      if (usuario != null) {
-        final userId = usuario['id'] as String;
-        // Verificar se é dono OU administrador
-        admin = (f?['usuario_id'] == userId);
-        // TODO: Check administrators from Firestore if needed
-      }
+      // Verificar se é dono (se o doc existe sob o user_id)
+      admin = doc.exists;
+      // TODO: Check administrators from Firestore if needed
 
       final querySnapshot = await FirebaseFirestore.instance
           .collection('logs_acesso')
@@ -77,8 +80,11 @@ class _LockDetailsState extends State<LockDetails> {
       final agora = DateTime.now().millisecondsSinceEpoch;
       final novoEstado = acao == 'Abrir' ? 1 : 0;
 
+      final userId = usuario?['id'] as String;
       await FirebaseFirestore.instance
           .collection('fechaduras')
+          .doc(userId)
+          .collection('devices')
           .doc(widget.fechaduraId)
           .update({'notificacoes': notificationsEnabled ? 1 : 0});
 
@@ -281,8 +287,12 @@ class _LockDetailsState extends State<LockDetails> {
                     notificationsEnabled = value;
                   });
 
+                  final usuario = await LocalService.getUsuarioLogado();
+                  final userId = usuario?['id'] as String;
                   await FirebaseFirestore.instance
                       .collection('fechaduras')
+                      .doc(userId)
+                      .collection('devices')
                       .doc(widget.fechaduraId)
                       .update({'notificacoes': value ? 1 : 0});
                 },
@@ -302,8 +312,12 @@ class _LockDetailsState extends State<LockDetails> {
                           remoteAccessEnabled = value;
                         });
 
+                        final usuario = await LocalService.getUsuarioLogado();
+                        final userId = usuario?['id'] as String;
                         await FirebaseFirestore.instance
                             .collection('fechaduras')
+                            .doc(userId)
+                            .collection('devices')
                             .doc(widget.fechaduraId)
                             .update({
                               'acesso_remoto': remoteAccessEnabled ? 1 : 0,

@@ -69,6 +69,8 @@ class _PaginaConvitesState extends State<PaginaConvites>
     for (final convite in convites) {
       final fechaduraDoc = await FirebaseFirestore.instance
           .collection('fechaduras')
+          .doc(convite['remetente_id'])
+          .collection('devices')
           .doc(convite['fechadura_id'])
           .get();
       final fechadura = fechaduraDoc.exists ? fechaduraDoc.data() : null;

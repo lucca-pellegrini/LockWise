@@ -78,6 +78,8 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               // Buscar dados da fechadura
               final fechaduraDoc = await FirebaseFirestore.instance
                   .collection('fechaduras')
+                  .doc(convite['remetente_id'])
+                  .collection('devices')
                   .doc(convite['fechadura_id'].toString())
                   .get();
               final fechadura = fechaduraDoc.exists
