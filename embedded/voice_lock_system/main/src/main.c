@@ -7,11 +7,16 @@
 #include "driver/i2c_master.h"
 #include "driver/uart.h"
 #include "esp_err.h"
+#include <limits.h>
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_peripherals.h"
+#include "input_key_service.h"
+#include "esp_sleep.h"
+#include "esp_system.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "hal/i2c_types.h"
@@ -65,7 +70,7 @@ static void start_pairing_server(void)
 	ESP_LOGI(TAG, "Pairing server started on port 80");
 
 	// Accept connections in a loop
-	while (1) {
+	for (;;) {
 		struct sockaddr_in client_addr;
 		socklen_t client_addr_len = sizeof(client_addr);
 		int client_sock = accept(pairing_sock, (struct sockaddr *)&client_addr, &client_addr_len);
@@ -185,6 +190,19 @@ static void parse_configure_request(const char *request, char *wifi_ssid, char *
 	}
 }
 
+static esp_err_t input_key_service_cb(periph_service_handle_t handle, periph_service_event_t *evt, void *ctx)
+{
+	if (evt->type == INPUT_KEY_SERVICE_ACTION_CLICK) {
+		if ((int)evt->data == INPUT_KEY_USER_ID_REC || (int)evt->data == INPUT_KEY_USER_ID_MODE) {
+			ESP_LOGI(TAG, "Button pressed (ID %d), entering pairing mode", (int)evt->data);
+			config.pairing_mode = 1;
+			update_config("pairing_mode", "1");
+			esp_restart();
+		}
+	}
+	return ESP_OK;
+}
+
 void app_main(void)
 {
 	// Set log level
@@ -205,6 +223,10 @@ void app_main(void)
 
 	// Initialize lock mutex and lock door
 	lock_init();
+
+	// Start setup blink (400ms period, 200ms on)
+	static blink_params_t setup_blink_params = { 400, 200 };
+	xTaskCreate(blink, "setup_blink", 1024, &setup_blink_params, 1, &setup_blink_task);
 
 	// Configure UART for serial input
 	uart_config_t uart_config = {
@@ -228,10 +250,6 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(err);
 
-	// Initialize audio board early to set up I2C
-	audio_board_handle_t board_handle = audio_board_init();
-	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
-
 	// Initialize network interface
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 	ESP_ERROR_CHECK(esp_netif_init());
@@ -250,6 +268,7 @@ void app_main(void)
 
 		// Start pairing blink (1000ms period, 10ms on)
 		static blink_params_t pairing_blink_params = { 1000, 10 };
+		vTaskDelete(setup_blink_task);
 		xTaskCreate(blink, "pairing_blink", 1024, &pairing_blink_params, 1, NULL);
 
 		// Initialize WiFi in AP mode
@@ -259,21 +278,33 @@ void app_main(void)
 		start_pairing_server();
 
 		// Should not reach here
-		for (;;)
-			vTaskDelay(pdMS_TO_TICKS(1000));
-	} else {
-		// Start setup blink (400ms period, 200ms on)
-		static blink_params_t setup_blink_params = { 400, 200 };
-		xTaskCreate(blink, "setup_blink", 1024, &setup_blink_params, 1, &setup_blink_task);
+		ESP_LOGE(TAG, "Servidor de pareamento terminou!");
+		esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+		esp_deep_sleep_start();
 	}
+
+	// Initialize audio board early to set up I2C
+	audio_board_handle_t board_handle = audio_board_init();
+	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
+
+	// Initialize peripherals for buttons
+	esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
+	esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
+
+	// Initialize button peripherals
+	audio_board_key_init(set);
+	input_key_service_info_t input_key_info[] = INPUT_KEY_DEFAULT_INFO();
+	input_key_service_cfg_t input_cfg = INPUT_KEY_SERVICE_DEFAULT_CONFIG();
+	input_cfg.handle = set;
+	periph_service_handle_t input_ser = input_key_service_create(&input_cfg);
+	input_key_service_add_key(input_ser, input_key_info, INPUT_KEY_NUM);
+	periph_service_set_callback(input_ser, input_key_service_cb, NULL);
 
 	// Start serial command task early to allow config updates before wifi connects
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
 
-	// Initialize WiFi (station mode) only if not in pairing mode
-	if (!config.pairing_mode) {
-		wifi_init();
-	}
+	// Initialize WiFi (station mode)
+	wifi_init();
 
 	// Initialize system clock
 	esp_sntp_config_t ntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
@@ -288,20 +319,17 @@ void app_main(void)
 	// Initialize audio stream
 	audio_stream_init();
 
+	// Start MQTT heartbeat task
+	if (config.mqtt_heartbeat_enable)
+		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
+
 	ESP_LOGI(TAG, "System initialized successfully");
 	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
 
-	// Start MQTT heartbeat task
-	if (config.mqtt_heartbeat_enable) {
-		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
-	}
-
 	ESP_LOGI(TAG, "Starting I²C scan…");
-	for (uint8_t addr = 1; addr < 127; ++addr) {
-		esp_err_t ret = i2c_master_probe(g_i2c_handle, addr, 100);
-		if (ret == ESP_OK)
+	for (uint8_t addr = 1; addr < 127; ++addr)
+		if (i2c_master_probe(g_i2c_handle, addr, 100) == ESP_OK)
 			ESP_LOGI(TAG, "Found device at %02X", addr);
-	}
 	ESP_LOGI(TAG, "I²C scan complete!");
 
 	// Stop setup blink
