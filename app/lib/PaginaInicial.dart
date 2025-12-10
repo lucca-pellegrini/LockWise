@@ -730,26 +730,40 @@ class _InicialState extends State<Inicial> {
                                                     .body
                                                     .trim();
 
-                                                // Success! Now add to Firestore with device UUID as document ID
+                                                // Success! Now add or update in Firestore with device UUID as document ID
                                                 int iconeCodePoint =
                                                     iconeSelecionado.codePoint;
 
-                                                await FirebaseFirestore.instance
+                                                final docRef = FirebaseFirestore
+                                                    .instance
                                                     .collection('fechaduras')
                                                     .doc(widget.usuarioId)
                                                     .collection('devices')
-                                                    .doc(deviceUuid)
-                                                    .set({
-                                                      'nome':
-                                                          nomeController.text,
-                                                      'icone_code_point':
-                                                          iconeCodePoint,
-                                                      'notificacoes': 1,
-                                                      'acesso_remoto': 1,
-                                                      'aberto': 1,
-                                                      'updated_at':
-                                                          FieldValue.serverTimestamp(),
-                                                    });
+                                                    .doc(deviceUuid);
+
+                                                final doc = await docRef.get();
+                                                if (doc.exists) {
+                                                  // Update existing device
+                                                  await docRef.update({
+                                                    'nome': nomeController.text,
+                                                    'icone_code_point':
+                                                        iconeCodePoint,
+                                                    'updated_at':
+                                                        FieldValue.serverTimestamp(),
+                                                  });
+                                                } else {
+                                                  // Add new device
+                                                  await docRef.set({
+                                                    'nome': nomeController.text,
+                                                    'icone_code_point':
+                                                        iconeCodePoint,
+                                                    'notificacoes': 1,
+                                                    'acesso_remoto': 1,
+                                                    'aberto': 1,
+                                                    'updated_at':
+                                                        FieldValue.serverTimestamp(),
+                                                  });
+                                                }
 
                                                 final fechaduraId = deviceUuid;
 
