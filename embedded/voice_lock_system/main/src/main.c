@@ -13,8 +13,6 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
-#include "esp_peripherals.h"
-#include "input_key_service.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "freertos/projdefs.h"
@@ -33,175 +31,6 @@ static const char *TAG = "LOCKWISE:MAIN";
 
 static i2c_master_bus_handle_t g_i2c_handle;
 static TaskHandle_t setup_blink_task = NULL;
-static int pairing_sock = -1;
-
-static void start_pairing_server(void);
-static void handle_pairing_client(int client_sock);
-static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_key,
-				    char *device_id);
-
-static void start_pairing_server(void)
-{
-	struct sockaddr_in server_addr;
-	pairing_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (pairing_sock < 0) {
-		ESP_LOGE(TAG, "Failed to create socket");
-		return;
-	}
-
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(80);
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	if (bind(pairing_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-		ESP_LOGE(TAG, "Failed to bind socket");
-		close(pairing_sock);
-		pairing_sock = -1;
-		return;
-	}
-
-	if (listen(pairing_sock, 1) < 0) {
-		ESP_LOGE(TAG, "Failed to listen on socket");
-		close(pairing_sock);
-		pairing_sock = -1;
-		return;
-	}
-
-	ESP_LOGI(TAG, "Pairing server started on port 80");
-
-	// Accept connections in a loop
-	for (;;) {
-		struct sockaddr_in client_addr;
-		socklen_t client_addr_len = sizeof(client_addr);
-		int client_sock = accept(pairing_sock, (struct sockaddr *)&client_addr, &client_addr_len);
-		if (client_sock >= 0) {
-			ESP_LOGI(TAG, "Client connected");
-			handle_pairing_client(client_sock);
-			close(client_sock);
-		}
-	}
-}
-
-static void handle_pairing_client(int client_sock)
-{
-	char buffer[1024];
-	int len = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
-	if (len <= 0) {
-		return;
-	}
-	buffer[len] = '\0';
-
-	// Simple HTTP request parsing
-	if (strstr(buffer, "POST /configure") && strstr(buffer, "Content-Type: application/json")) {
-		char wifi_ssid[32] = "";
-		char wifi_pass[64] = "";
-		char user_key[256] = "";
-		char device_id[64] = "";
-
-		parse_configure_request(buffer, wifi_ssid, wifi_pass, user_key, device_id);
-
-		if (strlen(wifi_ssid) > 0 && strlen(wifi_pass) > 0 && strlen(user_key) > 0) {
-			// Store configuration
-			update_config("wifi_ssid", wifi_ssid);
-			update_config("wifi_pass", wifi_pass);
-			update_config("user_pub_key", user_key);
-			update_config("device_id", device_id);
-			// pairing_mode is already set to 0 at the start of pairing mode
-
-			// Send success response
-			const char *response =
-				"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nConfiguration received. Rebooting...\n";
-			send(client_sock, response, strlen(response), 0);
-
-			ESP_LOGI(TAG, "Configuration stored, rebooting...");
-			vTaskDelay(pdMS_TO_TICKS(1000));
-			esp_restart();
-		} else {
-			const char *response =
-				"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid configuration\n";
-			send(client_sock, response, strlen(response), 0);
-		}
-	} else {
-		const char *response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNot found\n";
-		send(client_sock, response, strlen(response), 0);
-	}
-}
-
-static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_key,
-				    char *device_id)
-{
-	// Find JSON body
-	const char *json_start = strstr(request, "\r\n\r\n");
-	if (!json_start)
-		return;
-	json_start += 4;
-
-	// Simple JSON parsing (not robust, but works for our case)
-	const char *ssid_start = strstr(json_start, "\"wifi_ssid\":\"");
-	if (ssid_start) {
-		ssid_start += 13;
-		const char *ssid_end = strchr(ssid_start, '"');
-		if (ssid_end) {
-			size_t len = ssid_end - ssid_start;
-			if (len < 32) {
-				strncpy(wifi_ssid, ssid_start, len);
-				wifi_ssid[len] = '\0';
-			}
-		}
-	}
-
-	const char *pass_start = strstr(json_start, "\"wifi_password\":\"");
-	if (pass_start) {
-		pass_start += 16;
-		const char *pass_end = strchr(pass_start, '"');
-		if (pass_end) {
-			size_t len = pass_end - pass_start;
-			if (len < 64) {
-				strncpy(wifi_pass, pass_start, len);
-				wifi_pass[len] = '\0';
-			}
-		}
-	}
-
-	const char *key_start = strstr(json_start, "\"user_key\":\"");
-	if (key_start) {
-		key_start += 12;
-		const char *key_end = strchr(key_start, '"');
-		if (key_end) {
-			size_t len = key_end - key_start;
-			if (len < 256) {
-				strncpy(user_key, key_start, len);
-				user_key[len] = '\0';
-			}
-		}
-	}
-
-	const char *id_start = strstr(json_start, "\"device_id\":\"");
-	if (id_start) {
-		id_start += 13;
-		const char *id_end = strchr(id_start, '"');
-		if (id_end) {
-			size_t len = id_end - id_start;
-			if (len < 64) {
-				strncpy(device_id, id_start, len);
-				device_id[len] = '\0';
-			}
-		}
-	}
-}
-
-static esp_err_t input_key_service_cb(periph_service_handle_t handle, periph_service_event_t *evt, void *ctx)
-{
-	if (evt->type == INPUT_KEY_SERVICE_ACTION_CLICK) {
-		if ((int)evt->data == INPUT_KEY_USER_ID_REC || (int)evt->data == INPUT_KEY_USER_ID_MODE) {
-			ESP_LOGI(TAG, "Button pressed (ID %d), entering pairing mode", (int)evt->data);
-			config.pairing_mode = 1;
-			update_config("pairing_mode", "1");
-			esp_restart();
-		}
-	}
-	return ESP_OK;
-}
 
 void app_main(void)
 {
@@ -271,9 +100,6 @@ void app_main(void)
 		vTaskDelete(setup_blink_task);
 		xTaskCreate(blink, "pairing_blink", 1024, &pairing_blink_params, 1, NULL);
 
-		// Initialize WiFi in AP mode
-		wifi_init_ap();
-
 		// Start pairing server
 		start_pairing_server();
 
@@ -287,18 +113,11 @@ void app_main(void)
 	audio_board_handle_t board_handle = audio_board_init();
 	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
 
-	// Initialize peripherals for buttons
-	esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
-	esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
-
-	// Initialize button peripherals
-	audio_board_key_init(set);
-	input_key_service_info_t input_key_info[] = INPUT_KEY_DEFAULT_INFO();
-	input_key_service_cfg_t input_cfg = INPUT_KEY_SERVICE_DEFAULT_CONFIG();
-	input_cfg.handle = set;
-	periph_service_handle_t input_ser = input_key_service_create(&input_cfg);
-	input_key_service_add_key(input_ser, input_key_info, INPUT_KEY_NUM);
-	periph_service_set_callback(input_ser, input_key_service_cb, NULL);
+	// Initialize touch pad for Vol+ button (TOUCH_PAD_NUM7, GPIO27)
+	touch_pad_init();
+	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
+	touch_pad_config(TOUCH_PAD_NUM7, 0);
+	touch_pad_filter_start(10);
 
 	// Start serial command task early to allow config updates before wifi connects
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
@@ -341,6 +160,14 @@ void app_main(void)
 
 	// Main loop - can be used for button monitoring or other tasks
 	for (;;) {
-		vTaskDelay(pdMS_TO_TICKS(1000));
+		uint16_t touch_value;
+		touch_pad_read_filtered(TOUCH_PAD_NUM7, &touch_value);
+		if (touch_value < 300) { // Adjust threshold as needed
+			ESP_LOGI(TAG, "Vol+ touch detected, entering pairing mode");
+			config.pairing_mode = 1;
+			update_config("pairing_mode", "1");
+			esp_restart();
+		}
+		vTaskDelay(pdMS_TO_TICKS(100));
 	}
 }

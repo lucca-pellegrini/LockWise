@@ -6,6 +6,6 @@
 
 /* Function prototypes */
 void wifi_init(void);
-void wifi_init_ap(void);
+void start_pairing_server(void);
 
 #endif /* WIFI_H */
