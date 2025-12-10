@@ -6,5 +6,6 @@
 
 /* Function prototypes */
 void wifi_init(void);
+void wifi_init_ap(void);
 
 #endif /* WIFI_H */

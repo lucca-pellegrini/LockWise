@@ -71,6 +71,10 @@ static void process_cbor_command(CborValue *value)
 				esp_restart();
 			} else if (!strcasecmp(command, "UPDATE_CONFIG")) {
 				handle_update_config_command(value);
+			} else if (!strcasecmp(command, "PAIR")) {
+				update_config("pairing_mode", "1");
+				mqtt_publish_status("ENTERING_PAIRING_MODE");
+				esp_restart();
 			}
 		}
 	} else {

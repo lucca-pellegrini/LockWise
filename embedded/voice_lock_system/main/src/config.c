@@ -179,6 +179,19 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load pairing_mode
+	uint8_t pairing_val = 0;
+	if (nvs_available && nvs_get_u8(nvs_handle, "pairing_mode", &pairing_val) == ESP_OK) {
+		config.pairing_mode = pairing_val != 0;
+		ESP_LOGI(TAG, "Loaded pairing_mode from NVS: %d", config.pairing_mode);
+	} else {
+		config.pairing_mode = false;
+		if (nvs_available) {
+			nvs_set_u8(nvs_handle, "pairing_mode", 0);
+			ESP_LOGW(TAG, "Using default pairing_mode (false) and saved to NVS");
+		}
+	}
+
 	if (nvs_available) {
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
@@ -189,11 +202,12 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_pub_key)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_pub_key, pairing_mode)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
-	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_pub_key")) {
+	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_pub_key") ||
+	    !strcasecmp(key, "pairing_mode")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -235,6 +249,10 @@ void update_config(const char *key, const char *value)
 			} else if (!strcasecmp(key, "user_pub_key")) {
 				if (strcmp(config.user_pub_key, value) != 0)
 					needs_update = true;
+			} else if (!strcasecmp(key, "pairing_mode")) {
+				uint8_t new_val = atoi(value) ? 1 : 0;
+				if (config.pairing_mode != new_val)
+					needs_update = true;
 			}
 			if (needs_update) {
 				esp_err_t set_err = ESP_OK;
@@ -266,6 +284,12 @@ void update_config(const char *key, const char *value)
 					set_err = nvs_set_str(nvs_handle, "user_pub_key", value);
 					if (set_err == ESP_OK) {
 						strcpy(config.user_pub_key, value);
+					}
+				} else if (!strcasecmp(key, "pairing_mode")) {
+					uint8_t pairing_val = atoi(value) ? 1 : 0;
+					set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
+					if (set_err == ESP_OK) {
+						config.pairing_mode = pairing_val;
 					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);

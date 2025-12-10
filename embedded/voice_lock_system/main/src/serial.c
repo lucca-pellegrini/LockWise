@@ -76,6 +76,10 @@ static void run_command(char buffer[256])
 			mqtt_publish_status("NVS_ERASE_FAILED_UNKNOWN_ERROR");
 			break;
 		}
+	} else if (strcasecmp(buffer, "pair") == 0) {
+		update_config("pairing_mode", "1");
+		mqtt_publish_status("ENTERING_PAIRING_MODE");
+		esp_restart();
 	} else {
 		ESP_LOGW(TAG, "Unknown command: %s", buffer);
 	}

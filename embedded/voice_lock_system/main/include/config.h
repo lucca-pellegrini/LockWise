@@ -20,6 +20,7 @@ typedef struct {
 	int audio_record_timeout_sec;
 	int lock_timeout_ms;
 	char user_pub_key[256]; // Paired user's public key (PEM format)
+	bool pairing_mode; // Whether device is in pairing mode
 } config_t;
 
 /* Configuration storage */
