@@ -32,6 +32,20 @@ static const char *TAG = "LOCKWISE:MAIN";
 static i2c_master_bus_handle_t g_i2c_handle;
 static TaskHandle_t setup_blink_task = NULL;
 
+static void touch_monitor_task(void *param)
+{
+	for (;;) {
+		uint16_t touch_value;
+		touch_pad_read_filtered(TOUCH_PAD_NUM7, &touch_value);
+		if (touch_value < 300) { // Adjust threshold as needed
+			ESP_LOGI(TAG, "Vol+ touch detected, toggling pairing mode");
+			update_config("pairing_mode", config.pairing_mode ? "0" : "1");
+			esp_restart();
+		}
+		vTaskDelay(pdMS_TO_TICKS(100));
+	}
+}
+
 void app_main(void)
 {
 	// Set log level
@@ -89,6 +103,13 @@ void app_main(void)
 	// Load configuration
 	load_config_from_nvs();
 
+	// Initialize touch pad for Vol+ button (TOUCH_PAD_NUM7, GPIO27)
+	touch_pad_init();
+	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
+	touch_pad_config(TOUCH_PAD_NUM7, 0);
+	touch_pad_filter_start(10);
+	xTaskCreate(touch_monitor_task, "touch_monitor", 2048, NULL, 5, NULL);
+
 	// Check if in pairing mode
 	if (config.pairing_mode) {
 		ESP_LOGI(TAG, "Device is in pairing mode, starting AP");
@@ -112,12 +133,6 @@ void app_main(void)
 	// Initialize audio board early to set up I2C
 	audio_board_handle_t board_handle = audio_board_init();
 	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
-
-	// Initialize touch pad for Vol+ button (TOUCH_PAD_NUM7, GPIO27)
-	touch_pad_init();
-	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-	touch_pad_config(TOUCH_PAD_NUM7, 0);
-	touch_pad_filter_start(10);
 
 	// Start serial command task early to allow config updates before wifi connects
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
@@ -158,16 +173,8 @@ void app_main(void)
 		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
 	}
 
-	// Main loop - can be used for button monitoring or other tasks
+	// Main loop
 	for (;;) {
-		uint16_t touch_value;
-		touch_pad_read_filtered(TOUCH_PAD_NUM7, &touch_value);
-		if (touch_value < 300) { // Adjust threshold as needed
-			ESP_LOGI(TAG, "Vol+ touch detected, entering pairing mode");
-			config.pairing_mode = 1;
-			update_config("pairing_mode", "1");
-			esp_restart();
-		}
-		vTaskDelay(pdMS_TO_TICKS(100));
+		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }
