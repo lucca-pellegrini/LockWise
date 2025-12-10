@@ -1,6 +1,7 @@
 /* Configuration Management Implementation */
 
 #include "config.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -9,6 +10,7 @@
 #include "nvs_flash.h"
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 
 static const char *TAG = "LOCKWISE:CONFIG";
 
@@ -254,7 +256,14 @@ void update_config(const char *key, const char *value)
 				if (config.pairing_mode != new_val)
 					needs_update = true;
 			}
-			if (needs_update) {
+
+			if (!strcasecmp(key, "pairing_mode")) {
+				uint8_t pairing_val = atoi(value) ? 1 : 0;
+				esp_err_t set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
+				if (set_err == ESP_OK) {
+					config.pairing_mode = pairing_val;
+				}
+			} else if (needs_update) {
 				esp_err_t set_err = ESP_OK;
 				if (!strcasecmp(key, "mqtt_hb_enable")) {
 					uint8_t enable_val = atoi(value) ? 1 : 0;
@@ -284,12 +293,6 @@ void update_config(const char *key, const char *value)
 					set_err = nvs_set_str(nvs_handle, "user_pub_key", value);
 					if (set_err == ESP_OK) {
 						strcpy(config.user_pub_key, value);
-					}
-				} else if (!strcasecmp(key, "pairing_mode")) {
-					uint8_t pairing_val = atoi(value) ? 1 : 0;
-					set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
-					if (set_err == ESP_OK) {
-						config.pairing_mode = pairing_val;
 					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);
