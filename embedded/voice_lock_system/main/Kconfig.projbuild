@@ -1,4 +1,4 @@
-menu "Voice Lock Configuration"
+menu "LockWise Configuration"
 
     config WIFI_SSID
         string "WiFi SSID"
@@ -35,19 +35,6 @@ menu "Voice Lock Configuration"
         default 13
         help
             GPIO pin for controlling the lock (-1 to disable).
-
-    config USE_I2C_LOCK
-        bool "Use I2C GPIO Expander for Lock Control"
-        default n
-        help
-            Enable if using I2C GPIO expander instead of direct GPIO.
-
-    config I2C_LOCK_ADDR
-        hex "I2C Lock GPIO Expander Address"
-        depends on USE_I2C_LOCK
-        default 0x20
-        help
-            I2C address of the GPIO expander controlling the lock.
 
     config MQTT_HEARTBEAT_ENABLE
         bool "Enable MQTT Heartbeat"
