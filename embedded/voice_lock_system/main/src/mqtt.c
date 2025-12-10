@@ -13,6 +13,7 @@
 #include <cbor.h>
 #include <errno.h>
 #include <netdb.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -317,11 +318,75 @@ void mqtt_publish_status(const char *status)
 	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
 
 	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
-	if (msg_id >= 0) {
+	if (msg_id >= 0)
 		ESP_LOGI(TAG, "Published CBOR status to %s: %s (msg_id=%d)", topic, status, msg_id);
-	} else {
+	else
 		ESP_LOGE(TAG, "Failed to publish status");
+}
+
+static void mqtt_publish_heartbeat(void)
+{
+	if (!mqtt_client) {
+		ESP_LOGW(TAG, "MQTT client not initialized, cannot publish heartbeat");
+		return;
 	}
+
+	char topic[96];
+	snprintf(topic, sizeof(topic), "lockwise/%s/status", config.device_id);
+
+	uint8_t cbor_buffer[512];
+	CborEncoder encoder, map_encoder;
+	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
+	cbor_encoder_create_map(&encoder, &map_encoder, 11);
+
+	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, "HEARTBEAT");
+
+	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
+	cbor_encode_uint(&map_encoder, (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS);
+
+	cbor_encode_text_stringz(&map_encoder, "timestamp");
+	cbor_encode_uint(&map_encoder, (uint64_t)time(NULL));
+
+	cbor_encode_text_stringz(&map_encoder, "wifi_ssid");
+	cbor_encode_text_stringz(&map_encoder, config.wifi_ssid);
+
+	cbor_encode_text_stringz(&map_encoder, "backend_url");
+	cbor_encode_text_stringz(&map_encoder, config.backend_url);
+
+	cbor_encode_text_stringz(&map_encoder, "mqtt_broker_url");
+	cbor_encode_text_stringz(&map_encoder, config.mqtt_broker_url);
+
+	cbor_encode_text_stringz(&map_encoder, "mqtt_heartbeat_enable");
+	cbor_encode_boolean(&map_encoder, config.mqtt_heartbeat_enable);
+
+	cbor_encode_text_stringz(&map_encoder, "mqtt_heartbeat_interval_sec");
+	cbor_encode_int(&map_encoder, config.mqtt_heartbeat_interval_sec);
+
+	cbor_encode_text_stringz(&map_encoder, "audio_record_timeout_sec");
+	cbor_encode_int(&map_encoder, config.audio_record_timeout_sec);
+
+	cbor_encode_text_stringz(&map_encoder, "lock_timeout_ms");
+	cbor_encode_int(&map_encoder, config.lock_timeout_ms);
+
+	cbor_encode_text_stringz(&map_encoder, "user_pub_key");
+	cbor_encode_text_stringz(&map_encoder, config.user_pub_key);
+
+	cbor_encoder_close_container(&encoder, &map_encoder);
+
+	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
+
+	size_t extra_needed = cbor_encoder_get_extra_bytes_needed(&encoder);
+	if (extra_needed > 0) {
+		ESP_LOGE(TAG, "CBOR buffer overflow, needed %zu more bytes", extra_needed);
+		return;
+	}
+
+	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
+	if (msg_id >= 0)
+		ESP_LOGI(TAG, "Published heartbeat CBOR to %s (msg_id=%d)", topic, msg_id);
+	else
+		ESP_LOGE(TAG, "Failed to publish heartbeat");
 }
 
 void mqtt_heartbeat_task(void *pvParameters)
@@ -330,7 +395,7 @@ void mqtt_heartbeat_task(void *pvParameters)
 	ESP_LOGI(TAG, "Heartbeat task started (interval: %d seconds)", config.mqtt_heartbeat_interval_sec);
 
 	for (;;) {
+		mqtt_publish_heartbeat();
 		vTaskDelay(pdMS_TO_TICKS(interval_ms));
-		mqtt_publish_status("HEARTBEAT");
 	}
 }
