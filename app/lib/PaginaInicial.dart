@@ -9,6 +9,8 @@ import 'dart:ui';
 import 'models/nav_item_model.dart';
 import 'PaginaTemporaria.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'package:wifi_scan/wifi_scan.dart';
 
 class Inicial extends StatefulWidget {
   final String usuarioId;
@@ -23,6 +25,9 @@ class _InicialState extends State<Inicial> {
   bool _showExtraButtons = false;
   bool _isLoading = false;
   List<Map<String, dynamic>> cartoes = [];
+  List<WiFiAccessPoint> _wifiNetworks = [];
+  String? selectedWifiNetwork;
+  String wifiPassword = '';
   int selectedNavIndex = 0;
   List<rive.SMIBool?> riveIconInput = List<rive.SMIBool?>.filled(
     bottomNavItems.length,
@@ -39,6 +44,20 @@ class _InicialState extends State<Inicial> {
   void initState() {
     super.initState();
     _carregarFechaduras();
+    _scanWifiNetworks();
+  }
+
+  Future<void> _scanWifiNetworks() async {
+    final can = await WiFiScan.instance.canGetScannedResults(
+      askPermissions: true,
+    );
+    if (can == CanGetScannedResults.yes) {
+      await WiFiScan.instance.startScan();
+      final results = await WiFiScan.instance.getScannedResults();
+      setState(() => _wifiNetworks = results);
+    } else {
+      setState(() => _wifiNetworks = []);
+    }
   }
 
   void animateTheIcon(int index) {
@@ -418,6 +437,8 @@ class _InicialState extends State<Inicial> {
   void _showAddCardDialog() {
     final TextEditingController nomeController = TextEditingController();
     IconData iconeSelecionado = Icons.star;
+    selectedWifiNetwork = null;
+    wifiPassword = '';
 
     showDialog(
       context: context,
@@ -564,6 +585,91 @@ class _InicialState extends State<Inicial> {
 
                     SizedBox(height: 20),
 
+                    Text(
+                      'Configuração de WiFi:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 10),
+
+                    // WiFi Network Dropdown
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'Rede WiFi',
+                          labelStyle: TextStyle(color: Colors.white),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.blueGrey.shade400,
+                              width: 1.5,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.white,
+                              width: 2.0,
+                            ),
+                          ),
+                          prefixIcon: Icon(Icons.wifi, color: Colors.white),
+                        ),
+                        dropdownColor: Colors.blueAccent.withOpacity(0.8),
+                        style: TextStyle(color: Colors.white),
+                        value: selectedWifiNetwork,
+                        items: _wifiNetworks
+                            .where((ap) => ap.ssid.isNotEmpty)
+                            .map(
+                              (ap) => DropdownMenuItem<String>(
+                                value: ap.ssid,
+                                child: Text(ap.ssid),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          selectedWifiNetwork = value;
+                          setStateDialog(() {});
+                        },
+                      ),
+                    ),
+
+                    SizedBox(height: 10),
+
+                    // WiFi Password Field
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: TextFormField(
+                        style: TextStyle(color: Colors.white),
+                        obscureText: true,
+                        onChanged: (value) {
+                          wifiPassword = value;
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'Senha da Rede WiFi',
+                          labelStyle: TextStyle(color: Colors.white),
+                          hintText: 'Digite a senha da rede',
+                          hintStyle: TextStyle(color: Colors.white),
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.lock, color: Colors.white),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.blueGrey.shade400,
+                              width: 1.5,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.white,
+                              width: 2.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
                     Align(
                       alignment: Alignment.center,
                       child: Padding(
@@ -581,48 +687,83 @@ class _InicialState extends State<Inicial> {
                             SizedBox(width: 10),
 
                             _GlassDialogButton(
-                              text: 'Adicionar',
+                              text: 'Parear Dispositivo',
                               onPressed: () async {
-                                if (nomeController.text.isNotEmpty) {
+                                if (nomeController.text.isNotEmpty &&
+                                    selectedWifiNetwork != null &&
+                                    wifiPassword.isNotEmpty) {
                                   try {
-                                    int iconeCodePoint =
-                                        iconeSelecionado.codePoint;
+                                    // First, send configuration to device
+                                    String configData =
+                                        '${widget.usuarioId}\n$selectedWifiNetwork\n$wifiPassword';
 
-                                    final docRef = await FirebaseFirestore
-                                        .instance
-                                        .collection('fechaduras')
-                                        .add({
-                                          'usuario_id': widget.usuarioId,
-                                          'nome': nomeController.text,
-                                          'icone_code_point': iconeCodePoint,
-                                          'notificacoes': 1,
-                                          'acesso_remoto': 1,
-                                          'aberto': 1,
-                                          'updated_at':
-                                              FieldValue.serverTimestamp(),
-                                        });
-
-                                    final fechaduraId = docRef.id;
-
-                                    await _carregarFechaduras();
-                                    Navigator.of(context).pop();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Fechadura "${nomeController.text}" adicionada!',
-                                        ),
-                                      ),
+                                    var response = await http.post(
+                                      Uri.parse('http://192.168.4.1/configure'),
+                                      headers: {'Content-Type': 'text/plain'},
+                                      body: configData,
                                     );
+
+                                    if (response.statusCode == 204) {
+                                      // Success! Now add to Firestore
+                                      int iconeCodePoint =
+                                          iconeSelecionado.codePoint;
+
+                                      final docRef = await FirebaseFirestore
+                                          .instance
+                                          .collection('fechaduras')
+                                          .add({
+                                            'usuario_id': widget.usuarioId,
+                                            'nome': nomeController.text,
+                                            'icone_code_point': iconeCodePoint,
+                                            'notificacoes': 1,
+                                            'acesso_remoto': 1,
+                                            'aberto': 1,
+                                            'updated_at':
+                                                FieldValue.serverTimestamp(),
+                                          });
+
+                                      final fechaduraId = docRef.id;
+
+                                      await _carregarFechaduras();
+                                      Navigator.of(context).pop();
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Fechadura "${nomeController.text}" pareada com sucesso!',
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Erro na configuração: ${response.statusCode}. Verifique se está conectado ao LockWise AP.',
+                                          ),
+                                        ),
+                                      );
+                                    }
                                   } catch (e) {
-                                    print('Erro ao adicionar fechadura: $e');
+                                    print('Erro ao parear dispositivo: $e');
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                          'Erro ao adicionar fechadura',
+                                          'Erro ao parear dispositivo. Verifique se está conectado ao LockWise AP.',
                                         ),
                                       ),
                                     );
                                   }
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Preencha todos os campos obrigatórios.',
+                                      ),
+                                    ),
+                                  );
                                 }
                               },
                               color: Colors.white,

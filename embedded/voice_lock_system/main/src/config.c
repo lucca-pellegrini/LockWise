@@ -169,15 +169,15 @@ void load_config_from_nvs(void)
 		}
 	}
 
-	// Load User Public Key
-	required_size = sizeof(config.user_pub_key);
-	if (nvs_available && nvs_get_str(nvs_handle, "user_pub_key", config.user_pub_key, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded user_pub_key from NVS");
+	// Load User ID
+	required_size = sizeof(config.user_id);
+	if (nvs_available && nvs_get_str(nvs_handle, "user_id", config.user_id, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded user_id from NVS");
 	} else {
-		strcpy(config.user_pub_key, "");
+		strcpy(config.user_id, "");
 		if (nvs_available) {
-			nvs_set_str(nvs_handle, "user_pub_key", config.user_pub_key);
-			ESP_LOGW(TAG, "Using default user_pub_key and saved to NVS");
+			nvs_set_str(nvs_handle, "user_id", config.user_id);
+			ESP_LOGW(TAG, "Using default user_id and saved to NVS");
 		}
 	}
 
@@ -204,11 +204,11 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_pub_key, pairing_mode)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_id, pairing_mode)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
-	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_pub_key") ||
+	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_id") ||
 	    !strcasecmp(key, "pairing_mode")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
@@ -248,8 +248,8 @@ void update_config(const char *key, const char *value)
 				int32_t new_val = atoi(value);
 				if (config.lock_timeout_ms != new_val)
 					needs_update = true;
-			} else if (!strcasecmp(key, "user_pub_key")) {
-				if (strcmp(config.user_pub_key, value) != 0)
+			} else if (!strcasecmp(key, "user_id")) {
+				if (strcmp(config.user_id, value) != 0)
 					needs_update = true;
 			} else if (!strcasecmp(key, "pairing_mode")) {
 				uint8_t new_val = atoi(value) ? 1 : 0;
@@ -283,10 +283,10 @@ void update_config(const char *key, const char *value)
 					if (set_err == ESP_OK) {
 						config.lock_timeout_ms = lock_timeout_val;
 					}
-				} else if (!strcasecmp(key, "user_pub_key")) {
-					set_err = nvs_set_str(nvs_handle, "user_pub_key", value);
+				} else if (!strcasecmp(key, "user_id")) {
+					set_err = nvs_set_str(nvs_handle, "user_id", value);
 					if (set_err == ESP_OK) {
-						strcpy(config.user_pub_key, value);
+						strcpy(config.user_id, value);
 					}
 				} else if (!strcasecmp(key, "pairing_mode")) {
 					uint8_t pairing_val = atoi(value) ? 1 : 0;
@@ -309,8 +309,8 @@ void update_config(const char *key, const char *value)
 							strcpy(config.mqtt_broker_url, value);
 						} else if (!strcasecmp(key, "mqtt_pass")) {
 							strcpy(config.mqtt_broker_password, value);
-						} else if (!strcasecmp(key, "user_pub_key")) {
-							strcpy(config.user_pub_key, value);
+						} else if (!strcasecmp(key, "user_id")) {
+							strcpy(config.user_id, value);
 						}
 					}
 				}

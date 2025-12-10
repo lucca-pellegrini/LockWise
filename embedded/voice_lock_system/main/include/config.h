@@ -19,7 +19,7 @@ typedef struct {
 	int mqtt_heartbeat_interval_sec;
 	int audio_record_timeout_sec;
 	int lock_timeout_ms;
-	char user_pub_key[256]; // Paired user's public key (PEM format)
+	char user_id[256]; // Paired user's ID
 	bool pairing_mode; // Whether device is in pairing mode
 } config_t;
 

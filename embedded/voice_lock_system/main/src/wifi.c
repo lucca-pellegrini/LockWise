@@ -28,8 +28,7 @@ static const char *TAG = "LOCKWISE:WIFI";
 static int pairing_sock = -1;
 
 static void handle_pairing_client(int client_sock);
-static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_key,
-				    char *device_id);
+static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id);
 
 void wifi_init(void)
 {
@@ -247,28 +246,25 @@ static void handle_pairing_client(int client_sock)
 	buffer[len] = '\0';
 
 	// Simple HTTP request parsing
-	if (strstr(buffer, "POST /configure") && strstr(buffer, "Content-Type: application/json")) {
+	if (strstr(buffer, "POST /configure")) {
 		char wifi_ssid[32] = "";
 		char wifi_pass[64] = "";
-		char user_key[256] = "";
-		char device_id[64] = "";
+		char user_id[256] = "";
 
-		parse_configure_request(buffer, wifi_ssid, wifi_pass, user_key, device_id);
+		parse_configure_request(buffer, wifi_ssid, wifi_pass, user_id);
 
-		if (strlen(wifi_ssid) > 0 && strlen(wifi_pass) > 0 && strlen(user_key) > 0) {
+		if (strlen(wifi_ssid) > 0 && strlen(wifi_pass) > 0 && strlen(user_id) > 0) {
 			// Store configuration
 			update_config("wifi_ssid", wifi_ssid);
 			update_config("wifi_pass", wifi_pass);
-			update_config("user_pub_key", user_key);
-			update_config("device_id", device_id);
+			update_config("user_id", user_id);
 			// pairing_mode is already set to 0 at the start of pairing mode
 
-			// Send success response
-			const char *response =
-				"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nConfiguration received. Rebooting...\n";
+			// Send success response (204 No Content)
+			const char *response = "HTTP/1.1 204 No Content\r\n\r\n";
 			send(client_sock, response, strlen(response), 0);
 
-			ESP_LOGI(TAG, "Configuration stored, rebooting...");
+			ESP_LOGI(TAG, "Configuration stored: user_id=%s, ssid=%s, rebooting...", user_id, wifi_ssid);
 			vTaskDelay(pdMS_TO_TICKS(1000));
 			esp_restart();
 		} else {
@@ -282,52 +278,55 @@ static void handle_pairing_client(int client_sock)
 	}
 }
 
-static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_key,
-				    char *device_id)
+static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id)
 {
-	// Find JSON body
-	const char *json_start = strstr(request, "\r\n\r\n");
-	if (!json_start)
+	// Find plain text body after HTTP headers
+	const char *body_start = strstr(request, "\r\n\r\n");
+	if (!body_start)
 		return;
-	json_start += 4;
+	body_start += 4;
 
-	// Simple JSON parsing (not robust, but works for our case)
-	const char *ssid_start = strstr(json_start, "\"wifi_ssid\":\"");
-	if (ssid_start) {
-		ssid_start += 13;
-		const char *ssid_end = strchr(ssid_start, '"');
-		if (ssid_end) {
-			size_t len = ssid_end - ssid_start;
-			if (len < 32) {
-				strncpy(wifi_ssid, ssid_start, len);
-				wifi_ssid[len] = '\0';
-			}
-		}
-	}
+	// Parse three lines: user_id\nwifi_ssid\nwifi_password
+	char line[256];
+	int line_num = 0;
+	const char *ptr = body_start;
 
-	const char *pass_start = strstr(json_start, "\"wifi_password\":\"");
-	if (pass_start) {
-		pass_start += 16;
-		const char *pass_end = strchr(pass_start, '"');
-		if (pass_end) {
-			size_t len = pass_end - pass_start;
-			if (len < 64) {
-				strncpy(wifi_pass, pass_start, len);
-				wifi_pass[len] = '\0';
-			}
+	while (*ptr && line_num < 3) {
+		// Extract one line
+		const char *line_end = strchr(ptr, '\n');
+		if (!line_end) {
+			// Last line without newline
+			strncpy(line, ptr, sizeof(line) - 1);
+			line[sizeof(line) - 1] = '\0';
+		} else {
+			size_t len = line_end - ptr;
+			if (len >= sizeof(line))
+				len = sizeof(line) - 1;
+			strncpy(line, ptr, len);
+			line[len] = '\0';
+			ptr = line_end + 1;
 		}
-	}
 
-	const char *key_start = strstr(json_start, "\"user_key\":\"");
-	if (key_start) {
-		key_start += 12;
-		const char *key_end = strchr(key_start, '"');
-		if (key_end) {
-			size_t len = key_end - key_start;
-			if (len < 256) {
-				strncpy(user_key, key_start, len);
-				user_key[len] = '\0';
-			}
+		// Remove trailing \r if present
+		char *crlf = strchr(line, '\r');
+		if (crlf)
+			*crlf = '\0';
+
+		// Store based on line number
+		switch (line_num) {
+			case 0: // user_id
+				strncpy(user_id, line, 255);
+				user_id[255] = '\0';
+				break;
+			case 1: // wifi_ssid
+				strncpy(wifi_ssid, line, 31);
+				wifi_ssid[31] = '\0';
+				break;
+			case 2: // wifi_password
+				strncpy(wifi_pass, line, 63);
+				wifi_pass[63] = '\0';
+				break;
 		}
+		line_num++;
 	}
 }

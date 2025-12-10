@@ -373,8 +373,8 @@ static void mqtt_publish_heartbeat(void)
 	cbor_encode_text_stringz(&map_encoder, "lock_timeout_ms");
 	cbor_encode_int(&map_encoder, config.lock_timeout_ms);
 
-	cbor_encode_text_stringz(&map_encoder, "user_pub_key");
-	cbor_encode_text_stringz(&map_encoder, config.user_pub_key);
+	cbor_encode_text_stringz(&map_encoder, "user_id");
+	cbor_encode_text_stringz(&map_encoder, config.user_id);
 
 	cbor_encoder_close_container(&encoder, &map_encoder);
 
