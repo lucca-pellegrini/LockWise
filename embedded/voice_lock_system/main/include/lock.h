@@ -1,6 +1,7 @@
 /* Lock Control Header */
 #pragma once
 
+#include <stdint.h>
 #ifndef LOCK_H
 #define LOCK_H
 
@@ -10,6 +11,12 @@
 
 /* Lock states */
 typedef enum { LOCK_STATE_LOCKED, LOCK_STATE_UNLOCKED, LOCK_STATE_AUTHENTICATING } lock_state_t;
+
+/* Blink parameters */
+typedef struct {
+    uint16_t period_ms;
+    uint16_t on_time_ms;
+} blink_params_t;
 
 /* Function prototypes */
 void lock_init(void);

@@ -206,9 +206,6 @@ void app_main(void)
 	// Initialize lock mutex and lock door
 	lock_init();
 
-	// Start setup blink
-	xTaskCreate(blink, "setup_blink", 1024, (void *)200, 1, &setup_blink_task);
-
 	// Configure UART for serial input
 	uart_config_t uart_config = {
 		.baud_rate = 115200,
@@ -250,13 +247,24 @@ void app_main(void)
 		ESP_LOGI(TAG, "Device is in pairing mode, starting AP");
 		// Immediately reset pairing mode so we don't get stuck
 		update_config("pairing_mode", "0");
+
+		// Start pairing blink (1000ms period, 10ms on)
+		static blink_params_t pairing_blink_params = { 1000, 10 };
+		xTaskCreate(blink, "pairing_blink", 1024, &pairing_blink_params, 1, NULL);
+
 		// Initialize WiFi in AP mode
 		wifi_init_ap();
+
 		// Start pairing server
 		start_pairing_server();
+
 		// Should not reach here
 		for (;;)
 			vTaskDelay(pdMS_TO_TICKS(1000));
+	} else {
+		// Start setup blink (400ms period, 200ms on)
+		static blink_params_t setup_blink_params = { 400, 200 };
+		xTaskCreate(blink, "setup_blink", 1024, &setup_blink_params, 1, &setup_blink_task);
 	}
 
 	// Start serial command task early to allow config updates before wifi connects

@@ -8,6 +8,7 @@
 #include "freertos/timers.h"
 #include "lock.h"
 #include "mqtt.h"
+#include <stdint.h>
 
 static const char *TAG = "LOCKWISE:LOCK";
 
@@ -42,12 +43,16 @@ static void lock_timeout_callback(TimerHandle_t xTimer)
 /* Blink Task */
 void blink(void *param)
 {
-	int delay_ms = (int)param;
+	blink_params_t *blink_params = (blink_params_t *)param;
+	uint16_t period_ms = blink_params->period_ms;
+	uint16_t on_time_ms = blink_params->on_time_ms;
+	uint16_t off_time_ms = period_ms - on_time_ms;
+
 	for (;;) {
 		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
-		vTaskDelay(pdMS_TO_TICKS(delay_ms));
+		vTaskDelay(pdMS_TO_TICKS(on_time_ms));
 		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
-		vTaskDelay(pdMS_TO_TICKS(delay_ms));
+		vTaskDelay(pdMS_TO_TICKS(off_time_ms));
 	}
 }
 
