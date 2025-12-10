@@ -260,8 +260,10 @@ static void handle_pairing_client(int client_sock)
 			update_config("user_id", user_id);
 			// pairing_mode is already set to 0 at the start of pairing mode
 
-			// Send success response (204 No Content)
-			const char *response = "HTTP/1.1 204 No Content\r\n\r\n";
+			// Send success response with device UUID
+			char response[256];
+			snprintf(response, sizeof(response),
+				"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n%s\n", config.device_id);
 			send(client_sock, response, strlen(response), 0);
 
 			ESP_LOGI(TAG, "Configuration stored: user_id=%s, ssid=%s, rebooting...", user_id, wifi_ssid);

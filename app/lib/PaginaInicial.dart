@@ -445,6 +445,8 @@ class _InicialState extends State<Inicial> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            bool isPairing = false;
+
             return Dialog(
               backgroundColor: Colors.transparent,
               child: _GlassDialog(
@@ -675,98 +677,131 @@ class _InicialState extends State<Inicial> {
                       child: Padding(
                         padding: EdgeInsets.only(bottom: 10),
 
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _GlassDialogButton(
-                              text: 'Cancelar',
-                              onPressed: () => Navigator.of(context).pop(),
-                              color: Colors.red,
-                            ),
-                            SizedBox(width: 10),
+                            if (isPairing) ...[
+                              CircularProgressIndicator(color: Colors.white),
+                              SizedBox(height: 10),
+                            ],
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _GlassDialogButton(
+                                  text: 'Cancelar',
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  color: Colors.red,
+                                ),
+                                SizedBox(width: 10),
 
-                            _GlassDialogButton(
-                              text: 'Parear Dispositivo',
-                              onPressed: () async {
-                                if (nomeController.text.isNotEmpty &&
-                                    selectedWifiNetwork != null &&
-                                    wifiPassword.isNotEmpty) {
-                                  try {
-                                    // First, send configuration to device
-                                    String configData =
-                                        '${widget.usuarioId}\n$selectedWifiNetwork\n$wifiPassword';
+                                _GlassDialogButton(
+                                  text: isPairing
+                                      ? 'Pareando...'
+                                      : 'Parear Dispositivo',
+                                  onPressed: isPairing
+                                      ? () {}
+                                      : () async {
+                                          if (nomeController.text.isNotEmpty &&
+                                              selectedWifiNetwork != null &&
+                                              wifiPassword.isNotEmpty) {
+                                            setStateDialog(
+                                              () => isPairing = true,
+                                            );
+                                            try {
+                                              // First, send configuration to device
+                                              String configData =
+                                                  '${widget.usuarioId}\n$selectedWifiNetwork\n$wifiPassword';
 
-                                    var response = await http.post(
-                                      Uri.parse('http://192.168.4.1/configure'),
-                                      headers: {'Content-Type': 'text/plain'},
-                                      body: configData,
-                                    );
+                                              var response = await http.post(
+                                                Uri.parse(
+                                                  'http://192.168.4.1/configure',
+                                                ),
+                                                headers: {
+                                                  'Content-Type': 'text/plain',
+                                                },
+                                                body: configData,
+                                              );
 
-                                    if (response.statusCode == 204) {
-                                      // Success! Now add to Firestore
-                                      int iconeCodePoint =
-                                          iconeSelecionado.codePoint;
+                                              if (response.statusCode == 200) {
+                                                // Parse device UUID from response body
+                                                String deviceUuid = response
+                                                    .body
+                                                    .trim();
 
-                                      final docRef = await FirebaseFirestore
-                                          .instance
-                                          .collection('fechaduras')
-                                          .add({
-                                            'usuario_id': widget.usuarioId,
-                                            'nome': nomeController.text,
-                                            'icone_code_point': iconeCodePoint,
-                                            'notificacoes': 1,
-                                            'acesso_remoto': 1,
-                                            'aberto': 1,
-                                            'updated_at':
-                                                FieldValue.serverTimestamp(),
-                                          });
+                                                // Success! Now add to Firestore with device UUID as document ID
+                                                int iconeCodePoint =
+                                                    iconeSelecionado.codePoint;
 
-                                      final fechaduraId = docRef.id;
+                                                await FirebaseFirestore.instance
+                                                    .collection('fechaduras')
+                                                    .doc(deviceUuid)
+                                                    .set({
+                                                      'usuario_id':
+                                                          widget.usuarioId,
+                                                      'nome':
+                                                          nomeController.text,
+                                                      'icone_code_point':
+                                                          iconeCodePoint,
+                                                      'notificacoes': 1,
+                                                      'acesso_remoto': 1,
+                                                      'aberto': 1,
+                                                      'updated_at':
+                                                          FieldValue.serverTimestamp(),
+                                                    });
 
-                                      await _carregarFechaduras();
-                                      Navigator.of(context).pop();
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Fechadura "${nomeController.text}" pareada com sucesso!',
-                                          ),
-                                        ),
-                                      );
-                                    } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Erro na configuração: ${response.statusCode}. Verifique se está conectado ao LockWise AP.',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    print('Erro ao parear dispositivo: $e');
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Erro ao parear dispositivo. Verifique se está conectado ao LockWise AP.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Preencha todos os campos obrigatórios.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                              color: Colors.white,
+                                                final fechaduraId = deviceUuid;
+
+                                                await _carregarFechaduras();
+                                                Navigator.of(context).pop();
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Fechadura "${nomeController.text}" pareada com sucesso!',
+                                                    ),
+                                                  ),
+                                                );
+                                              } else {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Erro na configuração: ${response.statusCode}. Verifique se está conectado ao LockWise AP.',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              print(
+                                                'Erro ao parear dispositivo: $e',
+                                              );
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Erro ao parear dispositivo. Verifique se está conectado ao LockWise AP.',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          } else {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Preencha todos os campos obrigatórios.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                  color: Colors.white,
+                                ),
+                              ],
                             ),
                           ],
                         ),
