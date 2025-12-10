@@ -257,13 +257,7 @@ void update_config(const char *key, const char *value)
 					needs_update = true;
 			}
 
-			if (!strcasecmp(key, "pairing_mode")) {
-				uint8_t pairing_val = atoi(value) ? 1 : 0;
-				esp_err_t set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
-				if (set_err == ESP_OK) {
-					config.pairing_mode = pairing_val;
-				}
-			} else if (needs_update) {
+			if (needs_update) {
 				esp_err_t set_err = ESP_OK;
 				if (!strcasecmp(key, "mqtt_hb_enable")) {
 					uint8_t enable_val = atoi(value) ? 1 : 0;
@@ -293,6 +287,12 @@ void update_config(const char *key, const char *value)
 					set_err = nvs_set_str(nvs_handle, "user_pub_key", value);
 					if (set_err == ESP_OK) {
 						strcpy(config.user_pub_key, value);
+					}
+				} else if (!strcasecmp(key, "pairing_mode")) {
+					uint8_t pairing_val = atoi(value) ? 1 : 0;
+					esp_err_t set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
+					if (set_err == ESP_OK) {
+						config.pairing_mode = pairing_val;
 					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);
