@@ -7,6 +7,7 @@
 #include "driver/i2c_master.h"
 #include "driver/uart.h"
 #include "esp_err.h"
+#include "hal/touch_sensor_types.h"
 #include <limits.h>
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
@@ -36,16 +37,15 @@ static void touch_monitor_task(void *param)
 {
 	for (;;) {
 		uint16_t touch_value;
-		touch_pad_read_filtered(TOUCH_PAD_NUM7, &touch_value);
+		touch_pad_read_filtered(TOUCH_PAD_NUM9, &touch_value);
 		if (touch_value < 300) { // Adjust threshold as needed
-			ESP_LOGI(TAG, "Vol+ touch detected, toggling pairing mode");
+			ESP_LOGI(TAG, "Set touch detected, toggling pairing mode");
 			update_config("pairing_mode", config.pairing_mode ? "0" : "1");
 			esp_restart();
 		}
 		vTaskDelay(pdMS_TO_TICKS(100));
 	}
 }
-
 void app_main(void)
 {
 	// Set log level
@@ -103,10 +103,10 @@ void app_main(void)
 	// Load configuration
 	load_config_from_nvs();
 
-	// Initialize touch pad for Vol+ button (TOUCH_PAD_NUM7, GPIO27)
+	// Initialize touch pad for Set button (TOUCH_PAD_NUM9, GPIO32)
 	touch_pad_init();
 	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-	touch_pad_config(TOUCH_PAD_NUM7, 0);
+	touch_pad_config(TOUCH_PAD_NUM9, 0);
 	touch_pad_filter_start(10);
 	xTaskCreate(touch_monitor_task, "touch_monitor", 2048, NULL, 5, NULL);
 
