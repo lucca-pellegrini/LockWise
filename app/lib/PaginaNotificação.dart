@@ -75,9 +75,15 @@ class _NotificacaoState extends State<Notificacao>
       final deviceIds = devices.map((d) => d[0] as String).toList();
       if (deviceIds.isEmpty) return;
 
-      // Fetch logs for each device
+      // Filter to devices with notifications enabled
+      final enabledDeviceIds = deviceIds
+          .where((id) => deviceNames.containsKey(id))
+          .toList();
+      if (enabledDeviceIds.isEmpty) return;
+
+      // Fetch logs for each enabled device
       List<Map<String, dynamic>> allLogs = [];
-      for (final deviceId in deviceIds) {
+      for (final deviceId in enabledDeviceIds) {
         final logsResponse = await http.get(
           Uri.parse('$backendUrl/logs/$deviceId'),
           headers: {'Authorization': 'Bearer $backendToken'},
@@ -173,7 +179,7 @@ class _NotificacaoState extends State<Notificacao>
       final devices = jsonDecode(devicesResponse.body) as List;
       final deviceIds = devices.map((d) => d[0] as String).toList();
 
-      // Fetch device names from Firestore
+      // Fetch device names and notifications from Firestore
       final usuario = await LocalService.getUsuarioLogado();
       if (usuario != null) {
         final userId = usuario['id'] as String;
@@ -183,14 +189,23 @@ class _NotificacaoState extends State<Notificacao>
             .collection('devices')
             .get();
         final deviceDocs = querySnapshot.docs;
-        deviceNames = {
-          for (var doc in deviceDocs) doc.id: doc.data()['nome'] as String,
-        };
+        deviceNames = {};
+        for (var doc in deviceDocs) {
+          final data = doc.data();
+          if (data['notificacoes'] == 1) {
+            deviceNames[doc.id] = data['nome'] as String;
+          }
+        }
       }
 
-      // Fetch logs for each device
+      // Filter to devices with notifications enabled
+      final enabledDeviceIds = deviceIds
+          .where((id) => deviceNames.containsKey(id))
+          .toList();
+
+      // Fetch logs for each enabled device
       List<Map<String, dynamic>> allLogs = [];
-      for (final deviceId in deviceIds) {
+      for (final deviceId in enabledDeviceIds) {
         final logsResponse = await http.get(
           Uri.parse('$backendUrl/logs/$deviceId'),
           headers: {'Authorization': 'Bearer $backendToken'},
