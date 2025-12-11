@@ -33,6 +33,27 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   Timer? _pollingTimer;
   bool _isAppInForeground = true;
 
+  String translateReason(String reason) {
+    switch (reason) {
+      case 'BUTTON':
+        return 'Botão físico';
+      case 'TIMEOUT':
+        return 'Tempo esgotado';
+      case 'MQTT':
+        return 'Remoto';
+      case 'VOICE':
+        return 'Voz';
+      case 'REBOOT':
+        return 'Reinicialização';
+      case 'LOCKDOWN':
+        return 'Bloqueio';
+      case 'SERIAL':
+        return 'Depuração por UART';
+      default:
+        return reason;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -95,7 +116,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
           final user = log[6] ?? log[5] ?? 'Sistema';
           final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-          final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+          final reason = translateReason(log[4]);
           return {
             'data_hora': timestamp,
             'usuario': user,
@@ -159,7 +180,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
             final user = log[6] ?? log[5] ?? 'Sistema';
             final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            final reason = translateReason(log[4]);
             return {
               'data_hora': timestamp,
               'usuario': user,

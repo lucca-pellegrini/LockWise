@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
-import 'models/LocalService.dart';
 import 'main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
@@ -23,6 +22,28 @@ class _NotificacaoState extends State<Notificacao>
   bool _isLoading = true;
   Timer? _pollingTimer;
   bool _isAppInForeground = true;
+  Map<String, String> deviceNames = {};
+
+  String translateReason(String reason) {
+    switch (reason) {
+      case 'BUTTON':
+        return 'Botão físico';
+      case 'TIMEOUT':
+        return 'Tempo esgotado';
+      case 'MQTT':
+        return 'Remoto';
+      case 'VOICE':
+        return 'Voz';
+      case 'REBOOT':
+        return 'Reinicialização';
+      case 'LOCKDOWN':
+        return 'Bloqueio';
+      case 'SERIAL':
+        return 'Depuração por UART';
+      default:
+        return reason;
+    }
+  }
 
   @override
   void initState() {
@@ -67,10 +88,10 @@ class _NotificacaoState extends State<Notificacao>
             final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
             final user = log[6] ?? log[5] ?? 'Sistema';
             final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            final reason = translateReason(log[4]);
             return {
               'data_hora': timestamp,
-              'fechadura_nome': deviceId, // TODO: get name from devices
+              'fechadura_nome': deviceNames[deviceId] ?? deviceId,
               'usuario': user,
               'acao': action,
               'reason': reason,
@@ -152,6 +173,21 @@ class _NotificacaoState extends State<Notificacao>
       final devices = jsonDecode(devicesResponse.body) as List;
       final deviceIds = devices.map((d) => d[0] as String).toList();
 
+      // Fetch device names from Firestore
+      final usuario = await LocalService.getUsuarioLogado();
+      if (usuario != null) {
+        final userId = usuario['id'] as String;
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('fechaduras')
+            .doc(userId)
+            .collection('devices')
+            .get();
+        final deviceDocs = querySnapshot.docs;
+        deviceNames = {
+          for (var doc in deviceDocs) doc.id: doc.data()['nome'] as String,
+        };
+      }
+
       // Fetch logs for each device
       List<Map<String, dynamic>> allLogs = [];
       for (final deviceId in deviceIds) {
@@ -165,10 +201,10 @@ class _NotificacaoState extends State<Notificacao>
             final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
             final user = log[6] ?? log[5] ?? 'Sistema';
             final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            final reason = translateReason(log[4]);
             return {
               'data_hora': timestamp,
-              'fechadura_nome': deviceId, // TODO: get name from devices
+              'fechadura_nome': deviceNames[deviceId] ?? deviceId,
               'usuario': user,
               'acao': action,
               'reason': reason,
