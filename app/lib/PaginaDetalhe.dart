@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+
+const String backendUrl = 'http://192.168.0.75:12223';
 
 class LockDetails extends StatefulWidget {
   final String fechaduraId;
@@ -81,6 +86,29 @@ class _LockDetailsState extends State<LockDetails> {
       final novoEstado = acao == 'Abrir' ? 1 : 0;
 
       final userId = usuario?['id'] as String;
+      final backendToken = await LocalService.getBackendToken();
+
+      if (backendToken == null) {
+        throw Exception('No backend token');
+      }
+
+      // Call backend for control
+      final command = acao == 'Abrir' ? 'UNLOCK' : 'LOCK';
+      final url = '$backendUrl/control/${widget.fechaduraId}';
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $backendToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'command': command, 'user_id': userId}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Backend error: ${response.statusCode}');
+      }
+
+      // Update Firebase for notifications and logs
       await FirebaseFirestore.instance
           .collection('fechaduras')
           .doc(userId)

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'PaginaLogin.dart';
 import 'dart:ui';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+
+const String backendUrl = 'http://192.168.0.75:12223';
 
 class Cadastro extends StatefulWidget {
   const Cadastro({super.key});
@@ -490,6 +494,30 @@ class _CadastroState extends State<Cadastro> {
                                                   'created_at':
                                                       FieldValue.serverTimestamp(),
                                                 });
+
+                                            // Register in backend
+                                            final response = await http.post(
+                                              Uri.parse('$backendUrl/register'),
+                                              headers: {
+                                                'Content-Type':
+                                                    'application/json',
+                                              },
+                                              body: jsonEncode({
+                                                'firebase_uid':
+                                                    userCredential.user!.uid,
+                                                'password':
+                                                    _senhaController.text,
+                                                'email': _emailController.text,
+                                                'phone_number':
+                                                    _telefoneController.text,
+                                                'name': nome,
+                                              }),
+                                            );
+                                            if (response.statusCode != 200) {
+                                              throw Exception(
+                                                'Backend registration failed',
+                                              );
+                                            }
 
                                             _isLoading = false;
 

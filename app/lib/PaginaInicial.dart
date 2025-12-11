@@ -12,6 +12,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:wifi_scan/wifi_scan.dart';
 
+const String backendUrl = 'http://192.168.0.75:12223';
+
 class Inicial extends StatefulWidget {
   final String usuarioId;
 
@@ -369,6 +371,26 @@ class _InicialState extends State<Inicial> {
                                       setStateDialog(
                                         () {},
                                       ); // força rebuild do dialog
+
+                                      // First, unpair in backend
+                                      final backendToken =
+                                          await LocalService.getBackendToken();
+                                      if (backendToken != null) {
+                                        final response = await http.post(
+                                          Uri.parse(
+                                            '$backendUrl/unpair/${cartao['id']}',
+                                          ),
+                                          headers: {
+                                            'Authorization':
+                                                'Bearer $backendToken',
+                                          },
+                                        );
+                                        if (response.statusCode != 200) {
+                                          throw Exception(
+                                            'Backend unpair failed',
+                                          );
+                                        }
+                                      }
 
                                       await FirebaseFirestore.instance
                                           .collection('fechaduras')
@@ -729,6 +751,25 @@ class _InicialState extends State<Inicial> {
                                                 String deviceUuid = response
                                                     .body
                                                     .trim();
+
+                                                // Show message to reconnect to home WiFi
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Configuração enviada. Reconecte-se à sua rede WiFi ou mobile.',
+                                                    ),
+                                                    duration: Duration(
+                                                      seconds: 3,
+                                                    ),
+                                                  ),
+                                                );
+
+                                                // Wait for user to reconnect
+                                                await Future.delayed(
+                                                  Duration(seconds: 10),
+                                                );
 
                                                 // Success! Now add or update in Firestore with device UUID as document ID
                                                 int iconeCodePoint =

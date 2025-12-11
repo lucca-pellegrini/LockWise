@@ -1,6 +1,8 @@
 use argon2::password_hash::PasswordHash;
-use argon2::{Argon2, PasswordVerifier};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use chrono::Utc;
+use jsonwebtoken::Algorithm;
+use reqwest::Client;
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome};
 use rocket::{Request, State, get, post, routes};
@@ -9,20 +11,83 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{ConnectOptions, PgPool};
+use std::collections::HashMap;
 use std::env;
+use std::sync::OnceLock;
 use url::Url;
 use uuid::Uuid;
+
+static PROJECT_ID: OnceLock<String> = OnceLock::new();
+
+async fn verify_firebase_token(token: &str) -> Result<String, String> {
+    let project_id = PROJECT_ID.get().ok_or("Project ID not set")?;
+    let header = jsonwebtoken::decode_header(token).map_err(|_| "Invalid token header")?;
+    let kid = header.kid.ok_or("No kid in header")?;
+    let client = Client::new();
+    let keys_text = client
+        .get("https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com")
+        .send()
+        .await
+        .map_err(|_| "Failed to fetch keys")?
+        .text()
+        .await
+        .map_err(|_| "Failed to read keys response")?;
+    let keys: HashMap<String, String> =
+        serde_json::from_str(&keys_text).map_err(|_| "Invalid keys response")?;
+    let pem = keys.get(&kid).ok_or("Key not found")?;
+    let key = jsonwebtoken::DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(|_| "Invalid key")?;
+    let mut validation = jsonwebtoken::Validation::new(Algorithm::RS256);
+    validation.set_issuer(&[format!("https://securetoken.google.com/{}", project_id)]);
+    validation.set_audience(&[project_id]);
+    let token_data = jsonwebtoken::decode::<serde_json::Value>(token, &key, &validation)
+        .map_err(|_| "Invalid token")?;
+    let uid = token_data.claims["sub"]
+        .as_str()
+        .ok_or("No sub in claims")?
+        .to_string();
+    Ok(uid)
+}
 
 #[derive(Deserialize)]
 struct StatusMessage {
     status: String,
     uptime_ms: u64,
+    timestamp: u64,
+    wifi_ssid: String,
+    backend_url: String,
+    mqtt_broker_url: String,
+    mqtt_heartbeat_enable: bool,
+    mqtt_heartbeat_interval_sec: i32,
+    audio_record_timeout_sec: i32,
+    lock_timeout_ms: i32,
+    user_id: String,
 }
 
 #[derive(Serialize)]
 struct ControlMessage {
     command: String,
     // Add other fields as needed
+}
+
+#[derive(Deserialize)]
+struct ControlRequest {
+    command: String,
+    user_id: String,
+}
+
+#[derive(Deserialize)]
+struct RegisterRequest {
+    firebase_uid: String,
+    password: String,
+    email: String,
+    phone_number: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    firebase_uid: String,
+    password: String,
 }
 
 struct AppState {
@@ -40,7 +105,8 @@ impl<'r> FromRequest<'r> for Token {
         let auth_header = req.headers().get_one("Authorization");
         match auth_header {
             Some(auth) if auth.starts_with("Bearer ") => {
-                Outcome::Success(Token(auth[7..].to_string()))
+                let token_str = &auth[7..];
+                Outcome::Success(Token(token_str.to_string()))
             }
             _ => Outcome::Error((
                 Status::Unauthorized,
@@ -65,6 +131,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(false);
     let mqtt_username = env::var("MQTT_USERNAME").ok();
     let mqtt_password = env::var("MQTT_PASSWORD").ok();
+    let port: u16 = env::var("PORT")
+        .unwrap_or("8000".to_string())
+        .parse()
+        .unwrap();
+    let firebase_project_id =
+        env::var("FIREBASE_PROJECT_ID").expect("FIREBASE_PROJECT_ID must be set");
+    let _ = PROJECT_ID.set(firebase_project_id);
 
     // Setup DB
     println!("db_url: {}", db_url);
@@ -76,12 +149,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Create devices table if not exists
-    sqlx::query("CREATE TABLE IF NOT EXISTS devices ( uuid uuid PRIMARY KEY, last_heard timestamptz NOT NULL, uptime_ms bigint NOT NULL, hashed_passphrase VARCHAR(255))")
+    sqlx::query("CREATE TABLE IF NOT EXISTS devices ( uuid uuid PRIMARY KEY, user_id VARCHAR(255), last_heard timestamptz NOT NULL, uptime_ms bigint NOT NULL, hashed_passphrase VARCHAR(255))")
     .execute(&db_pool)
     .await?;
 
-    // Add column if not exists (for migration)
+    // Create users table if not exists
+    sqlx::query("CREATE TABLE IF NOT EXISTS users ( firebase_uid VARCHAR(255) PRIMARY KEY, hashed_password VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, phone_number VARCHAR(255), name VARCHAR(255) NOT NULL, current_token VARCHAR(255), created_at timestamptz NOT NULL DEFAULT NOW(), last_login timestamptz)")
+    .execute(&db_pool)
+    .await?;
+
+    // Add columns if not exists (for migration)
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)")
+        .execute(&db_pool)
+        .await?;
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS hashed_passphrase VARCHAR(255)")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS wifi_ssid VARCHAR(255)")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS backend_url VARCHAR(255)")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_broker_url VARCHAR(255)")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_heartbeat_enable BOOLEAN")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS mqtt_heartbeat_interval_sec INTEGER")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS audio_record_timeout_sec INTEGER")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS lock_timeout_ms INTEGER")
         .execute(&db_pool)
         .await?;
 
@@ -115,9 +217,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Spawn Rocket HTTP server
     tokio::spawn(async move {
         rocket::build()
+            .configure(
+                rocket::Config::figment()
+                    .merge(("port", port))
+                    .merge(("address", "0.0.0.0")),
+            )
             .manage(db_pool)
             .manage(mqtt_client)
-            .mount("/", routes![health, get_devices, control_device])
+            .mount(
+                "/",
+                routes![
+                    health,
+                    get_devices,
+                    register_user,
+                    login_user,
+                    logout_user,
+                    control_device,
+                    unpair_device,
+                    register_device
+                ],
+            )
             .launch()
             .await
             .unwrap();
@@ -139,14 +258,22 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                         if let Ok(msg) = serde_cbor::from_slice::<StatusMessage>(&publish.payload) {
                             let now = Utc::now();
                             let _ = sqlx::query(
-                                 "INSERT INTO devices (uuid, last_heard, uptime_ms, hashed_passphrase) VALUES ($1, $2, $3, NULL)
-                                  ON CONFLICT (uuid) DO UPDATE SET last_heard = $2, uptime_ms = $3"
-                             )
-                             .bind(uuid)
-                             .bind(now)
-                             .bind(msg.uptime_ms as i64)
-                             .execute(db_pool)
-                             .await;
+                                  "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL)
+                                   ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11"
+                              )
+                              .bind(uuid)
+                              .bind(&msg.user_id)
+                              .bind(now)
+                              .bind(msg.uptime_ms as i64)
+                              .bind(&msg.wifi_ssid)
+                              .bind(&msg.backend_url)
+                              .bind(&msg.mqtt_broker_url)
+                              .bind(msg.mqtt_heartbeat_enable)
+                              .bind(msg.mqtt_heartbeat_interval_sec)
+                              .bind(msg.audio_record_timeout_sec)
+                              .bind(msg.lock_timeout_ms)
+                              .execute(db_pool)
+                              .await;
                         }
                     }
                 }
@@ -178,47 +305,214 @@ fn health() -> &'static str {
 
 #[get("/devices")]
 async fn get_devices(db_pool: &State<PgPool>) -> Result<String, Status> {
-    let devices: Vec<(Uuid, String, i64)> =
-        sqlx::query_as("SELECT uuid, last_heard, uptime_ms FROM devices")
+    let devices: Vec<(Uuid, Option<String>, String, i64)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms FROM devices")
             .fetch_all(&**db_pool)
             .await
             .map_err(|_| Status::InternalServerError)?;
     Ok(serde_json::to_string(&devices).unwrap())
 }
 
-#[post("/control/<uuid>", data = "<command>")]
+#[derive(Deserialize)]
+struct RegisterDeviceRequest {
+    device_id: String,
+    user_key: String,
+    user_id: String,
+}
+
+#[post("/register", data = "<request>")]
+async fn register_user(
+    request: rocket::serde::json::Json<RegisterRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Hash the password
+    let salt =
+        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let argon2 = Argon2::default();
+    let hashed_password = argon2
+        .hash_password(request.password.as_bytes(), &salt)
+        .map_err(|_| Status::InternalServerError)?
+        .to_string();
+
+    // Insert user
+    sqlx::query(
+        "INSERT INTO users (firebase_uid, hashed_password, email, phone_number, name, created_at) VALUES ($1, $2, $3, $4, $5, NOW())"
+    )
+    .bind(&request.firebase_uid)
+    .bind(&hashed_password)
+    .bind(&request.email)
+    .bind(&request.phone_number)
+    .bind(&request.name)
+    .execute(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
+#[post("/login", data = "<request>")]
+async fn login_user(
+    request: rocket::serde::json::Json<LoginRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<String, Status> {
+    // Fetch user
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT hashed_password FROM users WHERE firebase_uid = $1")
+            .bind(&request.firebase_uid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    if let Some((hashed_password,)) = row {
+        let parsed_hash = PasswordHash::new(&hashed_password);
+        if let Ok(hash) = parsed_hash {
+            let argon2 = Argon2::default();
+            if argon2
+                .verify_password(request.password.as_bytes(), &hash)
+                .is_ok()
+            {
+                // Generate token
+                let token = Uuid::new_v4().to_string();
+                // Invalidate old token and set new
+                sqlx::query("UPDATE users SET current_token = $1, last_login = NOW() WHERE firebase_uid = $2")
+                    .bind(&token)
+                    .bind(&request.firebase_uid)
+                    .execute(&**db_pool)
+                    .await
+                    .map_err(|_| Status::InternalServerError)?;
+                return Ok(token);
+            }
+        }
+    }
+    Err(Status::Unauthorized)
+}
+
+#[post("/logout")]
+async fn logout_user(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
+    sqlx::query("UPDATE users SET current_token = NULL WHERE firebase_uid = $1")
+        .bind(token.0)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+    Ok(())
+}
+
+#[post("/register_device", data = "<request>")]
+async fn register_device(
+    request: rocket::serde::json::Json<RegisterDeviceRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    let device_uuid = Uuid::parse_str(&request.device_id).map_err(|_| Status::BadRequest)?;
+
+    // Hash the user key
+    let salt =
+        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let argon2 = Argon2::default();
+    let hashed_key = argon2
+        .hash_password(request.user_key.as_bytes(), &salt)
+        .map_err(|_| Status::InternalServerError)?
+        .to_string();
+
+    // Insert or update device
+    sqlx::query(
+        "INSERT INTO devices (uuid, user_id, hashed_passphrase, last_heard, uptime_ms) VALUES ($1, $2, $3, NOW(), 0)
+         ON CONFLICT (uuid) DO UPDATE SET user_id = $2, hashed_passphrase = $3, last_heard = NOW()"
+    )
+    .bind(device_uuid)
+    .bind(&request.user_id)
+    .bind(&hashed_key)
+    .execute(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
+#[post("/control/<uuid>", data = "<request>")]
 async fn control_device(
     token: Token,
     uuid: &str,
-    command: String,
+    request: rocket::serde::json::Json<ControlRequest>,
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
 ) -> Result<(), Status> {
     let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
 
-    // Fetch hashed passphrase for this uuid
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check Firebase UID matches request user_id
+    if firebase_uid != request.user_id {
+        return Err(Status::Unauthorized);
+    }
+
+    // Fetch user_id for this uuid to ensure the user owns the device
     let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT hashed_passphrase FROM devices WHERE uuid = $1")
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
             .map_err(|_| Status::InternalServerError)?;
-    if let Some((Some(hashed),)) = row {
-        let parsed_hash = PasswordHash::new(&hashed);
-        if let Ok(hash) = parsed_hash {
-            let argon2 = Argon2::default();
-            if argon2.verify_password(token.0.as_bytes(), &hash).is_err() {
-                return Err(Status::Unauthorized);
-            }
-        } else {
+    if let Some((Some(db_user_id),)) = row {
+        if request.user_id != db_user_id {
             return Err(Status::Unauthorized);
         }
     } else {
-        return Err(Status::Unauthorized); // No hash set or device not found
+        return Err(Status::Unauthorized); // Device not found
     }
 
-    publish_control_message(&**mqtt_client, uuid, command)
+    publish_control_message(&**mqtt_client, uuid, request.command.clone())
         .await
         .map_err(|_| Status::InternalServerError)?;
+    Ok(())
+}
+
+#[post("/unpair/<uuid>")]
+async fn unpair_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<(), Status> {
+    let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check that the device belongs to this user
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((Some(db_user_id),)) = row {
+        if firebase_uid != db_user_id {
+            return Err(Status::Unauthorized);
+        }
+    } else {
+        return Err(Status::Unauthorized); // Device not found
+    }
+
+    // Unpair: set user_id to NULL
+    sqlx::query("UPDATE devices SET user_id = NULL WHERE uuid = $1")
+        .bind(uuid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
     Ok(())
 }
