@@ -132,7 +132,8 @@ void load_config_from_nvs(void)
 	int32_t interval_val;
 	if (nvs_available && nvs_get_i32(nvs_handle, "hb_interval", &interval_val) == ESP_OK) {
 		config.mqtt_heartbeat_interval_sec = interval_val;
-		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_interval_sec from NVS:\033[1m %d", config.mqtt_heartbeat_interval_sec);
+		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_interval_sec from NVS:\033[1m %d",
+			 config.mqtt_heartbeat_interval_sec);
 	} else {
 		config.mqtt_heartbeat_interval_sec = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC;
 		if (nvs_available) {

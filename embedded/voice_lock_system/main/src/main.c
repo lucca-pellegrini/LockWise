@@ -51,10 +51,10 @@ static void touch_monitor_task(void *param)
 		touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
 		if (touch_value && touch_value < 750) {
 			ESP_LOGI(TAG, "Play touch detected, toggling door");
-			unlock_door();
+			unlock_door(DOOR_REASON_BUTTON);
 			while (touch_value < 750)
 				touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
-			lock_door();
+			lock_door(DOOR_REASON_BUTTON);
 		}
 
 		vTaskDelay(pdMS_TO_TICKS(50));

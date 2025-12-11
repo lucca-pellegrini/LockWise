@@ -39,7 +39,7 @@ void cleanup_restart(void)
 {
 	// Publish restarting status before disconnecting
 	mqtt_publish_status("RESTARTING");
-	lock_door();
+	lock_door(DOOR_REASON_REBOOT);
 
 	cleanup();
 	ESP_LOGW(TAG, "Restarting system...");
@@ -51,7 +51,7 @@ void cleanup_restart(void)
 void cleanup_halt()
 {
 	mqtt_publish_status("LOCKING_DOWN");
-	lock_door();
+	lock_door(DOOR_REASON_LOCKDOWN);
 
 	cleanup();
 	ESP_LOGE(TAG, "LOCKING DOWN SYSTEM!");

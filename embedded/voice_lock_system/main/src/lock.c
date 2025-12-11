@@ -37,7 +37,7 @@ void lock_init(void)
 static void lock_timeout_callback(TimerHandle_t xTimer)
 {
 	ESP_LOGI(TAG, "Lock timeout reached, auto-locking door");
-	lock_door();
+	lock_door(DOOR_REASON_TIMEOUT);
 }
 
 /* Blink Task */
@@ -56,7 +56,7 @@ void blink(void *param)
 	}
 }
 
-void unlock_door(void)
+void unlock_door(door_reason_t reason)
 {
 	xSemaphoreTake(lock_ctx.mutex, portMAX_DELAY);
 
@@ -68,7 +68,7 @@ void unlock_door(void)
 		gpio_set_level(LOCK_ACTUATOR_GPIO, 1);
 
 		// Publish status to MQTT
-		mqtt_publish_status("UNLOCKED");
+		mqtt_publish_lock_event(LOCK_STATE_UNLOCKED, reason);
 	} else {
 		ESP_LOGI(TAG, "Door already unlocked, restarting auto-lock timer");
 	}
@@ -84,7 +84,7 @@ void unlock_door(void)
 	xSemaphoreGive(lock_ctx.mutex);
 }
 
-void lock_door(void)
+void lock_door(door_reason_t reason)
 {
 	xSemaphoreTake(lock_ctx.mutex, portMAX_DELAY);
 
@@ -110,13 +110,18 @@ void lock_door(void)
 		xTimerStop(lock_ctx.timer, 0);
 
 	// Publish status to MQTT
-	mqtt_publish_status("LOCKED");
+	mqtt_publish_lock_event(LOCK_STATE_LOCKED, reason);
 }
 
-void toggle_door(void)
+void toggle_door(door_reason_t reason)
 {
 	if (lock_ctx.state == LOCK_STATE_LOCKED)
-		unlock_door();
+		unlock_door(reason);
 	else
-		lock_door();
+		lock_door(reason);
+}
+
+lock_state_t get_lock_state(void)
+{
+	return lock_ctx.state;
 }

@@ -48,9 +48,9 @@ static void process_cbor_command(CborValue *value)
 			ESP_LOGI(TAG, "Command:\033[1m %s", command);
 
 			if (!strcasecmp(command, "UNLOCK")) {
-				unlock_door();
+				unlock_door(DOOR_REASON_MQTT);
 			} else if (!strcasecmp(command, "LOCK")) {
-				lock_door();
+				lock_door(DOOR_REASON_MQTT);
 
 			} else if (!strcasecmp(command, "PING")) {
 				mqtt_publish_status("PONG");
@@ -340,11 +340,104 @@ void mqtt_publish_status(const char *status)
 		ESP_LOGE(TAG, "Failed to publish status");
 }
 
+void mqtt_publish_lock_event(lock_state_t state, door_reason_t reason)
+{
+	if (!mqtt_client) {
+		ESP_LOGW(TAG, "MQTT client not initialized, cannot publish lock event");
+		return;
+	}
+
+	const char *status_str;
+	switch (state) {
+	case LOCK_STATE_LOCKED:
+		status_str = "LOCKED";
+		break;
+	case LOCK_STATE_UNLOCKED:
+		status_str = "UNLOCKED";
+		break;
+	case LOCK_STATE_AUTHENTICATING:
+		status_str = "AUTHENTICATING";
+		break;
+	default:
+		status_str = "UNKNOWN";
+		break;
+	}
+
+	const char *reason_str;
+	switch (reason) {
+	case DOOR_REASON_BUTTON:
+		reason_str = "BUTTON";
+		break;
+	case DOOR_REASON_TIMEOUT:
+		reason_str = "TIMEOUT";
+		break;
+	case DOOR_REASON_MQTT:
+		reason_str = "MQTT";
+		break;
+	case DOOR_REASON_VOICE:
+		reason_str = "VOICE";
+		break;
+	case DOOR_REASON_REBOOT:
+		reason_str = "REBOOT";
+		break;
+	case DOOR_REASON_LOCKDOWN:
+		reason_str = "LOCKDOWN";
+		break;
+	case DOOR_REASON_SERIAL:
+		reason_str = "SERIAL";
+		break;
+	default:
+		reason_str = "UNKNOWN";
+		break;
+	}
+
+	char topic[96];
+	snprintf(topic, sizeof(topic), "lockwise/%s/status", config.device_id);
+
+	uint8_t cbor_buffer[256];
+	CborEncoder encoder, map_encoder;
+	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
+	cbor_encoder_create_map(&encoder, &map_encoder, 4);
+	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, status_str);
+	cbor_encode_text_stringz(&map_encoder, "reason");
+	cbor_encode_text_stringz(&map_encoder, reason_str);
+	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
+	cbor_encode_uint(&map_encoder, (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS);
+	cbor_encode_text_stringz(&map_encoder, "timestamp");
+	cbor_encode_uint(&map_encoder, (uint64_t)time(NULL));
+	cbor_encoder_close_container(&encoder, &map_encoder);
+	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
+
+	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
+	if (msg_id >= 0)
+		ESP_LOGI(TAG, "Published CBOR lock event to %s:\033[1m %s (reason: %s, msg_id=%d)", topic, status_str,
+			 reason_str, msg_id);
+	else
+		ESP_LOGE(TAG, "Failed to publish lock event");
+}
+
 static void mqtt_publish_heartbeat(void)
 {
 	if (!mqtt_client) {
 		ESP_LOGW(TAG, "MQTT client not initialized, cannot publish heartbeat");
 		return;
+	}
+
+	const char *lock_state_str;
+	switch (get_lock_state()) {
+	case LOCK_STATE_LOCKED:
+		lock_state_str = "LOCKED";
+		break;
+	case LOCK_STATE_UNLOCKED:
+		lock_state_str = "UNLOCKED";
+		break;
+	case LOCK_STATE_AUTHENTICATING:
+		lock_state_str = "AUTHENTICATING";
+		break;
+	default:
+		lock_state_str = "UNKNOWN";
+		break;
 	}
 
 	char topic[96];
@@ -353,7 +446,7 @@ static void mqtt_publish_heartbeat(void)
 	uint8_t cbor_buffer[512];
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
-	cbor_encoder_create_map(&encoder, &map_encoder, 11);
+	cbor_encoder_create_map(&encoder, &map_encoder, 12);
 
 	cbor_encode_text_stringz(&map_encoder, "status");
 	cbor_encode_text_stringz(&map_encoder, "HEARTBEAT");
@@ -387,6 +480,9 @@ static void mqtt_publish_heartbeat(void)
 
 	cbor_encode_text_stringz(&map_encoder, "user_id");
 	cbor_encode_text_stringz(&map_encoder, config.user_id);
+
+	cbor_encode_text_stringz(&map_encoder, "lock_state");
+	cbor_encode_text_stringz(&map_encoder, lock_state_str);
 
 	cbor_encoder_close_container(&encoder, &map_encoder);
 

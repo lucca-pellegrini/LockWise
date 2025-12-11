@@ -55,9 +55,9 @@ static void run_command(char buffer[256])
 			ESP_LOGW(TAG, "Invalid update_config format");
 		}
 	} else if (strcasecmp(buffer, "unlock") == 0) {
-		unlock_door();
+		unlock_door(DOOR_REASON_SERIAL);
 	} else if (strcasecmp(buffer, "lock") == 0) {
-		lock_door();
+		lock_door(DOOR_REASON_SERIAL);
 	} else if (strcasecmp(buffer, "record") == 0) {
 		audio_stream_send_cmd(AUDIO_STREAM_START);
 	} else if (strcasecmp(buffer, "stop") == 0) {
