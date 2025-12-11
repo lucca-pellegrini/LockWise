@@ -24,28 +24,43 @@
 #include "mqtt.h"
 #include "nvs_flash.h"
 #include "serial.h"
+#include "system_utils.h"
 #include "wifi.h"
 #include <cJSON.h>
 #include <string.h>
 
-static const char *TAG = "LOCKWISE:MAIN";
+static const char *TAG = "\033[1mLOCKWISE:\033[0m\033[1mMAIN";
 
 static i2c_master_bus_handle_t g_i2c_handle;
 static TaskHandle_t setup_blink_task = NULL;
+TaskHandle_t idle_blink_task = NULL; // Not static because `audio_stream.c` needs it
+TaskHandle_t heartbeat_task = NULL;
 
 static void touch_monitor_task(void *param)
 {
 	for (;;) {
 		uint16_t touch_value;
 		touch_pad_read_filtered(TOUCH_PAD_NUM9, &touch_value);
-		if (touch_value < 300) { // Adjust threshold as needed
+		if (touch_value && touch_value < 750) { // Adjust threshold as needed
 			ESP_LOGI(TAG, "Set touch detected, toggling pairing mode");
 			update_config("pairing_mode", config.pairing_mode ? "0" : "1");
-			esp_restart();
+			while (touch_value < 750)
+				touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
+			cleanup_restart();
 		}
-		vTaskDelay(pdMS_TO_TICKS(100));
+		touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
+		if (touch_value && touch_value < 750) {
+			ESP_LOGI(TAG, "Play touch detected, toggling door");
+			unlock_door();
+			while (touch_value < 750)
+				touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
+			lock_door();
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(50));
 	}
 }
+
 void app_main(void)
 {
 	// Set log level
@@ -67,12 +82,11 @@ void app_main(void)
 	// Initialize lock mutex and lock door
 	lock_init();
 
-	// Start setup blink (400ms period, 200ms on)
-	static blink_params_t setup_blink_params = { 400, 200 };
-	xTaskCreate(blink, "setup_blink", 1024, &setup_blink_params, 1, &setup_blink_task);
+	// Start setup blink
+	xTaskCreate(blink, "setup_blink", 1024, &(blink_params_t){ 400, 200 }, 1, &setup_blink_task);
 
 	// Configure UART for serial input
-	uart_config_t uart_config = {
+	const uart_config_t uart_config = {
 		.baud_rate = 115200,
 		.data_bits = UART_DATA_8_BITS,
 		.parity = UART_PARITY_DISABLE,
@@ -83,7 +97,7 @@ void app_main(void)
 	uart_param_config(UART_NUM_0, &uart_config);
 	uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
 
-	ESP_LOGI(TAG, "=== Voice-Controlled Lock System ===");
+	puts("\n\n\033[3m\033[1m\033[96m=================   LockWise: Voice-Controlled Lock System   ==================\033[0m");
 
 	// Initialize NVS
 	esp_err_t err = nvs_flash_init();
@@ -103,23 +117,28 @@ void app_main(void)
 	// Load configuration
 	load_config_from_nvs();
 
-	// Initialize touch pad for Set button (TOUCH_PAD_NUM9, GPIO32)
+	// Start serial command task early to allow config updates before wifi connects
+	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
+
+	// Initialize touch pad for Set (TOUCH_PAD_NUM9, IO32) and Play (TOUCH_PAD_NUM8, IO33)
 	touch_pad_init();
 	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
 	touch_pad_config(TOUCH_PAD_NUM9, 0);
+	touch_pad_config(TOUCH_PAD_NUM8, 0);
 	touch_pad_filter_start(10);
-	xTaskCreate(touch_monitor_task, "touch_monitor", 2048, NULL, 5, NULL);
+	xTaskCreate(touch_monitor_task, "touch_monitor", 4096, NULL, 4, NULL);
 
 	// Check if in pairing mode
 	if (config.pairing_mode) {
 		ESP_LOGI(TAG, "Device is in pairing mode, starting AP");
+
 		// Immediately reset pairing mode so we don't get stuck
 		update_config("pairing_mode", "0");
+		puts("\n\033[3m\033[1m\033[91m---------------------------- Entering Pairing Mode ----------------------------\033[0m");
 
-		// Start pairing blink (1000ms period, 10ms on)
-		static blink_params_t pairing_blink_params = { 1000, 10 };
+		// Start pairing blink
 		vTaskDelete(setup_blink_task);
-		xTaskCreate(blink, "pairing_blink", 1024, &pairing_blink_params, 1, NULL);
+		xTaskCreate(blink, "pairing_blink", 1024, &(blink_params_t){ 1000, 10 }, 1, NULL);
 
 		// Start pairing server
 		start_pairing_server();
@@ -134,9 +153,6 @@ void app_main(void)
 	audio_board_handle_t board_handle = audio_board_init();
 	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
 
-	// Start serial command task early to allow config updates before wifi connects
-	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
-
 	// Initialize WiFi (station mode)
 	wifi_init();
 
@@ -144,8 +160,21 @@ void app_main(void)
 	esp_sntp_config_t ntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
 	ESP_LOGI(TAG, "Initializing system clock via SNTP: %s", *ntp_config.servers);
 	esp_netif_sntp_init(&ntp_config);
+
+	// Change blink for SNTP sync wait
+	vTaskDelete(setup_blink_task);
+	xTaskCreate(blink, "setup_blink", 1024, &(blink_params_t){ 200, 100 }, 1, &setup_blink_task);
+
 	if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK)
 		ESP_LOGE(TAG, "Failed to update system time within 15s timeout");
+
+	// Stop setup blink
+	if (setup_blink_task) {
+		vTaskDelete(setup_blink_task);
+		setup_blink_task = NULL;
+		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+	}
+	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1); // Indicate that MQTT is starting
 
 	// Initialize MQTT
 	mqtt_init();
@@ -155,26 +184,17 @@ void app_main(void)
 
 	// Start MQTT heartbeat task
 	if (config.mqtt_heartbeat_enable)
-		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, NULL);
+		xTaskCreate(mqtt_heartbeat_task, "mqtt_heartbeat", 4096, NULL, 3, &heartbeat_task);
 
-	ESP_LOGI(TAG, "System initialized successfully");
-	ESP_LOGI(TAG, "Waiting for voice commands or MQTT messages...");
-
-	ESP_LOGI(TAG, "Starting I²C scan…");
+	ESP_LOGD(TAG, "Starting I²C scan…");
 	for (uint8_t addr = 1; addr < 127; ++addr)
 		if (i2c_master_probe(g_i2c_handle, addr, 100) == ESP_OK)
-			ESP_LOGI(TAG, "Found device at %02X", addr);
-	ESP_LOGI(TAG, "I²C scan complete!");
+			ESP_LOGD(TAG, "Found device at %02X", addr);
+	ESP_LOGD(TAG, "I²C scan complete!");
 
-	// Stop setup blink
-	if (setup_blink_task) {
-		vTaskDelete(setup_blink_task);
-		setup_blink_task = NULL;
-		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
-	}
+	puts("\033[3m\033[1m\033[96m--------------------------- Initialization Complete ---------------------------\033[0m\n");
 
 	// Main loop
-	for (;;) {
+	for (;;)
 		vTaskDelay(pdMS_TO_TICKS(1000));
-	}
 }

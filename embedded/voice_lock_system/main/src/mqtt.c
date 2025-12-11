@@ -2,7 +2,9 @@
 
 #include "audio_stream.h"
 #include "config.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "system_utils.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -18,7 +20,9 @@
 #include <sys/socket.h>
 #include <time.h>
 
-static const char *TAG = "LOCKWISE:MQTT";
+static const char *TAG = "\033[1mLOCKWISE:\033[35mMQTT\033[0m\033[35m";
+
+extern TaskHandle_t idle_blink_task;
 
 /* Global MQTT client handle */
 esp_mqtt_client_handle_t mqtt_client;
@@ -41,7 +45,7 @@ static void process_cbor_command(CborValue *value)
 		size_t cmd_len = sizeof(command);
 
 		if (cbor_value_copy_text_string(&cmd_val, command, &cmd_len, NULL) == CborNoError) {
-			ESP_LOGI(TAG, "Command: %s", command);
+			ESP_LOGI(TAG, "Command:\033[1m %s", command);
 
 			if (!strcasecmp(command, "UNLOCK")) {
 				unlock_door();
@@ -67,14 +71,15 @@ static void process_cbor_command(CborValue *value)
 					break;
 				}
 			} else if (!strcasecmp(command, "REBOOT")) {
-				mqtt_publish_status("RESTARTING");
-				esp_restart();
+				cleanup_restart();
+			} else if (!strcasecmp(command, "LOCKDOWN")) {
+				cleanup_halt();
 			} else if (!strcasecmp(command, "UPDATE_CONFIG")) {
 				handle_update_config_command(value);
 			} else if (!strcasecmp(command, "PAIR")) {
 				update_config("pairing_mode", "1");
 				mqtt_publish_status("ENTERING_PAIRING_MODE");
-				esp_restart();
+				cleanup_restart();
 			}
 		}
 	} else {
@@ -114,11 +119,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		char topic[96];
 		snprintf(topic, sizeof(topic), "lockwise/%s/control", config.device_id);
 		esp_mqtt_client_subscribe(mqtt_client, topic, 0);
-		ESP_LOGI(TAG, "Subscribed to topic: %s", topic);
+		ESP_LOGI(TAG, "Subscribed to topic:\033[1m %s", topic);
 
 		if (!have_already_connected) {
 			have_already_connected = true;
 			mqtt_publish_status("POWER_ON");
+			gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+
+			// Start idle blink
+			xTaskCreate(blink, "idle_blink", 1024, &(blink_params_t){ 2500, 50 }, 1, &idle_blink_task);
 		}
 
 		// Publish connected
@@ -131,7 +140,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		break;
 
 	case MQTT_EVENT_DATA:
-		ESP_LOGI(TAG, "MQTT CBOR Data received: topic=%.*s", event->topic_len, event->topic);
+		ESP_LOGI(TAG, "MQTT CBOR Data received:\033[1m topic=%.*s", event->topic_len, event->topic);
 		ESP_LOGD(TAG, "payload len=%d", event->data_len);
 
 		// Decode CBOR data
@@ -139,7 +148,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 		CborValue value;
 		CborError err = cbor_parser_init((const uint8_t *)event->data, event->data_len, 0, &parser, &value);
 		if (err != CborNoError) {
-			ESP_LOGW(TAG, "Invalid CBOR data received, error: %d, ignoring", err);
+			ESP_LOGW(TAG, "Invalid CBOR data received, error:\033[1m %d", err);
 			break;
 		}
 
@@ -155,13 +164,16 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	case MQTT_EVENT_ERROR:
 		ESP_LOGE(TAG, "MQTT Error event");
 		if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-			ESP_LOGE(TAG, "Last error code reported from esp-tls: 0x%x",
+			ESP_LOGE(TAG, "Last error code reported from esp-tls:\033[1m 0x%x",
 				 event->error_handle->esp_tls_last_esp_err);
-			ESP_LOGE(TAG, "Last tls stack error number: 0x%x", event->error_handle->esp_tls_stack_err);
-			ESP_LOGE(TAG, "Last captured errno : %d (%s)", event->error_handle->esp_transport_sock_errno,
+			ESP_LOGE(TAG, "Last tls stack error number:\033[1m 0x%x",
+				 event->error_handle->esp_tls_stack_err);
+			ESP_LOGE(TAG, "Last captured errno :\033[1m %d (%s)",
+				 event->error_handle->esp_transport_sock_errno,
 				 strerror(event->error_handle->esp_transport_sock_errno));
 		} else if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
-			ESP_LOGE(TAG, "Connection refused error: 0x%x", event->error_handle->connect_return_code);
+			ESP_LOGE(TAG, "Connection refused error:\033[1m 0x%x",
+				 event->error_handle->connect_return_code);
 		}
 		break;
 
@@ -173,14 +185,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void log_embedded_cert_info(void)
 {
 	size_t len = (size_t)(mqtt_ca_pem_end - mqtt_ca_pem_start);
-	ESP_LOGE(TAG, "Embedded cert pointer: %p len=%u", mqtt_ca_pem_start, (unsigned)len);
+	ESP_LOGE(TAG, "Embedded cert pointer:\033[1m %p len=%u", mqtt_ca_pem_start, (unsigned)len);
 	if (len > 0) {
 		// print first line (safely)
 		char first[64];
 		size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
 		memcpy(first, mqtt_ca_pem_start, n);
 		first[n] = '\0';
-		ESP_LOGE(TAG, "First bytes: '%s'", first);
+		ESP_LOGE(TAG, "First bytes:\033[1m '%s'", first);
 	} else {
 		ESP_LOGE(TAG, "No embedded certificate found (len == 0)");
 	}
@@ -190,7 +202,7 @@ void mqtt_init(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);
 	// log_embedded_cert_info();
-	ESP_LOGI(TAG, "Initializing MQTT, broker: %s", config.mqtt_broker_url);
+	ESP_LOGI(TAG, "Initializing MQTT, broker:\033[1m %s", config.mqtt_broker_url);
 
 	// Extract hostname from URL for DNS testing
 	char hostname[128] = { 0 };
@@ -214,7 +226,7 @@ void mqtt_init(void)
 			hostname[len] = '\0';
 
 			// Test DNS resolution
-			ESP_LOGI(TAG, "Testing DNS resolution for: %s", hostname);
+			ESP_LOGI(TAG, "Testing DNS resolution for:\033[1m %s", hostname);
 			struct addrinfo hints = {
 				.ai_family = AF_UNSPEC,
 				.ai_socktype = SOCK_STREAM,
@@ -222,13 +234,13 @@ void mqtt_init(void)
 			struct addrinfo *res;
 			int err = getaddrinfo(hostname, NULL, &hints, &res);
 			if (err != 0 || !res) {
-				ESP_LOGE(TAG, "DNS lookup failed for %s: %d", hostname, err);
+				ESP_LOGE(TAG, "DNS lookup failed for %s:\033[1m %d", hostname, err);
 			} else {
 				// Print resolved IP addresses
 				for (struct addrinfo *p = res; p; p = p->ai_next) {
 					if (p->ai_family == AF_INET) {
 						struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
-						ESP_LOGI(TAG, "DNS resolved to: %s", inet_ntoa(ipv4->sin_addr));
+						ESP_LOGI(TAG, "DNS resolved to:\033[1m %s", inet_ntoa(ipv4->sin_addr));
 					}
 				}
 				freeaddrinfo(res);
@@ -260,17 +272,17 @@ void mqtt_init(void)
 						ESP_LOGI(TAG, "TCP connection successful!");
 						close(sock);
 					} else {
-						ESP_LOGE(TAG, "TCP connection failed: errno=%d (%s)", errno,
+						ESP_LOGE(TAG, "TCP connection failed:\033[1m errno=%d (%s)", errno,
 							 strerror(errno));
 						close(sock);
 					}
 					freeaddrinfo(res2);
 				} else {
-					ESP_LOGE(TAG, "DNS lookup failed for connection test: %d", err);
+					ESP_LOGE(TAG, "DNS lookup failed for connection test:\033[1m %d", err);
 					close(sock);
 				}
 			} else {
-				ESP_LOGE(TAG, "Failed to create socket: errno=%d", errno);
+				ESP_LOGE(TAG, "Failed to create socket:\033[1m errno=%d", errno);
 			}
 		}
 	}
@@ -323,7 +335,7 @@ void mqtt_publish_status(const char *status)
 
 	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
 	if (msg_id >= 0)
-		ESP_LOGI(TAG, "Published CBOR status to %s: %s (msg_id=%d)", topic, status, msg_id);
+		ESP_LOGI(TAG, "Published CBOR status to %s:\033[1m %s (msg_id=%d)", topic, status, msg_id);
 	else
 		ESP_LOGE(TAG, "Failed to publish status");
 }
@@ -388,7 +400,7 @@ static void mqtt_publish_heartbeat(void)
 
 	int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char *)cbor_buffer, cbor_len, 1, 0);
 	if (msg_id >= 0)
-		ESP_LOGI(TAG, "Published heartbeat CBOR to %s (msg_id=%d)", topic, msg_id);
+		ESP_LOGD(TAG, "Published heartbeat CBOR to %s (msg_id=%d)", topic, msg_id);
 	else
 		ESP_LOGE(TAG, "Failed to publish heartbeat");
 }

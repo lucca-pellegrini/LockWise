@@ -3,6 +3,7 @@
 #include "audio_stream.h"
 #include "config.h"
 #include "driver/uart.h"
+#include "system_utils.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -13,7 +14,7 @@
 #include "serial.h"
 #include <string.h>
 
-static const char *TAG = "LOCKWISE:SERIAL";
+static const char *TAG = "\033[1mLOCKWISE:\033[36mSERIAL\033[0m\033[36m";
 
 static void run_command(char buffer[256]);
 
@@ -62,8 +63,9 @@ static void run_command(char buffer[256])
 	} else if (strcasecmp(buffer, "stop") == 0) {
 		audio_stream_send_cmd(AUDIO_STREAM_STOP);
 	} else if (strcasecmp(buffer, "reboot") == 0) {
-		mqtt_publish_status("RESTARTING");
-		esp_restart();
+		cleanup_restart();
+	} else if (strcasecmp(buffer, "lockdown") == 0) {
+		cleanup_halt();
 	} else if (strcasecmp(buffer, "flash") == 0) {
 		switch (nvs_flash_erase()) {
 		case ESP_OK:
@@ -77,9 +79,9 @@ static void run_command(char buffer[256])
 			break;
 		}
 	} else if (strcasecmp(buffer, "pair") == 0) {
-		update_config("pairing_mode", "1");
 		mqtt_publish_status("ENTERING_PAIRING_MODE");
-		esp_restart();
+		update_config("pairing_mode", "1");
+		cleanup_restart();
 	} else {
 		ESP_LOGW(TAG, "Unknown command: %s", buffer);
 	}

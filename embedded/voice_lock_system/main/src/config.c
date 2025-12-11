@@ -12,7 +12,7 @@
 #include <string.h>
 #include <strings.h>
 
-static const char *TAG = "LOCKWISE:CONFIG";
+static const char *TAG = "\033[1mLOCKWISE:\033[33mCONFIG\033[0m\033[33m";
 
 /* Configuration storage */
 config_t config;
@@ -28,10 +28,22 @@ void load_config_from_nvs(void)
 		ESP_LOGW(TAG, "NVS unavailable, using all defaults");
 	}
 
+	// Load Device ID
+	size_t required_size = sizeof(config.device_id);
+	if (nvs_available && nvs_get_str(nvs_handle, "device_id", config.device_id, &required_size) == ESP_OK) {
+		ESP_LOGI(TAG, "Loaded device_id from NVS:\033[1m %s", config.device_id);
+	} else {
+		strcpy(config.device_id, CONFIG_DEVICE_ID);
+		if (nvs_available) {
+			nvs_set_str(nvs_handle, "device_id", config.device_id);
+			ESP_LOGW(TAG, "Using provisioned device_id and saved to NVS: %s", config.device_id);
+		}
+	}
+
 	// Load WiFi SSID
-	size_t required_size = sizeof(config.wifi_ssid);
+	required_size = sizeof(config.wifi_ssid);
 	if (nvs_available && nvs_get_str(nvs_handle, "wifi_ssid", config.wifi_ssid, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded wifi_ssid from NVS: %s", config.wifi_ssid);
+		ESP_LOGI(TAG, "Loaded wifi_ssid from NVS:\033[1m %s", config.wifi_ssid);
 	} else {
 		strcpy(config.wifi_ssid, CONFIG_WIFI_SSID);
 		if (nvs_available) {
@@ -43,31 +55,19 @@ void load_config_from_nvs(void)
 	// Load WiFi Password
 	required_size = sizeof(config.wifi_password);
 	if (nvs_available && nvs_get_str(nvs_handle, "wifi_pass", config.wifi_password, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded wifi_pass from NVS: [REDACTED]");
+		ESP_LOGI(TAG, "Loaded wifi_pass from NVS:\033[1m [REDACTED]");
 	} else {
 		strcpy(config.wifi_password, CONFIG_WIFI_PASSWORD);
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "wifi_pass", config.wifi_password);
-			ESP_LOGW(TAG, "Using provisioned wifi_pass and saved to NVS: [REDACTED]");
-		}
-	}
-
-	// Load Device ID
-	required_size = sizeof(config.device_id);
-	if (nvs_available && nvs_get_str(nvs_handle, "device_id", config.device_id, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded device_id from NVS: %s", config.device_id);
-	} else {
-		strcpy(config.device_id, CONFIG_DEVICE_ID);
-		if (nvs_available) {
-			nvs_set_str(nvs_handle, "device_id", config.device_id);
-			ESP_LOGW(TAG, "Using provisioned device_id and saved to NVS: %s", config.device_id);
+			ESP_LOGW(TAG, "Using provisioned wifi_pass and saved to NVS:\033[1m [REDACTED]");
 		}
 	}
 
 	// Load Backend URL
 	required_size = sizeof(config.backend_url);
 	if (nvs_available && nvs_get_str(nvs_handle, "backend_url", config.backend_url, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded backend_url from NVS: %s", config.backend_url);
+		ESP_LOGI(TAG, "Loaded backend_url from NVS:\033[1m %s", config.backend_url);
 	} else {
 		strcpy(config.backend_url, CONFIG_BACKEND_URL);
 		if (nvs_available) {
@@ -80,19 +80,19 @@ void load_config_from_nvs(void)
 	required_size = sizeof(config.backend_bearer_token);
 	if (nvs_available &&
 	    nvs_get_str(nvs_handle, "backend_bearer", config.backend_bearer_token, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded backend_bearer_token from NVS: [REDACTED]");
+		ESP_LOGI(TAG, "Loaded backend_bearer_token from NVS:\033[1m [REDACTED]");
 	} else {
 		strcpy(config.backend_bearer_token, "");
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "backend_bearer", config.backend_bearer_token);
-			ESP_LOGW(TAG, "Using default backend_bearer_token and saved to NVS: [REDACTED]");
+			ESP_LOGW(TAG, "Using default backend_bearer_token and saved to NVS:\033[1m [REDACTED]");
 		}
 	}
 
 	// Load MQTT Broker URL
 	required_size = sizeof(config.mqtt_broker_url);
 	if (nvs_available && nvs_get_str(nvs_handle, "mqtt_broker", config.mqtt_broker_url, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded mqtt_broker_url from NVS: %s", config.mqtt_broker_url);
+		ESP_LOGI(TAG, "Loaded mqtt_broker_url from NVS:\033[1m %s", config.mqtt_broker_url);
 	} else {
 		strcpy(config.mqtt_broker_url, CONFIG_MQTT_BROKER_URL);
 		if (nvs_available) {
@@ -105,12 +105,12 @@ void load_config_from_nvs(void)
 	required_size = sizeof(config.mqtt_broker_password);
 	if (nvs_available &&
 	    nvs_get_str(nvs_handle, "mqtt_pass", config.mqtt_broker_password, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded mqtt_broker_password from NVS: [REDACTED]");
+		ESP_LOGI(TAG, "Loaded mqtt_broker_password from NVS:\033[1m [REDACTED]");
 	} else {
 		strcpy(config.mqtt_broker_password, "");
 		if (nvs_available) {
 			nvs_set_str(nvs_handle, "mqtt_pass", config.mqtt_broker_password);
-			ESP_LOGW(TAG, "Using default mqtt_broker_password and saved to NVS: [REDACTED]");
+			ESP_LOGW(TAG, "Using default mqtt_broker_password and saved to NVS:\033[1m [REDACTED]");
 		}
 	}
 
@@ -118,7 +118,7 @@ void load_config_from_nvs(void)
 	uint8_t enable_val;
 	if (nvs_available && nvs_get_u8(nvs_handle, "mqtt_hb_enable", &enable_val) == ESP_OK) {
 		config.mqtt_heartbeat_enable = enable_val;
-		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_enable from NVS: %d", config.mqtt_heartbeat_enable);
+		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_enable from NVS:\033[1m %d", config.mqtt_heartbeat_enable);
 	} else {
 		config.mqtt_heartbeat_enable = CONFIG_MQTT_HEARTBEAT_ENABLE;
 		if (nvs_available) {
@@ -132,7 +132,7 @@ void load_config_from_nvs(void)
 	int32_t interval_val;
 	if (nvs_available && nvs_get_i32(nvs_handle, "hb_interval", &interval_val) == ESP_OK) {
 		config.mqtt_heartbeat_interval_sec = interval_val;
-		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_interval_sec from NVS: %d", config.mqtt_heartbeat_interval_sec);
+		ESP_LOGI(TAG, "Loaded mqtt_heartbeat_interval_sec from NVS:\033[1m %d", config.mqtt_heartbeat_interval_sec);
 	} else {
 		config.mqtt_heartbeat_interval_sec = CONFIG_MQTT_HEARTBEAT_INTERVAL_SEC;
 		if (nvs_available) {
@@ -146,7 +146,7 @@ void load_config_from_nvs(void)
 	int32_t timeout_val;
 	if (nvs_available && nvs_get_i32(nvs_handle, "audio_timeout", &timeout_val) == ESP_OK) {
 		config.audio_record_timeout_sec = timeout_val;
-		ESP_LOGI(TAG, "Loaded audio_record_timeout_sec from NVS: %d", config.audio_record_timeout_sec);
+		ESP_LOGI(TAG, "Loaded audio_record_timeout_sec from NVS:\033[1m %d", config.audio_record_timeout_sec);
 	} else {
 		config.audio_record_timeout_sec = CONFIG_AUDIO_RECORD_TIMEOUT_SEC;
 		if (nvs_available) {
@@ -160,7 +160,7 @@ void load_config_from_nvs(void)
 	int32_t lock_timeout_val;
 	if (nvs_available && nvs_get_i32(nvs_handle, "lock_timeout", &lock_timeout_val) == ESP_OK) {
 		config.lock_timeout_ms = lock_timeout_val;
-		ESP_LOGI(TAG, "Loaded lock_timeout_ms from NVS: %d", config.lock_timeout_ms);
+		ESP_LOGI(TAG, "Loaded lock_timeout_ms from NVS:\033[1m %d", config.lock_timeout_ms);
 	} else {
 		config.lock_timeout_ms = CONFIG_LOCK_TIMEOUT_MS;
 		if (nvs_available) {
@@ -173,7 +173,7 @@ void load_config_from_nvs(void)
 	int32_t pairing_timeout_val;
 	if (nvs_available && nvs_get_i32(nvs_handle, "pairing_timeout", &pairing_timeout_val) == ESP_OK) {
 		config.pairing_timeout_sec = pairing_timeout_val;
-		ESP_LOGI(TAG, "Loaded pairing_timeout_sec from NVS: %d", config.pairing_timeout_sec);
+		ESP_LOGI(TAG, "Loaded pairing_timeout_sec from NVS:\033[1m %d", config.pairing_timeout_sec);
 	} else {
 		config.pairing_timeout_sec = CONFIG_PAIRING_TIMEOUT_SEC;
 		if (nvs_available) {
@@ -186,7 +186,7 @@ void load_config_from_nvs(void)
 	// Load User ID
 	required_size = sizeof(config.user_id);
 	if (nvs_available && nvs_get_str(nvs_handle, "user_id", config.user_id, &required_size) == ESP_OK) {
-		ESP_LOGI(TAG, "Loaded user_id from NVS");
+		ESP_LOGI(TAG, "Loaded user_id from NVS:\033[1m %s", config.user_id);
 	} else {
 		strcpy(config.user_id, "");
 		if (nvs_available) {
@@ -199,7 +199,7 @@ void load_config_from_nvs(void)
 	uint8_t pairing_val = 0;
 	if (nvs_available && nvs_get_u8(nvs_handle, "pairing_mode", &pairing_val) == ESP_OK) {
 		config.pairing_mode = pairing_val != 0;
-		ESP_LOGI(TAG, "Loaded pairing_mode from NVS: %d", config.pairing_mode);
+		ESP_LOGI(TAG, "Loaded pairing_mode from NVS:\033[1m %d", config.pairing_mode);
 	} else {
 		config.pairing_mode = false;
 		if (nvs_available) {
@@ -212,8 +212,6 @@ void load_config_from_nvs(void)
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
 	}
-
-	ESP_LOGI(TAG, "Device ID: %s", config.device_id);
 }
 
 void update_config(const char *key, const char *value)
@@ -314,10 +312,7 @@ void update_config(const char *key, const char *value)
 					}
 				} else if (!strcasecmp(key, "pairing_mode")) {
 					uint8_t pairing_val = atoi(value) ? 1 : 0;
-					esp_err_t set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
-					if (set_err == ESP_OK) {
-						config.pairing_mode = pairing_val;
-					}
+					set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);
 					if (set_err == ESP_OK) {

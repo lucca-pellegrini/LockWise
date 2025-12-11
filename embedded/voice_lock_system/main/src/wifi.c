@@ -3,6 +3,8 @@
 #include "config.h"
 #include "esp_log.h"
 #include "esp_peripherals.h"
+#include "freertos/idf_additions.h"
+#include "system_utils.h"
 #include "lwip/sockets.h"
 #include "periph_wifi.h"
 #include "wifi.h"
@@ -25,10 +27,11 @@
 #include "tcpip_adapter.h"
 #endif
 
-static const char *TAG = "LOCKWISE:WIFI";
+static const char *TAG = "\033[1mLOCKWISE:\033[34mWIFI\033[0m\033[34m";
 
 static int pairing_sock = -1;
 static bool paired = false;
+static SemaphoreHandle_t pair_mutex;
 
 static void handle_pairing_client(int client_sock);
 static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id);
@@ -37,7 +40,7 @@ static void timeout_task(void *param);
 void wifi_init(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);
-	ESP_LOGI(TAG, "Initializing WiFi, SSID: %s", config.wifi_ssid);
+	ESP_LOGI(TAG, "Initializing WiFi, SSID:\033[1m %s", config.wifi_ssid);
 
 	esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
 	esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
@@ -56,8 +59,8 @@ void wifi_init(void)
 	esp_periph_start(set, wifi_handle);
 	esp_err_t wifi_result = periph_wifi_wait_for_connected(wifi_handle, 30000); // 30 second timeout
 	if (wifi_result != ESP_OK) {
-		ESP_LOGE(TAG, "WiFi connection failed within timeout, continuing without WiFi");
-		return;
+		ESP_LOGE(TAG, "WiFi connection failed within timeout, restarting");
+		cleanup_restart();
 	}
 
 	ESP_LOGI(TAG, "WiFi connected successfully");
@@ -67,9 +70,9 @@ void wifi_init(void)
 	if (netif) {
 		esp_netif_ip_info_t ip_info;
 		esp_netif_get_ip_info(netif, &ip_info);
-		ESP_LOGI(TAG, "IP Address: " IPSTR, IP2STR(&ip_info.ip));
-		ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&ip_info.gw));
-		ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+		ESP_LOGI(TAG, "IP Address:\033[1m " IPSTR, IP2STR(&ip_info.ip));
+		ESP_LOGI(TAG, "Gateway:\033[1m " IPSTR, IP2STR(&ip_info.gw));
+		ESP_LOGI(TAG, "Netmask:\033[1m " IPSTR, IP2STR(&ip_info.netmask));
 
 		// Set static DNS servers
 		esp_netif_dns_info_t dns_main = { .ip = { .u_addr = { .ip4 = { .addr = 0x01010101 } } } };
@@ -80,9 +83,9 @@ void wifi_init(void)
 		// Get and log DNS servers
 		esp_netif_dns_info_t dns_info;
 		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
-		ESP_LOGI(TAG, "DNS Server: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+		ESP_LOGI(TAG, "DNS Server:\033[1m " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
 		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_info);
-		ESP_LOGI(TAG, "DNS Backup: " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+		ESP_LOGI(TAG, "DNS Backup:\033[1m " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
 	}
 }
 
@@ -189,7 +192,7 @@ static void wifi_init_ap(void)
 	// Log AP IP info
 	esp_netif_ip_info_t ip_info;
 	if (esp_netif_get_ip_info(ap_netif, &ip_info) == ESP_OK) {
-		ESP_LOGI(TAG, "WiFi AP started: SSID=%s, Password=%s", ssid, ap_password);
+		ESP_LOGI(TAG, "WiFi AP started:\033[1m SSID=%s, Password=%s", ssid, ap_password);
 		ESP_LOGI(TAG, "AP IP: " IPSTR ", GW: " IPSTR ", Netmask: " IPSTR, IP2STR(&ip_info.ip),
 			 IP2STR(&ip_info.gw), IP2STR(&ip_info.netmask));
 	}
@@ -199,6 +202,8 @@ void start_pairing_server(void)
 {
 	// Initialize WiFi in AP mode
 	wifi_init_ap();
+
+	pair_mutex = xSemaphoreCreateMutex();
 
 	struct sockaddr_in server_addr;
 	pairing_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -228,7 +233,7 @@ void start_pairing_server(void)
 	ESP_LOGI(TAG, "Pairing server started on port 80");
 
 	paired = false;
-	xTaskCreate(timeout_task, "pairing_timeout", 1024, NULL, 1, NULL);
+	xTaskCreate(timeout_task, "pairing_timeout", 4096, NULL, 1, NULL);
 
 	// Accept connections in a loop
 	for (;;) {
@@ -247,9 +252,8 @@ static void handle_pairing_client(int client_sock)
 {
 	char buffer[1024];
 	int len = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
-	if (len <= 0) {
+	if (len <= 0)
 		return;
-	}
 	buffer[len] = '\0';
 
 	// Simple HTTP request parsing
@@ -261,6 +265,9 @@ static void handle_pairing_client(int client_sock)
 		parse_configure_request(buffer, wifi_ssid, wifi_pass, user_id);
 
 		if (strlen(wifi_ssid) > 0 && strlen(wifi_pass) > 0 && strlen(user_id) > 0) {
+			// Acquire mutex. Not released because we'll reboot.
+			xSemaphoreTake(pair_mutex, portMAX_DELAY);
+
 			// Store configuration
 			update_config("wifi_ssid", wifi_ssid);
 			update_config("wifi_pass", wifi_pass);
@@ -276,7 +283,7 @@ static void handle_pairing_client(int client_sock)
 			paired = true;
 			ESP_LOGI(TAG, "Configuration stored: user_id=%s, ssid=%s, rebooting...", user_id, wifi_ssid);
 			vTaskDelay(pdMS_TO_TICKS(1000));
-			esp_restart();
+			cleanup_restart();
 		} else {
 			const char *response =
 				"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nInvalid configuration\n";
@@ -293,7 +300,7 @@ static void timeout_task(void *param)
 	vTaskDelay(pdMS_TO_TICKS(config.pairing_timeout_sec * 1000));
 	if (!paired) {
 		ESP_LOGI(TAG, "Pairing timeout, rebooting");
-		esp_restart();
+		cleanup_restart();
 	}
 	vTaskDelete(NULL);
 }

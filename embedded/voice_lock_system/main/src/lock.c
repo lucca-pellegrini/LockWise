@@ -10,7 +10,7 @@
 #include "mqtt.h"
 #include <stdint.h>
 
-static const char *TAG = "LOCKWISE:LOCK";
+static const char *TAG = "\033[1mLOCKWISE:\033[93mLOCK";
 
 /* Lock context singleton */
 typedef struct {
@@ -111,4 +111,12 @@ void lock_door(void)
 
 	// Publish status to MQTT
 	mqtt_publish_status("LOCKED");
+}
+
+void toggle_door(void)
+{
+	if (lock_ctx.state == LOCK_STATE_LOCKED)
+		unlock_door();
+	else
+		lock_door();
 }

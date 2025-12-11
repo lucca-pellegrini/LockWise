@@ -21,7 +21,9 @@
 #include "sdkconfig.h"
 #include <string.h>
 
-static const char *TAG = "LOCKWISE:AUDIO";
+extern TaskHandle_t idle_blink_task;
+
+static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 
 #define AUDIO_SAMPLE_RATE 44100
 #define AUDIO_BITS 16
@@ -170,6 +172,8 @@ static void start_streaming(void)
 
 	is_streaming = true;
 	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
+	if (idle_blink_task)
+		vTaskSuspend(idle_blink_task);
 	ESP_LOGI(TAG, "Audio streaming started");
 
 	if (!stop_timer) {
@@ -205,6 +209,8 @@ static void stop_streaming(void)
 	teardown_pipeline();
 
 	is_streaming = false;
+	if (idle_blink_task)
+		vTaskResume(idle_blink_task);
 	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
 	ESP_LOGI(TAG, "Audio streaming stopped");
 }
