@@ -169,6 +169,20 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load Pairing Timeout
+	int32_t pairing_timeout_val;
+	if (nvs_available && nvs_get_i32(nvs_handle, "pairing_timeout", &pairing_timeout_val) == ESP_OK) {
+		config.pairing_timeout_sec = pairing_timeout_val;
+		ESP_LOGI(TAG, "Loaded pairing_timeout_sec from NVS: %d", config.pairing_timeout_sec);
+	} else {
+		config.pairing_timeout_sec = CONFIG_PAIRING_TIMEOUT_SEC;
+		if (nvs_available) {
+			nvs_set_i32(nvs_handle, "pairing_timeout", config.pairing_timeout_sec);
+			ESP_LOGW(TAG, "Using provisioned pairing_timeout_sec and saved to NVS: %d",
+				 config.pairing_timeout_sec);
+		}
+	}
+
 	// Load User ID
 	required_size = sizeof(config.user_id);
 	if (nvs_available && nvs_get_str(nvs_handle, "user_id", config.user_id, &required_size) == ESP_OK) {
@@ -204,12 +218,12 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, user_id, pairing_mode)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, pairing_timeout, user_id, pairing_mode)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
-	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") || !strcasecmp(key, "user_id") ||
-	    !strcasecmp(key, "pairing_mode")) {
+	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") ||
+	    !strcasecmp(key, "pairing_timeout") || !strcasecmp(key, "user_id") || !strcasecmp(key, "pairing_mode")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -248,6 +262,10 @@ void update_config(const char *key, const char *value)
 				int32_t new_val = atoi(value);
 				if (config.lock_timeout_ms != new_val)
 					needs_update = true;
+			} else if (!strcasecmp(key, "pairing_timeout")) {
+				int32_t new_val = atoi(value);
+				if (config.pairing_timeout_sec != new_val)
+					needs_update = true;
 			} else if (!strcasecmp(key, "user_id")) {
 				if (strcmp(config.user_id, value) != 0)
 					needs_update = true;
@@ -282,6 +300,12 @@ void update_config(const char *key, const char *value)
 					set_err = nvs_set_i32(nvs_handle, "lock_timeout", lock_timeout_val);
 					if (set_err == ESP_OK) {
 						config.lock_timeout_ms = lock_timeout_val;
+					}
+				} else if (!strcasecmp(key, "pairing_timeout")) {
+					int32_t pairing_timeout_val = atoi(value);
+					set_err = nvs_set_i32(nvs_handle, "pairing_timeout", pairing_timeout_val);
+					if (set_err == ESP_OK) {
+						config.pairing_timeout_sec = pairing_timeout_val;
 					}
 				} else if (!strcasecmp(key, "user_id")) {
 					set_err = nvs_set_str(nvs_handle, "user_id", value);

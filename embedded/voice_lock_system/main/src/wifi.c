@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include "esp_system.h"
 #include "esp_mac.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 #include "esp_netif.h"
@@ -26,9 +28,11 @@
 static const char *TAG = "LOCKWISE:WIFI";
 
 static int pairing_sock = -1;
+static bool paired = false;
 
 static void handle_pairing_client(int client_sock);
 static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id);
+static void timeout_task(void *param);
 
 void wifi_init(void)
 {
@@ -223,6 +227,9 @@ void start_pairing_server(void)
 
 	ESP_LOGI(TAG, "Pairing server started on port 80");
 
+	paired = false;
+	xTaskCreate(timeout_task, "pairing_timeout", 1024, NULL, 1, NULL);
+
 	// Accept connections in a loop
 	for (;;) {
 		struct sockaddr_in client_addr;
@@ -262,10 +269,11 @@ static void handle_pairing_client(int client_sock)
 
 			// Send success response with device UUID
 			char response[256];
-			snprintf(response, sizeof(response),
-				"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n%s\n", config.device_id);
+			snprintf(response, sizeof(response), "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n%s\n",
+				 config.device_id);
 			send(client_sock, response, strlen(response), 0);
 
+			paired = true;
 			ESP_LOGI(TAG, "Configuration stored: user_id=%s, ssid=%s, rebooting...", user_id, wifi_ssid);
 			vTaskDelay(pdMS_TO_TICKS(1000));
 			esp_restart();
@@ -278,6 +286,16 @@ static void handle_pairing_client(int client_sock)
 		const char *response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nNot found\n";
 		send(client_sock, response, strlen(response), 0);
 	}
+}
+
+static void timeout_task(void *param)
+{
+	vTaskDelay(pdMS_TO_TICKS(config.pairing_timeout_sec * 1000));
+	if (!paired) {
+		ESP_LOGI(TAG, "Pairing timeout, rebooting");
+		esp_restart();
+	}
+	vTaskDelete(NULL);
 }
 
 static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id)
@@ -316,18 +334,18 @@ static void parse_configure_request(const char *request, char *wifi_ssid, char *
 
 		// Store based on line number
 		switch (line_num) {
-			case 0: // user_id
-				strncpy(user_id, line, 255);
-				user_id[255] = '\0';
-				break;
-			case 1: // wifi_ssid
-				strncpy(wifi_ssid, line, 31);
-				wifi_ssid[31] = '\0';
-				break;
-			case 2: // wifi_password
-				strncpy(wifi_pass, line, 63);
-				wifi_pass[63] = '\0';
-				break;
+		case 0: // user_id
+			strncpy(user_id, line, 255);
+			user_id[255] = '\0';
+			break;
+		case 1: // wifi_ssid
+			strncpy(wifi_ssid, line, 31);
+			wifi_ssid[31] = '\0';
+			break;
+		case 2: // wifi_password
+			strncpy(wifi_pass, line, 63);
+			wifi_pass[63] = '\0';
+			break;
 		}
 		line_num++;
 	}
