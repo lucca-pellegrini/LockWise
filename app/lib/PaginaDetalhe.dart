@@ -483,7 +483,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
               const SizedBox(height: 20),
 
               Text(
-                'Logs de Acessos:',
+                'Histórico de Acessos',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -527,87 +527,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
                         child: Column(
                           children: [
-                            // CABEÇALHO FIXO
-                            Container(
-                              padding: EdgeInsets.symmetric(horizontal: 10),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Colors.white.withOpacity(0.3),
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        'Horário',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        'Conta',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        'Ação',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        'Motivo',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
                             // CORPO SCROLLÁVEL
                             Expanded(
                               child: logs.isEmpty
@@ -623,34 +542,60 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                         ),
                                       ),
                                     )
-                                  : ListView.builder(
-                                      itemCount: logs.length,
-                                      itemBuilder: (context, index) {
-                                        final log = logs[index];
-                                        final horario = _formatarHorario(
-                                          log['data_hora'] as int,
-                                        );
-
-                                        return Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            border: Border(
-                                              bottom: BorderSide(
-                                                color: Colors.white.withOpacity(
-                                                  0.1,
-                                                ),
-                                                width: 0.5,
+                                  : SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: DataTable(
+                                        columns: const [
+                                          DataColumn(
+                                            label: Text(
+                                              'Horário',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             ),
                                           ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: 3,
-                                                child: Text(
+                                          DataColumn(
+                                            label: Text(
+                                              'Conta',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          DataColumn(
+                                            label: Text(
+                                              'Ação',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          DataColumn(
+                                            label: Text(
+                                              'Motivo',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        rows: logs.map((log) {
+                                          final horario = _formatarHorario(
+                                            log['data_hora'] as int,
+                                          );
+
+                                          return DataRow(
+                                            cells: [
+                                              DataCell(
+                                                Text(
                                                   horario,
                                                   style: TextStyle(
                                                     color: Colors.white,
@@ -658,9 +603,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                                   ),
                                                 ),
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
+                                              DataCell(
+                                                Text(
                                                   log['usuario'] ?? 'N/A',
                                                   style: TextStyle(
                                                     color: Colors.white,
@@ -668,9 +612,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                                   ),
                                                 ),
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
+                                              DataCell(
+                                                Text(
                                                   log['acao'] ?? 'N/A',
                                                   style: TextStyle(
                                                     color: Colors.white,
@@ -678,9 +621,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                                   ),
                                                 ),
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
+                                              DataCell(
+                                                Text(
                                                   log['reason'] ?? 'N/A',
                                                   style: TextStyle(
                                                     color: Colors.white,
@@ -689,9 +631,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                                 ),
                                               ),
                                             ],
-                                          ),
-                                        );
-                                      },
+                                          );
+                                        }).toList(),
+                                      ),
                                     ),
                             ),
                           ],

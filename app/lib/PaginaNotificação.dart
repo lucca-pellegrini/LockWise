@@ -266,151 +266,154 @@ class _NotificacaoState extends State<Notificacao>
                           ),
                         ),
 
-                        child: DataTable(
-                          columns: const [
-                            DataColumn(
-                              label: Text(
-                                'Horário',
-                                style: TextStyle(color: Colors.white),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            columns: const [
+                              DataColumn(
+                                label: Text(
+                                  'Horário',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'Fechadura',
-                                style: TextStyle(color: Colors.white),
+                              DataColumn(
+                                label: Text(
+                                  'Fechadura',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'Conta',
-                                style: TextStyle(color: Colors.white),
+                              DataColumn(
+                                label: Text(
+                                  'Conta',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'Ação',
-                                style: TextStyle(color: Colors.white),
+                              DataColumn(
+                                label: Text(
+                                  'Ação',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'Motivo',
-                                style: TextStyle(color: Colors.white),
+                              DataColumn(
+                                label: Text(
+                                  'Motivo',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
 
-                          rows: logs.isEmpty
-                              ? [
-                                  DataRow(
-                                    cells: const [
-                                      DataCell(
-                                        Text(
-                                          'Nenhum log',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
+                            rows: logs.isEmpty
+                                ? [
+                                    DataRow(
+                                      cells: const [
+                                        DataCell(
+                                          Text(
+                                            'Nenhum log',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          'Nenhum log',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
+                                        DataCell(
+                                          Text(
+                                            'Nenhum log',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          'Nenhum log',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
+                                        DataCell(
+                                          Text(
+                                            'Nenhum log',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          'Nenhum log',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
+                                        DataCell(
+                                          Text(
+                                            'Nenhum log',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          'Nenhum log',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
+                                        DataCell(
+                                          Text(
+                                            'Nenhum log',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ]
-                              : logs.map((log) {
-                                  final dataHora =
-                                      DateTime.fromMillisecondsSinceEpoch(
-                                        log['data_hora'] as int,
-                                      );
-                                  final horario =
-                                      '${dataHora.day.toString().padLeft(2, '0')}/${dataHora.month.toString().padLeft(2, '0')} '
-                                      '${dataHora.hour.toString().padLeft(2, '0')}:${dataHora.minute.toString().padLeft(2, '0')}';
+                                      ],
+                                    ),
+                                  ]
+                                : logs.map((log) {
+                                    final dataHora =
+                                        DateTime.fromMillisecondsSinceEpoch(
+                                          log['data_hora'] as int,
+                                        );
+                                    final horario =
+                                        '${dataHora.day.toString().padLeft(2, '0')}/${dataHora.month.toString().padLeft(2, '0')} '
+                                        '${dataHora.hour.toString().padLeft(2, '0')}:${dataHora.minute.toString().padLeft(2, '0')}';
 
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(
-                                        Text(
-                                          horario,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.white,
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(
+                                          Text(
+                                            horario,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          log['fechadura_nome'] ?? 'N/A',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.white,
+                                        DataCell(
+                                          Text(
+                                            log['fechadura_nome'] ?? 'N/A',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          log['usuario'] ?? 'N/A',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.white,
+                                        DataCell(
+                                          Text(
+                                            log['usuario'] ?? 'N/A',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          log['acao'] ?? 'N/A',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.white,
+                                        DataCell(
+                                          Text(
+                                            log['acao'] ?? 'N/A',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          log['reason'] ?? 'N/A',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.white,
+                                        DataCell(
+                                          Text(
+                                            log['reason'] ?? 'N/A',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
+                                      ],
+                                    );
+                                  }).toList(),
+                          ),
                         ),
                       ),
                     ),
