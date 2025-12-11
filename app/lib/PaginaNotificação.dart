@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'models/LocalService.dart';
 import 'dart:ui';
 import 'models/LocalService.dart';
 import 'main.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
+
+const String backendUrl = 'http://192.168.0.75:12223';
 
 class Notificacao extends StatefulWidget {
   const Notificacao({super.key});
@@ -15,12 +21,79 @@ class _NotificacaoState extends State<Notificacao>
     with RouteAware, WidgetsBindingObserver {
   List<Map<String, dynamic>> logs = [];
   bool _isLoading = true;
+  Timer? _pollingTimer;
+  bool _isAppInForeground = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarLogs();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _pollLogs();
+    });
+  }
+
+  Future<void> _pollLogs() async {
+    if (!mounted || !_isAppInForeground) return;
+    try {
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) return;
+
+      // Get devices from backend
+      final devicesResponse = await http.get(
+        Uri.parse('$backendUrl/devices'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+      if (devicesResponse.statusCode != 200) return;
+      final devices = jsonDecode(devicesResponse.body) as List;
+      final deviceIds = devices.map((d) => d[0] as String).toList();
+      if (deviceIds.isEmpty) return;
+
+      // Fetch logs for each device
+      List<Map<String, dynamic>> allLogs = [];
+      for (final deviceId in deviceIds) {
+        final logsResponse = await http.get(
+          Uri.parse('$backendUrl/logs/$deviceId'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+        if (logsResponse.statusCode == 200) {
+          final logsData = jsonDecode(logsResponse.body) as List;
+          final transformedLogs = logsData.map((log) {
+            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
+            final user = log[6] ?? log[5] ?? 'Sistema';
+            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            return {
+              'data_hora': timestamp,
+              'fechadura_nome': deviceId, // TODO: get name from devices
+              'usuario': user,
+              'acao': action,
+              'reason': reason,
+            };
+          }).toList();
+          allLogs.addAll(transformedLogs);
+        }
+      }
+
+      // Sort by timestamp descending
+      allLogs.sort(
+        (a, b) => (b['data_hora'] as int).compareTo(a['data_hora'] as int),
+      );
+
+      if (allLogs.length != logs.length ||
+          !allLogs.every((log) => logs.contains(log))) {
+        setState(() {
+          logs = allLogs;
+        });
+      }
+    } catch (e) {
+      // Ignore errors
+    }
   }
 
   @override
@@ -32,6 +105,7 @@ class _NotificacaoState extends State<Notificacao>
 
   @override
   void dispose() {
+    _pollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     super.dispose();
@@ -46,6 +120,7 @@ class _NotificacaoState extends State<Notificacao>
   // Chamado quando o app volta para “resumed”
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppInForeground = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed) {
       _carregarLogs();
     }
@@ -53,33 +128,63 @@ class _NotificacaoState extends State<Notificacao>
 
   Future<void> _carregarLogs() async {
     try {
-      final user = await LocalService.getUsuarioLogado();
-      if (user == null) {
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
         setState(() {
           logs = [];
           _isLoading = false;
         });
         return;
       }
-      final usuarioId = user['id'] as String;
-      // Busca fechaduras do usuário
-      final fechadurasSnapshot = await FirebaseFirestore.instance
-          .collection('fechaduras')
-          .where('usuario_id', isEqualTo: usuarioId)
-          .get();
-      final fechaduraIds = fechadurasSnapshot.docs
-          .map((doc) => doc.id)
-          .toList();
 
-      // Busca logs das fechaduras
-      final logsSnapshot = await FirebaseFirestore.instance
-          .collection('logs_acesso')
-          .where('fechadura_id', whereIn: fechaduraIds)
-          .orderBy('data_hora', descending: true)
-          .get();
-      final result = logsSnapshot.docs.map((doc) => doc.data()).toList();
+      // Get devices from backend
+      final devicesResponse = await http.get(
+        Uri.parse('$backendUrl/devices'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+      if (devicesResponse.statusCode != 200) {
+        setState(() {
+          logs = [];
+          _isLoading = false;
+        });
+        return;
+      }
+      final devices = jsonDecode(devicesResponse.body) as List;
+      final deviceIds = devices.map((d) => d[0] as String).toList();
+
+      // Fetch logs for each device
+      List<Map<String, dynamic>> allLogs = [];
+      for (final deviceId in deviceIds) {
+        final logsResponse = await http.get(
+          Uri.parse('$backendUrl/logs/$deviceId'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+        if (logsResponse.statusCode == 200) {
+          final logsData = jsonDecode(logsResponse.body) as List;
+          final transformedLogs = logsData.map((log) {
+            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
+            final user = log[6] ?? log[5] ?? 'Sistema';
+            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            return {
+              'data_hora': timestamp,
+              'fechadura_nome': deviceId, // TODO: get name from devices
+              'usuario': user,
+              'acao': action,
+              'reason': reason,
+            };
+          }).toList();
+          allLogs.addAll(transformedLogs);
+        }
+      }
+
+      // Sort by timestamp descending
+      allLogs.sort(
+        (a, b) => (b['data_hora'] as int).compareTo(a['data_hora'] as int),
+      );
+
       setState(() {
-        logs = result;
+        logs = allLogs;
         _isLoading = false;
       });
     } catch (e) {
@@ -151,12 +256,27 @@ class _NotificacaoState extends State<Notificacao>
                                 style: TextStyle(color: Colors.white),
                               ),
                             ),
+                            DataColumn(
+                              label: Text(
+                                'Motivo',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
                           ],
 
                           rows: logs.isEmpty
                               ? [
                                   DataRow(
                                     cells: const [
+                                      DataCell(
+                                        Text(
+                                          'Nenhum log',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
                                       DataCell(
                                         Text(
                                           'Nenhum log',
@@ -237,6 +357,15 @@ class _NotificacaoState extends State<Notificacao>
                                       DataCell(
                                         Text(
                                           log['acao'] ?? 'N/A',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          log['reason'] ?? 'N/A',
                                           style: const TextStyle(
                                             fontSize: 13,
                                             color: Colors.white,

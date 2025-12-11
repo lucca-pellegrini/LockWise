@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
 import 'dart:convert';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,7 +18,7 @@ class LockDetails extends StatefulWidget {
   State<LockDetails> createState() => _LockDetailsState();
 }
 
-class _LockDetailsState extends State<LockDetails> {
+class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool notificationsEnabled = true;
   bool remoteAccessEnabled = false;
   bool administrador = true;
@@ -29,11 +30,89 @@ class _LockDetailsState extends State<LockDetails> {
   String _duracaoSelecionada = '1_semana';
   final _conviteFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();
+  Timer? _pollingTimer;
+  bool _isAppInForeground = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _carregarDadosFechadura();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _pollUpdates();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppInForeground = state == AppLifecycleState.resumed;
+  }
+
+  Future<void> _pollUpdates() async {
+    if (!mounted || !_isAppInForeground) return;
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    // Poll device state
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final deviceResponse = await http.get(
+          Uri.parse('$backendUrl/device/${widget.fechaduraId}'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+        if (deviceResponse.statusCode == 200) {
+          final deviceData = jsonDecode(deviceResponse.body);
+          final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
+          if (newIsOpen != isOpen) {
+            setState(() {
+              isOpen = newIsOpen;
+            });
+          }
+        }
+        break; // Success, exit retry loop
+      } catch (e) {
+        if (attempt == 1) {
+          // Ignore after 2 attempts
+        } else {
+          await Future.delayed(const Duration(seconds: 1)); // Wait before retry
+        }
+      }
+    }
+
+    // Poll logs
+    try {
+      final logsResponse = await http.get(
+        Uri.parse('$backendUrl/logs/${widget.fechaduraId}'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+      if (logsResponse.statusCode == 200) {
+        final logsData = jsonDecode(logsResponse.body) as List;
+        final transformedLogs = logsData.map((log) {
+          final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
+          final user = log[6] ?? log[5] ?? 'Sistema';
+          final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
+          final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+          return {
+            'data_hora': timestamp,
+            'usuario': user,
+            'acao': action,
+            'reason': reason,
+          };
+        }).toList();
+        if (transformedLogs.length != logs.length ||
+            !transformedLogs.every((log) => logs.contains(log))) {
+          setState(() {
+            logs = transformedLogs;
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
   }
 
   Future<void> _carregarDadosFechadura() async {
@@ -56,20 +135,48 @@ class _LockDetailsState extends State<LockDetails> {
       admin = doc.exists;
       // TODO: Check administrators from Firestore if needed
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('logs_acesso')
-          .where('fechadura_id', isEqualTo: widget.fechaduraId)
-          .orderBy('data_hora', descending: true)
-          .get();
-      final logsData = querySnapshot.docs.map((doc) => doc.data()).toList();
+      // Fetch lock state and logs from backend
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken != null) {
+        // Fetch device state
+        final deviceResponse = await http.get(
+          Uri.parse('$backendUrl/device/${widget.fechaduraId}'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+        if (deviceResponse.statusCode == 200) {
+          final deviceData = jsonDecode(deviceResponse.body);
+          isOpen = deviceData['lock_state'] == 'UNLOCKED';
+        }
+
+        final logsResponse = await http.get(
+          Uri.parse('$backendUrl/logs/${widget.fechaduraId}'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+        if (logsResponse.statusCode == 200) {
+          final logsData = jsonDecode(logsResponse.body) as List;
+          // Transform to map format: [id, device_id, timestamp, event_type, reason, user_id, user_name]
+          final transformedLogs = logsData.map((log) {
+            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
+            final user = log[6] ?? log[5] ?? 'Sistema';
+            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = log[4] == 'MQTT' ? 'Remoto' : log[4];
+            return {
+              'data_hora': timestamp,
+              'usuario': user,
+              'acao': action,
+              'reason': reason,
+            };
+          }).toList();
+          logs = transformedLogs;
+        }
+      }
 
       setState(() {
         fechadura = f;
-        logs = logsData;
-        administrador = admin; // Agora usa a verificação dupla
+        administrador = admin;
         notificationsEnabled = f?['notificacoes'] == 1;
         remoteAccessEnabled = f?['acesso_remoto'] == 1;
-        isOpen = f?['aberto'] == 1;
+        // isOpen is set from backend above
         _isLoading = false;
       });
     } catch (e) {
@@ -124,16 +231,9 @@ class _LockDetailsState extends State<LockDetails> {
         'tipo_acesso': 'manual', // ou 'remoto' conforme seu fluxo
       });
 
-      // Recarrega os logs para refletir na UI
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('logs_acesso')
-          .where('fechadura_id', isEqualTo: widget.fechaduraId)
-          .orderBy('data_hora', descending: true)
-          .get();
-      final logsData = querySnapshot.docs.map((doc) => doc.data()).toList();
+      // Polling will update logs and state
       setState(() {
-        logs = List<Map<String, dynamic>>.from(logsData);
-        isOpen = novoEstado == 1; // Atualiza o estado local
+        isOpen = novoEstado == 1; // Temporarily update, polling will confirm
       });
 
       // Mostra feedback para o usuário
@@ -458,7 +558,23 @@ class _LockDetailsState extends State<LockDetails> {
                                         vertical: 12,
                                       ),
                                       child: Text(
-                                        '   Ação',
+                                        'Ação',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      child: Text(
+                                        'Motivo',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 20,
@@ -534,7 +650,17 @@ class _LockDetailsState extends State<LockDetails> {
                                               Expanded(
                                                 flex: 2,
                                                 child: Text(
-                                                  '     ${log['acao'] ?? 'N/A'}',
+                                                  log['acao'] ?? 'N/A',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                flex: 2,
+                                                child: Text(
+                                                  log['reason'] ?? 'N/A',
                                                   style: TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 13,
@@ -866,6 +992,8 @@ class _LockDetailsState extends State<LockDetails> {
 
   @override
   void dispose() {
+    _pollingTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _idUsuarioController.dispose();
     super.dispose();
   }
