@@ -11,6 +11,8 @@ import 'PaginaTemporaria.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:wifi_scan/wifi_scan.dart';
+import 'dart:convert';
+import 'dart:async';
 
 const String backendUrl = 'http://192.168.0.75:12223';
 
@@ -37,6 +39,7 @@ class _InicialState extends State<Inicial> {
   );
   List<rive.StateMachineController?> riveControllers =
       List<rive.StateMachineController?>.filled(bottomNavItems.length, null);
+  Timer? _statusPollingTimer;
 
   Widget _buildImage(String assetName, [double width = 350]) {
     return Image.asset('images/$assetName', width: width);
@@ -47,6 +50,7 @@ class _InicialState extends State<Inicial> {
     super.initState();
     _carregarFechaduras();
     _scanWifiNetworks();
+    _startStatusPolling();
   }
 
   Future<void> _scanWifiNetworks() async {
@@ -101,8 +105,52 @@ class _InicialState extends State<Inicial> {
     }
   }
 
+  void _startStatusPolling() {
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _pollStatuses();
+    });
+  }
+
+  Future<void> _pollStatuses() async {
+    if (cartoes.isEmpty) return;
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+    try {
+      final response = await http.get(
+        Uri.parse('$backendUrl/devices'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+      if (response.statusCode == 200) {
+        final devices = jsonDecode(response.body) as List;
+        setState(() {
+          for (var cartao in cartoes) {
+            final device = devices.firstWhere(
+              (d) => d['uuid'] == cartao['id'],
+              orElse: () => null,
+            );
+            if (device != null) {
+              final lastHeard = device['last_heard'];
+              final isOnline =
+                  lastHeard != null &&
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
+              final isUnlocked = device['lock_state'] == 'UNLOCKED';
+              cartao['isOnline'] = isOnline;
+              cartao['isUnlocked'] = isUnlocked;
+            } else {
+              cartao['isOnline'] = false;
+              cartao['isUnlocked'] = false;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   @override
   void dispose() {
+    _statusPollingTimer?.cancel();
     for (var controller in riveControllers) {
       controller?.dispose();
     }
@@ -154,6 +202,16 @@ class _InicialState extends State<Inicial> {
       ),
       itemBuilder: (context, index) {
         final cartao = cartoes[index];
+        final isOnline = cartao['isOnline'] ?? false;
+        final isUnlocked = cartao['isUnlocked'] ?? false;
+        Border myBorder;
+        if (!isOnline) {
+          myBorder = Border.all(color: Colors.orange.shade800, width: 3);
+        } else if (isUnlocked) {
+          myBorder = Border.all(color: Colors.green, width: 3);
+        } else {
+          myBorder = Border.all(color: Colors.white.withOpacity(0.5), width: 1);
+        }
         return Card.outlined(
           key: ValueKey(cartao['id']),
           color: Colors.transparent,
@@ -176,10 +234,7 @@ class _InicialState extends State<Inicial> {
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.5),
-                    width: 1,
-                  ),
+                  border: myBorder,
                 ),
                 child: _ConteudoCartao(
                   Name: cartao['name'],
@@ -941,6 +996,42 @@ class _InicialState extends State<Inicial> {
             .toList();
         _isLoading = false;
       });
+
+      // Fetch status for all devices
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken != null && cartoes.isNotEmpty) {
+        try {
+          final response = await http.get(
+            Uri.parse('$backendUrl/devices'),
+            headers: {'Authorization': 'Bearer $backendToken'},
+          );
+          if (response.statusCode == 200) {
+            final devices = jsonDecode(response.body) as List;
+            setState(() {
+              for (var cartao in cartoes) {
+                final device = devices.firstWhere(
+                  (d) => d['uuid'] == cartao['id'],
+                  orElse: () => null,
+                );
+                if (device != null) {
+                  final lastHeard = device['last_heard'];
+                  final isOnline =
+                      lastHeard != null &&
+                      (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
+                  final isUnlocked = device['lock_state'] == 'UNLOCKED';
+                  cartao['isOnline'] = isOnline;
+                  cartao['isUnlocked'] = isUnlocked;
+                } else {
+                  cartao['isOnline'] = false;
+                  cartao['isUnlocked'] = false;
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
 
       print('${cartoes.length} fechaduras carregadas');
     } catch (e) {
