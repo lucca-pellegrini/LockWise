@@ -20,10 +20,12 @@ use uuid::Uuid;
 static RECENT_COMMANDS: OnceLock<Mutex<HashMap<String, (String, i64)>>> = OnceLock::new();
 static PENDING_PINGS: OnceLock<Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>> =
     OnceLock::new();
+static PENDING_CONFIG_UPDATES: OnceLock<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>> =
+    OnceLock::new();
 
 #[derive(Deserialize)]
-struct StatusMessage {
-    status: String,
+struct HeartbeatMessage {
+    heartbeat: String,
     uptime_ms: u64,
     timestamp: u64,
     wifi_ssid: String,
@@ -33,13 +35,14 @@ struct StatusMessage {
     mqtt_heartbeat_interval_sec: i32,
     audio_record_timeout_sec: i32,
     lock_timeout_ms: i32,
+    pairing_timeout_sec: i32,
     user_id: String,
     lock_state: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct PongMessage {
-    status: String,
+struct EventMessage {
+    event: String,
     uptime_ms: u64,
     timestamp: u64,
 }
@@ -62,6 +65,17 @@ struct LockStatusMessage {
     reason: String,
     uptime_ms: u64,
     timestamp: u64,
+}
+
+#[derive(Deserialize)]
+struct UpdateConfigRequest {
+    configs: Vec<ConfigItem>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ConfigItem {
+    key: String,
+    value: String,
 }
 
 #[derive(Deserialize)]
@@ -126,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let _ = RECENT_COMMANDS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_PINGS.set(Mutex::new(HashMap::new()));
+    let _ = PENDING_CONFIG_UPDATES.set(Mutex::new(HashMap::new()));
 
     // Setup DB
     let url = Url::parse(&db_url)?;
@@ -186,6 +201,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS lock_state VARCHAR(10)")
         .execute(&db_pool)
         .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS pairing_timeout_sec INTEGER")
+        .execute(&db_pool)
+        .await?;
 
     // Setup MQTT
     println!("mqtt_host: {}, mqtt_port: {}", mqtt_host, mqtt_port);
@@ -239,34 +257,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .manage(mqtt_client)
             .mount(
                 "/",
-                routes![
-                    health,
-                    get_devices,
-                    register_user,
-                    login_user,
-                    logout_user,
-                    control_device,
-                    unpair_device,
-                    get_device,
-                    get_logs,
-                    register_device,
-                    ping_device,
-                    update_phone,
-                    update_password,
-                    delete_account,
-                    verify_password,
-                    create_invite,
-                    get_invites,
-                    accept_invite,
-                    reject_invite,
-                    cancel_invite,
-                    update_invite,
-                    get_accessible_devices,
-                    get_temp_devices_status,
-                    get_temp_device,
-                    control_temp_device,
-                    ping_temp_device
-                ],
+                 routes![
+                     health,
+                     get_devices,
+                     register_user,
+                     login_user,
+                     logout_user,
+                     control_device,
+                     unpair_device,
+                     get_device,
+                     get_logs,
+                     register_device,
+                     ping_device,
+                     update_config,
+                     reboot_device,
+                     update_phone,
+                     update_password,
+                     delete_account,
+                     verify_password,
+                     create_invite,
+                     get_invites,
+                     accept_invite,
+                     reject_invite,
+                     cancel_invite,
+                     update_invite,
+                     get_accessible_devices,
+                     get_temp_devices_status,
+                     get_temp_device,
+                     control_temp_device,
+                     ping_temp_device
+                 ],
             )
             .launch()
             .await
@@ -286,8 +306,54 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                 if topic.starts_with("lockwise/") && topic.ends_with("/status") {
                     let uuid_str = &topic[9..topic.len() - 7]; // extract UUID
                     if let Ok(uuid) = Uuid::parse_str(uuid_str) {
-                        // Try to parse as LockStatusMessage first (has reason)
-                        if let Ok(lock_msg) =
+                        // Try to parse as HeartbeatMessage first (has heartbeat field)
+                        if let Ok(heartbeat_msg) =
+                            serde_cbor::from_slice::<HeartbeatMessage>(&publish.payload)
+                        {
+                            if heartbeat_msg.heartbeat == "HEARTBEAT" {
+                                // Handle HEARTBEAT
+                                let now = Utc::now();
+                                let lock_state =
+                                    heartbeat_msg.lock_state.as_deref().unwrap_or("UNKNOWN");
+                                let _ = sqlx::query(
+                                   "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)
+                                        ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, pairing_timeout_sec = $12, lock_state = $13"
+                                  )
+                                   .bind(uuid)
+                                   .bind(&heartbeat_msg.user_id)
+                                   .bind(now)
+                                   .bind(heartbeat_msg.uptime_ms as i64)
+                                   .bind(&heartbeat_msg.wifi_ssid)
+                                   .bind(&heartbeat_msg.backend_url)
+                                   .bind(&heartbeat_msg.mqtt_broker_url)
+                                   .bind(heartbeat_msg.mqtt_heartbeat_enable)
+                                   .bind(heartbeat_msg.mqtt_heartbeat_interval_sec)
+                                   .bind(heartbeat_msg.audio_record_timeout_sec)
+                                   .bind(heartbeat_msg.lock_timeout_ms)
+                                   .bind(heartbeat_msg.pairing_timeout_sec)
+                                   .bind(&lock_state)
+                                  .execute(db_pool)
+                                  .await;
+                            }
+                        } else if let Ok(event_msg) =
+                            serde_cbor::from_slice::<EventMessage>(&publish.payload)
+                        {
+                            if event_msg.event == "PONG" {
+                                // Handle PONG
+                                let pings_mutex = PENDING_PINGS.get().unwrap();
+                                let mut pings = pings_mutex.lock().unwrap();
+                                if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
+                                    tx.send(()).ok();
+                                }
+                            } else if event_msg.event == "CONFIG_UPDATED" {
+                                // Handle CONFIG_UPDATED
+                                let updates_mutex = PENDING_CONFIG_UPDATES.get().unwrap();
+                                let mut updates = updates_mutex.lock().unwrap();
+                                if let Some(tx) = updates.remove(&uuid_str.to_string()) {
+                                    tx.send(()).ok();
+                                }
+                            }
+                        } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
                         {
                             // LOCK/UNLOCK event
@@ -322,15 +388,15 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
 
                             // Insert log
                             let _ = sqlx::query(
-                                     "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id) VALUES ($1, $2, $3, $4, $5)"
-                                 )
-                                 .bind(uuid_str)
-                                 .bind(timestamp)
-                                 .bind(event_type)
-                                 .bind(reason)
-                                 .bind(&user_id)
-                                 .execute(db_pool)
-                                 .await;
+                                      "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id) VALUES ($1, $2, $3, $4, $5)"
+                                  )
+                                  .bind(uuid_str)
+                                  .bind(timestamp)
+                                  .bind(event_type)
+                                  .bind(reason)
+                                  .bind(&user_id)
+                                  .execute(db_pool)
+                                  .await;
 
                             // Update lock_state
                             let lock_state = if lock_msg.lock == "LOCKED" {
@@ -344,44 +410,6 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                     .bind(uuid_str)
                                     .execute(db_pool)
                                     .await;
-                        } else if let Ok(status_msg) =
-                            serde_cbor::from_slice::<StatusMessage>(&publish.payload)
-                        {
-                            if status_msg.status == "HEARTBEAT" {
-                                // Handle HEARTBEAT
-                                let now = Utc::now();
-                                let lock_state =
-                                    status_msg.lock_state.as_deref().unwrap_or("UNKNOWN");
-                                let _ = sqlx::query(
-                                      "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL)
-                                       ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, lock_state = $12"
-                                  )
-                                  .bind(uuid)
-                                  .bind(&status_msg.user_id)
-                                  .bind(now)
-                                  .bind(status_msg.uptime_ms as i64)
-                                  .bind(&status_msg.wifi_ssid)
-                                  .bind(&status_msg.backend_url)
-                                  .bind(&status_msg.mqtt_broker_url)
-                                  .bind(status_msg.mqtt_heartbeat_enable)
-                                  .bind(status_msg.mqtt_heartbeat_interval_sec)
-                                  .bind(status_msg.audio_record_timeout_sec)
-                                  .bind(status_msg.lock_timeout_ms)
-                                  .bind(lock_state)
-                                  .execute(db_pool)
-                                  .await;
-                            }
-                        } else if let Ok(pong_msg) =
-                            serde_cbor::from_slice::<PongMessage>(&publish.payload)
-                        {
-                            if pong_msg.status == "PONG" {
-                                // Handle PONG
-                                let pings_mutex = PENDING_PINGS.get().unwrap();
-                                let mut pings = pings_mutex.lock().unwrap();
-                                if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
-                                    tx.send(()).ok();
-                                }
-                            }
                         }
                     }
                 }
@@ -403,6 +431,191 @@ async fn publish_control_message(
     client
         .publish(topic, QoS::AtMostOnce, false, payload)
         .await?;
+    Ok(())
+}
+
+#[post("/update_config/<uuid>", data = "<request>")]
+async fn update_config(
+    token: Token,
+    uuid: &str,
+    request: rocket::serde::json::Json<UpdateConfigRequest>,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    println!("DEBUG: update_config called for device {}", uuid);
+    println!("DEBUG: Configs to update: {:?}", request.configs);
+
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+    println!("DEBUG: Token validated for user {}", firebase_uid);
+
+    // Check ownership
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid_parsed)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((Some(owner_id),)) = row {
+        if firebase_uid != owner_id {
+            println!("DEBUG: User {} does not own device {}", firebase_uid, uuid);
+            return Err(Status::Unauthorized);
+        }
+    } else {
+        println!("DEBUG: Device {} not found", uuid);
+        return Err(Status::NotFound);
+    }
+    println!("DEBUG: Ownership validated");
+
+    // Validate configs
+    for config in &request.configs {
+        match config.key.as_str() {
+            "wifi_ssid" => {
+                if config.value.is_empty() {
+                    println!("DEBUG: Empty wifi_ssid");
+                    return Err(Status::BadRequest);
+                }
+            }
+            "wifi_pass" => {} // Allow empty to not change
+            "audio_timeout" => {
+                let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                if val < 3 || val > 60 {
+                    println!("DEBUG: Invalid audio_timeout: {}", val);
+                    return Err(Status::BadRequest);
+                }
+            }
+            "lock_timeout" => {
+                let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                if val < 5000 || val > 300000 { // ms
+                    println!("DEBUG: Invalid lock_timeout: {}", val);
+                    return Err(Status::BadRequest);
+                }
+            }
+            "pairing_timeout" => {
+                let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                if val < 60 || val > 600 {
+                    println!("DEBUG: Invalid pairing_timeout: {}", val);
+                    return Err(Status::BadRequest);
+                }
+            }
+            _ => {
+                println!("DEBUG: Invalid config key: {}", config.key);
+                return Err(Status::BadRequest);
+            }
+        }
+    }
+    println!("DEBUG: Config validation passed");
+
+    // Send updates sequentially
+    for (i, config) in request.configs.iter().enumerate() {
+        println!("DEBUG: Sending config update {}/{}: key={}, value={}", i+1, request.configs.len(), config.key, config.value);
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        {
+            let updates_mutex = PENDING_CONFIG_UPDATES.get().unwrap();
+            let mut updates = updates_mutex.lock().unwrap();
+            updates.insert(uuid.to_string(), tx);
+        }
+        println!("DEBUG: Registered pending update for device {}", uuid);
+
+        // Send update_config
+        let topic = format!("lockwise/{}/control", uuid);
+        let msg = serde_cbor::to_vec(&serde_json::json!({
+            "command": "update_config",
+            "key": config.key,
+            "value": config.value
+        })).map_err(|_| Status::InternalServerError)?;
+        println!("DEBUG: Publishing to topic {}: {:?}", topic, serde_json::json!({
+            "command": "update_config",
+            "key": config.key,
+            "value": config.value
+        }));
+        mqtt_client
+            .publish(topic, QoS::AtMostOnce, false, msg)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+        println!("DEBUG: MQTT publish successful, waiting for response...");
+
+        // Wait for CONFIG_UPDATED, timeout 10s
+        match tokio::time::timeout(std::time::Duration::from_secs(10), rx).await {
+            Ok(Ok(())) => {
+                println!("DEBUG: Received CONFIG_UPDATED for config {}", config.key);
+            }
+            Ok(Err(_)) => {
+                println!("DEBUG: Channel error waiting for CONFIG_UPDATED");
+                return Err(Status::InternalServerError);
+            }
+            Err(_) => {
+                println!("DEBUG: Timeout waiting for CONFIG_UPDATED for config {}", config.key);
+                return Err(Status::RequestTimeout);
+            }
+        }
+    }
+
+    println!("DEBUG: update_config completed successfully");
+    Ok(())
+}
+
+#[post("/reboot/<uuid>")]
+async fn reboot_device(
+    token: Token,
+    uuid: &str,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    println!("DEBUG: reboot_device called for device {}", uuid);
+
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+    println!("DEBUG: Token validated for user {}", firebase_uid);
+
+    // Check ownership
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid_parsed)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((Some(owner_id),)) = row {
+        if firebase_uid != owner_id {
+            println!("DEBUG: User {} does not own device {}", firebase_uid, uuid);
+            return Err(Status::Unauthorized);
+        }
+    } else {
+        println!("DEBUG: Device {} not found", uuid);
+        return Err(Status::NotFound);
+    }
+    println!("DEBUG: Ownership validated");
+
+    // Send REBOOT
+    println!("DEBUG: Sending REBOOT command");
+    publish_control_message(&**mqtt_client, uuid_parsed, "REBOOT".to_string())
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    println!("DEBUG: reboot_device completed successfully");
     Ok(())
 }
 
@@ -493,6 +706,7 @@ fn health() -> &'static str {
 }
 
 #[get("/devices")]
+// Updated get_devices to include pairing_timeout_sec
 async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
@@ -506,8 +720,8 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
         None => return Err(Status::Unauthorized),
     };
 
-    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> = sqlx::query_as(
-        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE user_id = $1",
+    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> = sqlx::query_as(
+        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state FROM devices WHERE user_id = $1",
     )
     .bind(&firebase_uid)
     .fetch_all(&**db_pool)
@@ -529,6 +743,7 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
                 mqtt_heartbeat_interval_sec,
                 audio_record_timeout_sec,
                 lock_timeout_ms,
+                pairing_timeout_sec,
                 lock_state,
             )| {
                 serde_json::json!({
@@ -828,8 +1043,8 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     };
 
     // Check that the device belongs to this user or has accepted invite
-    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
-        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE uuid = $1")
+    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
@@ -846,6 +1061,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
         mqtt_heartbeat_interval_sec,
         audio_record_timeout_sec,
         lock_timeout_ms,
+        pairing_timeout_sec,
         lock_state,
     )) = row
     {
@@ -886,6 +1102,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
             "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
             "audio_record_timeout_sec": audio_record_timeout_sec,
             "lock_timeout_ms": lock_timeout_ms,
+            "pairing_timeout_sec": pairing_timeout_sec,
             "lock_state": lock_state
         });
         Ok(device.to_string())

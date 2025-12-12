@@ -351,6 +351,7 @@ void update_config(const char *key, const char *value)
 				}
 			} else {
 				ESP_LOGI(TAG, "Config %s already has the same value, skipping NVS update", key);
+				mqtt_publish_status("CONFIG_UPDATED");
 			}
 			nvs_close(nvs_handle);
 		} else {

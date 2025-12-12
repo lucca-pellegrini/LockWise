@@ -324,7 +324,7 @@ void mqtt_publish_status(const char *status)
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
 	cbor_encoder_create_map(&encoder, &map_encoder, 3);
-	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, "event");
 	cbor_encode_text_stringz(&map_encoder, status);
 	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
 	cbor_encode_uint(&map_encoder, (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -446,9 +446,9 @@ static void mqtt_publish_heartbeat(void)
 	uint8_t cbor_buffer[512];
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
-	cbor_encoder_create_map(&encoder, &map_encoder, 12);
+	cbor_encoder_create_map(&encoder, &map_encoder, 13);
 
-	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, "heartbeat");
 	cbor_encode_text_stringz(&map_encoder, "HEARTBEAT");
 
 	cbor_encode_text_stringz(&map_encoder, "uptime_ms");
@@ -477,6 +477,9 @@ static void mqtt_publish_heartbeat(void)
 
 	cbor_encode_text_stringz(&map_encoder, "lock_timeout_ms");
 	cbor_encode_int(&map_encoder, config.lock_timeout_ms);
+
+	cbor_encode_text_stringz(&map_encoder, "pairing_timeout_sec");
+	cbor_encode_int(&map_encoder, config.pairing_timeout_sec);
 
 	cbor_encode_text_stringz(&map_encoder, "user_id");
 	cbor_encode_text_stringz(&map_encoder, config.user_id);

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 
 const String backendUrl = 'http://192.168.0.75:12223';
 
@@ -20,7 +21,6 @@ class LockDetails extends StatefulWidget {
 
 class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool notificationsEnabled = true;
-  bool remoteAccessEnabled = false;
   bool administrador = true;
   bool isOpen = true;
   bool _isLoading = true;
@@ -30,10 +30,25 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   int? pingMs;
   String _duracaoSelecionada = '1_semana';
 
+  // Config controllers
+  final TextEditingController _wifiSsidController = TextEditingController();
+  final TextEditingController _wifiPasswordController = TextEditingController();
+  final TextEditingController _audioTimeoutController = TextEditingController();
+  final TextEditingController _lockTimeoutController = TextEditingController();
+  final TextEditingController _pairingTimeoutController =
+      TextEditingController();
+
+  // Initial config values for comparison
+  String _initialWifiSsid = '';
+  String _initialAudioTimeout = '';
+  String _initialLockTimeout = '';
+  String _initialPairingTimeout = '';
+
   bool get isConnected =>
       lastHeard != null &&
       (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 15000;
   final _conviteFormKey = GlobalKey<FormState>();
+  final _configFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();
   Timer? _pollingTimer;
   bool _isAppInForeground = true;
@@ -193,6 +208,22 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           final deviceData = jsonDecode(deviceResponse.body);
           isOpen = deviceData['lock_state'] == 'UNLOCKED';
           lastHeard = deviceData['last_heard'];
+          _wifiSsidController.text = deviceData['wifi_ssid'] ?? '';
+          _wifiPasswordController.text =
+              ''; // Don't populate password for security
+          _audioTimeoutController.text =
+              (deviceData['audio_record_timeout_sec'] ?? 10).toString();
+          _lockTimeoutController.text =
+              ((deviceData['lock_timeout_ms'] ?? 5000) ~/ 1000)
+                  .toString(); // Convert ms to seconds for display
+          _pairingTimeoutController.text =
+              (deviceData['pairing_timeout_sec'] ?? 300).toString();
+
+          // Store initial values
+          _initialWifiSsid = _wifiSsidController.text;
+          _initialAudioTimeout = _audioTimeoutController.text;
+          _initialLockTimeout = _lockTimeoutController.text;
+          _initialPairingTimeout = _pairingTimeoutController.text;
         }
 
         final logsResponse = await http.get(
@@ -222,7 +253,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         fechadura = f;
         administrador = admin;
         notificationsEnabled = f?['notificacoes'] == 1;
-        remoteAccessEnabled = f?['acesso_remoto'] == 1;
         // isOpen is set from backend above
         _isLoading = false;
       });
@@ -470,15 +500,15 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _GlassButton(
-                          onPressed: remoteAccessEnabled && isConnected
+                          onPressed: administrador && isConnected
                               ? () {
                                   final acao = isOpen ? 'Fechar' : 'Abrir';
                                   _registrarAcao(acao);
                                 }
-                              : null, // Desabilita se acesso remoto estiver off ou desconectado
+                              : null, // Desabilita se não for administrador ou desconectado
                           text: (isOpen ? 'Fechar' : 'Abrir'),
                           isEnabled:
-                              remoteAccessEnabled &&
+                              administrador &&
                               isConnected, // Passa o estado para o widget
                         ),
 
@@ -528,40 +558,295 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       inactiveTrackColor: Colors.transparent,
                     ),
 
-                    SwitchListTile(
-                      title: Text(
-                        'Acesso remoto',
-                        style: TextStyle(color: Colors.white),
+                    const SizedBox(height: 20),
+
+                    Text(
+                      'Configurações do Dispositivo:',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      value: remoteAccessEnabled,
-                      onChanged: administrador
-                          ? (bool value) async {
-                              setState(() {
-                                remoteAccessEnabled = value;
-                              });
-
-                              final usuario =
-                                  await LocalService.getUsuarioLogado();
-                              final userId = usuario?['id'] as String;
-                              await FirebaseFirestore.instance
-                                  .collection('fechaduras')
-                                  .doc(userId)
-                                  .collection('devices')
-                                  .doc(widget.fechaduraId)
-                                  .update({
-                                    'acesso_remoto': remoteAccessEnabled
-                                        ? 1
-                                        : 0,
-                                  });
-                            }
-                          : null, // Desabilita se não for administrador
-
-                      activeColor: administrador
-                          ? Colors.blueAccent.withOpacity(0.5)
-                          : Colors.grey,
-
-                      inactiveTrackColor: Colors.transparent,
                     ),
+
+                    const SizedBox(height: 10),
+
+                    Form(
+                      key: _configFormKey,
+                      child: Column(
+                        children: [
+                          // WiFi Configuration Card
+                          Card(
+                            color: Colors.white.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.wifi,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Configuração WiFi',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextFormField(
+                                    controller: _wifiSsidController,
+                                    style: TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      labelText: 'Nome da Rede (SSID)',
+                                      labelStyle: TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'SSID não pode ser vazio';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextFormField(
+                                    controller: _wifiPasswordController,
+                                    style: TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      labelText: 'Senha (opcional)',
+                                      labelStyle: TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    obscureText: true,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Timeouts Configuration Card
+                          Card(
+                            color: Colors.white.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.timer,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Configuração de Tempos',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _audioTimeoutController,
+                                          style: TextStyle(color: Colors.white),
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly,
+                                          ],
+                                          decoration: InputDecoration(
+                                            labelText: 'Gravação Áudio (s)',
+                                            labelStyle: TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Colors.white54,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          validator: (value) {
+                                            if (value == null ||
+                                                value.isEmpty) {
+                                              return 'Campo obrigatório';
+                                            }
+                                            final num = int.tryParse(value);
+                                            if (num == null ||
+                                                num < 3 ||
+                                                num > 60) {
+                                              return '3-60s';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _lockTimeoutController,
+                                          style: TextStyle(color: Colors.white),
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly,
+                                          ],
+                                          decoration: InputDecoration(
+                                            labelText: 'Trava (s)',
+                                            labelStyle: TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Colors.white54,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          validator: (value) {
+                                            if (value == null ||
+                                                value.isEmpty) {
+                                              return 'Campo obrigatório';
+                                            }
+                                            final num = int.tryParse(value);
+                                            if (num == null ||
+                                                num < 5 ||
+                                                num > 300) {
+                                              return '5-300s';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextFormField(
+                                    controller: _pairingTimeoutController,
+                                    style: TextStyle(color: Colors.white),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    decoration: InputDecoration(
+                                      labelText: 'Modo Pareamento (s)',
+                                      labelStyle: TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Campo obrigatório';
+                                      }
+                                      final num = int.tryParse(value);
+                                      if (num == null ||
+                                          num < 60 ||
+                                          num > 600) {
+                                        return '60-600s';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _GlassButton(
+                                onPressed: administrador && isConnected
+                                    ? () => _salvarConfiguracoes()
+                                    : null,
+                                text: 'Salvar',
+                                isEnabled: administrador && isConnected,
+                                width: 150,
+                              ),
+                              _GlassButton(
+                                onPressed: administrador && isConnected
+                                    ? () => _reiniciarDispositivo()
+                                    : null,
+                                text: 'Reiniciar',
+                                isEnabled: administrador && isConnected,
+                                width: 150,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 20),
 
                     Text(
@@ -985,11 +1270,118 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _salvarConfiguracoes() async {
+    if (!_configFormKey.currentState!.validate()) {
+      return;
+    }
+
+    try {
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        _mostrarErro('Erro de autenticação');
+        return;
+      }
+
+      final configs = <Map<String, String>>[];
+
+      // Only add modified fields
+      if (_wifiSsidController.text != _initialWifiSsid) {
+        configs.add({'key': 'wifi_ssid', 'value': _wifiSsidController.text});
+      }
+      if (_wifiPasswordController.text.isNotEmpty) {
+        configs.add({
+          'key': 'wifi_pass',
+          'value': _wifiPasswordController.text,
+        });
+      }
+      if (_audioTimeoutController.text != _initialAudioTimeout) {
+        configs.add({
+          'key': 'audio_timeout',
+          'value': _audioTimeoutController.text,
+        });
+      }
+      if (_lockTimeoutController.text != _initialLockTimeout) {
+        configs.add({
+          'key': 'lock_timeout',
+          'value': (int.parse(_lockTimeoutController.text) * 1000).toString(),
+        });
+      }
+      if (_pairingTimeoutController.text != _initialPairingTimeout) {
+        configs.add({
+          'key': 'pairing_timeout',
+          'value': _pairingTimeoutController.text,
+        });
+      }
+
+      if (configs.isEmpty) {
+        _mostrarSucesso('Nenhuma alteração detectada.');
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/update_config/${widget.fechaduraId}'),
+        headers: {
+          'Authorization': 'Bearer $backendToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'configs': configs}),
+      );
+
+      if (response.statusCode == 200) {
+        _mostrarSucesso('Configurações salvas com sucesso.');
+        // Update initial values after successful save
+        _initialWifiSsid = _wifiSsidController.text;
+        _initialAudioTimeout = _audioTimeoutController.text;
+        _initialLockTimeout = _lockTimeoutController.text;
+        _initialPairingTimeout = _pairingTimeoutController.text;
+      } else {
+        _mostrarErro('Erro ao salvar configurações: ${response.statusCode}');
+      }
+    } catch (e) {
+      _mostrarErro('Erro ao salvar configurações: $e');
+    }
+  }
+
+  Future<void> _reiniciarDispositivo() async {
+    try {
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        _mostrarErro('Erro de autenticação');
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/reboot/${widget.fechaduraId}'),
+        headers: {
+          'Authorization': 'Bearer $backendToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'command': 'REBOOT',
+          'user_id': (await LocalService.getUsuarioLogado())?['id'],
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        _mostrarSucesso('Dispositivo reiniciando...');
+      } else {
+        _mostrarErro('Erro ao reiniciar dispositivo: ${response.statusCode}');
+      }
+    } catch (e) {
+      _mostrarErro('Erro ao reiniciar dispositivo: $e');
+    }
+  }
+
   @override
   void dispose() {
     _pollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _idUsuarioController.dispose();
+    _wifiSsidController.dispose();
+    _wifiPasswordController.dispose();
+    _audioTimeoutController.dispose();
+    _lockTimeoutController.dispose();
+    _pairingTimeoutController.dispose();
     super.dispose();
   }
 }
