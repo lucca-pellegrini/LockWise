@@ -785,6 +785,24 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
         throw Exception('Backend error: ${response.statusCode}');
       }
 
+      // Pause polling for 5 seconds to allow backend to update database
+      _pollingTimer?.cancel();
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          _startPolling();
+        }
+      });
+
+      // Also pause the main status polling timer if it exists
+      final temporariaState = context
+          .findAncestorStateOfType<_TemporariaState>();
+      temporariaState?._statusPollingTimer?.cancel();
+      Future.delayed(const Duration(seconds: 5), () {
+        if (temporariaState != null && temporariaState.mounted) {
+          temporariaState._startStatusPolling();
+        }
+      });
+
       setState(() {
         isOpen = acao == 'Abrir';
       });

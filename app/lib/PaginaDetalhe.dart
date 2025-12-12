@@ -308,6 +308,14 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         'tipo_acesso': 'manual', // ou 'remoto' conforme seu fluxo
       });
 
+      // Pause polling for 5 seconds to allow backend to update database
+      _pollingTimer?.cancel();
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          _startPolling();
+        }
+      });
+
       // Polling will update logs and state
       setState(() {
         isOpen = novoEstado == 1; // Temporarily update, polling will confirm
@@ -425,7 +433,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 children: [
                                   Icon(
                                     isOpen ? Icons.lock_open : Icons.lock,
-                                    color: isOpen ? Colors.orange.shade800 : Colors.green,
+                                    color: isOpen
+                                        ? Colors.orange.shade800
+                                        : Colors.green,
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
@@ -601,78 +611,78 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.wifi,
-                                        color: Colors.white,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Configuração WiFi',
-                                        style: TextStyle(
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.wifi,
                                           color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
+                                          size: 24,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  TextFormField(
-                                    controller: _wifiSsidController,
-                                    style: TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Nome da Rede (SSID)',
-                                      labelStyle: TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white54,
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Configuração WiFi',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      ],
                                     ),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'SSID não pode ser vazio';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextFormField(
-                                    controller: _wifiPasswordController,
-                                    style: TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Senha (opcional)',
-                                      labelStyle: TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white54,
+                                    const SizedBox(height: 16),
+                                    TextFormField(
+                                      controller: _wifiSsidController,
+                                      style: TextStyle(color: Colors.white),
+                                      decoration: InputDecoration(
+                                        labelText: 'Nome da Rede (SSID)',
+                                        labelStyle: TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'SSID não pode ser vazio';
+                                        }
+                                        return null;
+                                      },
                                     ),
-                                    obscureText: true,
-                                  ),
-                                ],
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _wifiPasswordController,
+                                      style: TextStyle(color: Colors.white),
+                                      decoration: InputDecoration(
+                                        labelText: 'Senha (opcional)',
+                                        labelStyle: TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      obscureText: true,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
                           const SizedBox(height: 16),
 
                           // Timeouts Configuration Card
@@ -700,152 +710,156 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.timer,
-                                        color: Colors.white,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Configuração de Tempos',
-                                        style: TextStyle(
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.timer,
                                           color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
+                                          size: 24,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: _audioTimeoutController,
-                                          style: TextStyle(color: Colors.white),
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly,
-                                          ],
-                                          decoration: InputDecoration(
-                                            labelText: 'Gravação Áudio (s)',
-                                            labelStyle: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Colors.white54,
-                                              ),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Colors.white,
-                                              ),
-                                            ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Configuração de Tempos',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                          validator: (value) {
-                                            if (value == null ||
-                                                value.isEmpty) {
-                                              return 'Campo obrigatório';
-                                            }
-                                            final num = int.tryParse(value);
-                                            if (num == null ||
-                                                num < 3 ||
-                                                num > 60) {
-                                              return '3-60s';
-                                            }
-                                            return null;
-                                          },
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: _lockTimeoutController,
-                                          style: TextStyle(color: Colors.white),
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly,
-                                          ],
-                                          decoration: InputDecoration(
-                                            labelText: 'Trava (s)',
-                                            labelStyle: TextStyle(
-                                              color: Colors.white70,
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Colors.white54,
-                                              ),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                          validator: (value) {
-                                            if (value == null ||
-                                                value.isEmpty) {
-                                              return 'Campo obrigatório';
-                                            }
-                                            final num = int.tryParse(value);
-                                            if (num == null ||
-                                                num < 5 ||
-                                                num > 300) {
-                                              return '5-300s';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextFormField(
-                                    controller: _pairingTimeoutController,
-                                    style: TextStyle(color: Colors.white),
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    decoration: InputDecoration(
-                                      labelText: 'Modo Pareamento (s)',
-                                      labelStyle: TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white54,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      ],
                                     ),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Campo obrigatório';
-                                      }
-                                      final num = int.tryParse(value);
-                                      if (num == null ||
-                                          num < 60 ||
-                                          num > 600) {
-                                        return '60-600s';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ],
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _audioTimeoutController,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                            ],
+                                            decoration: InputDecoration(
+                                              labelText: 'Gravação Áudio (s)',
+                                              labelStyle: TextStyle(
+                                                color: Colors.white70,
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null ||
+                                                  value.isEmpty) {
+                                                return 'Campo obrigatório';
+                                              }
+                                              final num = int.tryParse(value);
+                                              if (num == null ||
+                                                  num < 3 ||
+                                                  num > 60) {
+                                                return '3-60s';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _lockTimeoutController,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                            ],
+                                            decoration: InputDecoration(
+                                              labelText: 'Trava (s)',
+                                              labelStyle: TextStyle(
+                                                color: Colors.white70,
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null ||
+                                                  value.isEmpty) {
+                                                return 'Campo obrigatório';
+                                              }
+                                              final num = int.tryParse(value);
+                                              if (num == null ||
+                                                  num < 5 ||
+                                                  num > 300) {
+                                                return '5-300s';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _pairingTimeoutController,
+                                      style: TextStyle(color: Colors.white),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: 'Modo Pareamento (s)',
+                                        labelStyle: TextStyle(
+                                          color: Colors.white70,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Campo obrigatório';
+                                        }
+                                        final num = int.tryParse(value);
+                                        if (num == null ||
+                                            num < 60 ||
+                                            num > 600) {
+                                          return '60-600s';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
                           const SizedBox(height: 20),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
