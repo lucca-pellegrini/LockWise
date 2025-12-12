@@ -38,7 +38,8 @@ static void cleanup(void)
 void cleanup_restart(void)
 {
 	// Publish restarting status before disconnecting
-	mqtt_publish_status("RESTARTING");
+	if (mqtt_client)
+		mqtt_publish_status("RESTARTING");
 	lock_door(DOOR_REASON_REBOOT);
 
 	cleanup();
@@ -50,7 +51,8 @@ void cleanup_restart(void)
 
 void cleanup_halt()
 {
-	mqtt_publish_status("LOCKING_DOWN");
+	if (mqtt_client)
+		mqtt_publish_status("LOCKING_DOWN");
 	lock_door(DOOR_REASON_LOCKDOWN);
 
 	cleanup();

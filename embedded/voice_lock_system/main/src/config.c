@@ -338,20 +338,32 @@ void update_config(const char *key, const char *value)
 					esp_err_t commit_err = nvs_commit(nvs_handle);
 					if (commit_err == ESP_OK) {
 						ESP_LOGI(TAG, "Updated config %s in NVS", key);
-						mqtt_publish_status("CONFIG_UPDATED");
+						// Only publish MQTT status if MQTT is initialized (not during pairing mode)
+						extern esp_mqtt_client_handle_t mqtt_client;
+						if (mqtt_client)
+							mqtt_publish_status("CONFIG_UPDATED");
 					} else {
 						ESP_LOGE(TAG, "Failed to commit config %s to NVS: %s", key,
 							 esp_err_to_name(commit_err));
-						mqtt_publish_status("COMMIT_CONFIG_FAILED");
+						// Only publish MQTT status if MQTT is initialized (not during pairing mode)
+						extern esp_mqtt_client_handle_t mqtt_client;
+						if (mqtt_client)
+							mqtt_publish_status("COMMIT_CONFIG_FAILED");
 					}
 				} else {
 					ESP_LOGE(TAG, "Failed to set config %s in NVS: %s", key,
 						 esp_err_to_name(set_err));
-					mqtt_publish_status("UPDATE_CONFIG_FAILED");
+					// Only publish MQTT status if MQTT is initialized (not during pairing mode)
+					extern esp_mqtt_client_handle_t mqtt_client;
+					if (mqtt_client)
+						mqtt_publish_status("UPDATE_CONFIG_FAILED");
 				}
 			} else {
 				ESP_LOGI(TAG, "Config %s already has the same value, skipping NVS update", key);
-				mqtt_publish_status("CONFIG_UPDATED");
+				// Only publish MQTT status if MQTT is initialized (not during pairing mode)
+				extern esp_mqtt_client_handle_t mqtt_client;
+				if (mqtt_client)
+					mqtt_publish_status("CONFIG_UPDATED");
 			}
 			nvs_close(nvs_handle);
 		} else {

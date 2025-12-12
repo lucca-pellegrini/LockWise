@@ -282,7 +282,7 @@ static void handle_pairing_client(int client_sock)
 
 			paired = true;
 			ESP_LOGI(TAG, "Configuration stored: user_id=%s, ssid=%s, rebooting...", user_id, wifi_ssid);
-			vTaskDelay(pdMS_TO_TICKS(1000));
+			vTaskDelay(pdMS_TO_TICKS(250));
 			cleanup_restart();
 		} else {
 			const char *response =
