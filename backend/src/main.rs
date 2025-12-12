@@ -67,6 +67,17 @@ struct LockStatusMessage {
     timestamp: u64,
 }
 
+#[derive(Serialize)]
+struct LogEntry {
+    id: i32,
+    device_id: String,
+    timestamp: chrono::DateTime<chrono::Utc>,
+    event_type: String,
+    reason: String,
+    user_id: Option<String>,
+    user_name: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct UpdateConfigRequest {
     configs: Vec<ConfigItem>,
@@ -266,8 +277,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                      control_device,
                      unpair_device,
                      get_device,
-                     get_logs,
-                     register_device,
+                      get_logs,
+                      get_notifications,
+                      register_device,
                      ping_device,
                      update_config,
                      reboot_device,
@@ -1395,9 +1407,32 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
     }
 
     // Get logs, limit to 1000
-    let logs: Vec<(i32, String, chrono::DateTime<Utc>, String, String, Option<String>, Option<String>)> =
-        sqlx::query_as("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000")
-            .bind(uuid.to_string())
+    let logs: Vec<LogEntry> =
+        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000", uuid.to_string())
+            .fetch_all(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    Ok(serde_json::to_string(&logs).unwrap())
+}
+
+#[get("/notifications")]
+async fn get_notifications(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Get logs for all owned devices, limit to 1000
+    let logs: Vec<LogEntry> =
+        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
             .fetch_all(&**db_pool)
             .await
             .map_err(|_| Status::InternalServerError)?;

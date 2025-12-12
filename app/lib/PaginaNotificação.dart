@@ -65,46 +65,47 @@ class _NotificacaoState extends State<Notificacao>
       final backendToken = await LocalService.getBackendToken();
       if (backendToken == null) return;
 
-      // Get devices from backend
-      final devicesResponse = await http.get(
-        Uri.parse('$backendUrl/devices'),
+      // Fetch device names from Firestore
+      final usuario = await LocalService.getUsuarioLogado();
+      if (usuario != null) {
+        final userId = usuario['id'] as String;
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('fechaduras')
+            .doc(userId)
+            .collection('devices')
+            .get();
+        final deviceDocs = querySnapshot.docs;
+        deviceNames = {};
+        for (var doc in deviceDocs) {
+          final data = doc.data();
+          deviceNames[doc.id] = data['nome'] as String;
+        }
+      }
+
+      // Fetch notifications from backend
+      final notificationsResponse = await http.get(
+        Uri.parse('$backendUrl/notifications'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
-      if (devicesResponse.statusCode != 200) return;
-      final devices = jsonDecode(devicesResponse.body) as List;
-      final deviceIds = devices.map((d) => d[0] as String).toList();
-      if (deviceIds.isEmpty) return;
-
-      // Filter to devices with notifications enabled
-      final enabledDeviceIds = deviceIds
-          .where((id) => deviceNames.containsKey(id))
-          .toList();
-      if (enabledDeviceIds.isEmpty) return;
-
-      // Fetch logs for each enabled device
       List<Map<String, dynamic>> allLogs = [];
-      for (final deviceId in enabledDeviceIds) {
-        final logsResponse = await http.get(
-          Uri.parse('$backendUrl/logs/$deviceId'),
-          headers: {'Authorization': 'Bearer $backendToken'},
-        );
-        if (logsResponse.statusCode == 200) {
-          final logsData = jsonDecode(logsResponse.body) as List;
-          final transformedLogs = logsData.map((log) {
-            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
-            final user = log[6] ?? log[5] ?? 'Sistema';
-            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = translateReason(log[4]);
-            return {
-              'data_hora': timestamp,
-              'fechadura_nome': deviceNames[deviceId] ?? deviceId,
-              'usuario': user,
-              'acao': action,
-              'reason': reason,
-            };
-          }).toList();
-          allLogs.addAll(transformedLogs);
-        }
+      if (notificationsResponse.statusCode == 200) {
+        final logsData = jsonDecode(notificationsResponse.body) as List;
+        final transformedLogs = logsData.map((log) {
+          final timestamp = DateTime.parse(
+            log['timestamp'],
+          ).millisecondsSinceEpoch;
+          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+          final reason = translateReason(log['reason']);
+          return {
+            'data_hora': timestamp,
+            'fechadura_nome': deviceNames[log['device_id']] ?? log['device_id'],
+            'usuario': user,
+            'acao': action,
+            'reason': reason,
+          };
+        }).toList();
+        allLogs = transformedLogs;
       }
 
       // Sort by timestamp descending
@@ -164,22 +165,7 @@ class _NotificacaoState extends State<Notificacao>
         return;
       }
 
-      // Get devices from backend
-      final devicesResponse = await http.get(
-        Uri.parse('$backendUrl/devices'),
-        headers: {'Authorization': 'Bearer $backendToken'},
-      );
-      if (devicesResponse.statusCode != 200) {
-        setState(() {
-          logs = [];
-          _isLoading = false;
-        });
-        return;
-      }
-      final devices = jsonDecode(devicesResponse.body) as List;
-      final deviceIds = devices.map((d) => d[0] as String).toList();
-
-      // Fetch device names and notifications from Firestore
+      // Fetch device names from Firestore
       final usuario = await LocalService.getUsuarioLogado();
       if (usuario != null) {
         final userId = usuario['id'] as String;
@@ -192,41 +178,34 @@ class _NotificacaoState extends State<Notificacao>
         deviceNames = {};
         for (var doc in deviceDocs) {
           final data = doc.data();
-          if (data['notificacoes'] == 1) {
-            deviceNames[doc.id] = data['nome'] as String;
-          }
+          deviceNames[doc.id] = data['nome'] as String;
         }
       }
 
-      // Filter to devices with notifications enabled
-      final enabledDeviceIds = deviceIds
-          .where((id) => deviceNames.containsKey(id))
-          .toList();
-
-      // Fetch logs for each enabled device
+      // Fetch notifications from backend
+      final notificationsResponse = await http.get(
+        Uri.parse('$backendUrl/notifications'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
       List<Map<String, dynamic>> allLogs = [];
-      for (final deviceId in enabledDeviceIds) {
-        final logsResponse = await http.get(
-          Uri.parse('$backendUrl/logs/$deviceId'),
-          headers: {'Authorization': 'Bearer $backendToken'},
-        );
-        if (logsResponse.statusCode == 200) {
-          final logsData = jsonDecode(logsResponse.body) as List;
-          final transformedLogs = logsData.map((log) {
-            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
-            final user = log[6] ?? log[5] ?? 'Sistema';
-            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = translateReason(log[4]);
-            return {
-              'data_hora': timestamp,
-              'fechadura_nome': deviceNames[deviceId] ?? deviceId,
-              'usuario': user,
-              'acao': action,
-              'reason': reason,
-            };
-          }).toList();
-          allLogs.addAll(transformedLogs);
-        }
+      if (notificationsResponse.statusCode == 200) {
+        final logsData = jsonDecode(notificationsResponse.body) as List;
+        final transformedLogs = logsData.map((log) {
+          final timestamp = DateTime.parse(
+            log['timestamp'],
+          ).millisecondsSinceEpoch;
+          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+          final reason = translateReason(log['reason']);
+          return {
+            'data_hora': timestamp,
+            'fechadura_nome': deviceNames[log['device_id']] ?? log['device_id'],
+            'usuario': user,
+            'acao': action,
+            'reason': reason,
+          };
+        }).toList();
+        allLogs = transformedLogs;
       }
 
       // Sort by timestamp descending
