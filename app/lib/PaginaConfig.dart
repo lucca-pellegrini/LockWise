@@ -65,10 +65,6 @@ class _ConfigState extends State<Config> {
                         style: TextStyle(fontSize: 20, color: Colors.white),
                       ),
                 const SizedBox(height: 5),
-                Text(
-                  usuario != null ? 'ID: ${usuario!['id']}' : 'ID: 000',
-                  style: TextStyle(fontSize: 20, color: Colors.white),
-                ),
               ],
             ),
 
@@ -221,4 +217,3 @@ class GlassCard extends StatelessWidget {
     );
   }
 }
-
