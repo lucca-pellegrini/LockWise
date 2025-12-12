@@ -28,6 +28,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   Map<String, dynamic>? fechadura;
   List<Map<String, dynamic>> logs = [];
   int? lastHeard;
+  int? pingMs;
   String _duracaoSelecionada = '1_semana';
 
   bool get isConnected =>
@@ -107,6 +108,24 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           // Ignore after 2 attempts
         } else {
           await Future.delayed(const Duration(seconds: 1)); // Wait before retry
+        }
+      }
+    }
+
+    // Poll ping if connected
+    if (isConnected) {
+      final start = DateTime.now().millisecondsSinceEpoch;
+      final pingResponse = await http.post(
+        Uri.parse('$backendUrl/ping/${widget.fechaduraId}'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+      if (pingResponse.statusCode == 200) {
+        final end = DateTime.now().millisecondsSinceEpoch;
+        final newPingMs = ((end - start) / 2).round();
+        if (newPingMs != pingMs) {
+          setState(() {
+            pingMs = newPingMs;
+          });
         }
       }
     }
@@ -373,20 +392,66 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                'Status: ${isOpen ? 'Aberta' : 'Fechada'}',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
+                              Row(
+                                children: [
+                                  Icon(
+                                    isOpen ? Icons.lock_open : Icons.lock,
+                                    color: isOpen ? Colors.green : Colors.white,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    isOpen ? 'Aberta' : 'Fechada',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                'Conectada: ${isConnected ? 'Sim' : 'Não'}',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
+                              Row(
+                                children: [
+                                  Icon(
+                                    isConnected ? Icons.wifi : Icons.wifi_off,
+                                    color: isConnected
+                                        ? Colors.green
+                                        : Colors.orange.shade800,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    isConnected ? 'Conectada' : 'Desconectada',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              if (isConnected)
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.speed,
+                                      color: pingMs == null
+                                          ? Colors.white
+                                          : pingMs! > 1000
+                                          ? Colors.orange.shade800
+                                          : pingMs! < 500
+                                          ? Colors.green
+                                          : Colors.yellow.shade700,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Ping: ${pingMs ?? '?'}ms',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               Text(
                                 'Último acesso: ${_ultimoLog == null ? 'N/A' : '${_formatarHorario(_ultimoLog!['data_hora'] as int)} • '
                                           '${_ultimoLog!['usuario'] ?? 'Usuário'}'}',

@@ -18,6 +18,8 @@ use url::Url;
 use uuid::Uuid;
 
 static RECENT_COMMANDS: OnceLock<Mutex<HashMap<String, (String, String, i64)>>> = OnceLock::new();
+static PENDING_PINGS: OnceLock<Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>> =
+    OnceLock::new();
 
 #[derive(Deserialize)]
 struct StatusMessage {
@@ -33,6 +35,13 @@ struct StatusMessage {
     lock_timeout_ms: i32,
     user_id: String,
     lock_state: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PongMessage {
+    status: String,
+    uptime_ms: u64,
+    timestamp: u64,
 }
 
 #[derive(Serialize)]
@@ -116,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .unwrap();
     let _ = RECENT_COMMANDS.set(Mutex::new(HashMap::new()));
+    let _ = PENDING_PINGS.set(Mutex::new(HashMap::new()));
 
     // Setup DB
     let url = Url::parse(&db_url)?;
@@ -221,7 +231,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     unpair_device,
                     get_device,
                     get_logs,
-                    register_device
+                    register_device,
+                    ping_device
                 ],
             )
             .launch()
@@ -242,34 +253,46 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                 if topic.starts_with("lockwise/") && topic.ends_with("/status") {
                     let uuid_str = &topic[9..topic.len() - 7]; // extract UUID
                     if let Ok(uuid) = Uuid::parse_str(uuid_str) {
-                        // Try to parse as StatusMessage (HEARTBEAT)
-                        if let Ok(heartbeat) =
-                            serde_cbor::from_slice::<StatusMessage>(&publish.payload)
-                        {
-                            if heartbeat.status == "HEARTBEAT" {
-                                let now = Utc::now();
-                                let lock_state =
-                                    heartbeat.lock_state.as_deref().unwrap_or("UNKNOWN");
-                                let _ = sqlx::query(
-                                      "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL)
-                                       ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, lock_state = $12"
-                                  )
-                                  .bind(uuid)
-                                  .bind(&heartbeat.user_id)
-                                  .bind(now)
-                                  .bind(heartbeat.uptime_ms as i64)
-                                  .bind(&heartbeat.wifi_ssid)
-                                  .bind(&heartbeat.backend_url)
-                                  .bind(&heartbeat.mqtt_broker_url)
-                                  .bind(heartbeat.mqtt_heartbeat_enable)
-                                  .bind(heartbeat.mqtt_heartbeat_interval_sec)
-                                  .bind(heartbeat.audio_record_timeout_sec)
-                                  .bind(heartbeat.lock_timeout_ms)
-                                  .bind(lock_state)
-                                  .execute(db_pool)
-                                  .await;
-                            }
-                        } else if let Ok(lock_msg) =
+                        // Try to parse as StatusMessage (HEARTBEAT) first
+                         if let Ok(status_msg) =
+                             serde_cbor::from_slice::<StatusMessage>(&publish.payload)
+                         {
+                             if status_msg.status == "HEARTBEAT" {
+                                 // Handle HEARTBEAT
+                                 let now = Utc::now();
+                                 let lock_state =
+                                     status_msg.lock_state.as_deref().unwrap_or("UNKNOWN");
+                                 let _ = sqlx::query(
+                                       "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL)
+                                        ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, lock_state = $12"
+                                   )
+                                   .bind(uuid)
+                                   .bind(&status_msg.user_id)
+                                   .bind(now)
+                                   .bind(status_msg.uptime_ms as i64)
+                                   .bind(&status_msg.wifi_ssid)
+                                   .bind(&status_msg.backend_url)
+                                   .bind(&status_msg.mqtt_broker_url)
+                                   .bind(status_msg.mqtt_heartbeat_enable)
+                                   .bind(status_msg.mqtt_heartbeat_interval_sec)
+                                   .bind(status_msg.audio_record_timeout_sec)
+                                   .bind(status_msg.lock_timeout_ms)
+                                   .bind(lock_state)
+                                   .execute(db_pool)
+                                   .await;
+                             }
+                         } else if let Ok(pong_msg) =
+                             serde_cbor::from_slice::<PongMessage>(&publish.payload)
+                         {
+                             if pong_msg.status == "PONG" {
+                                 // Handle PONG
+                                 let pings_mutex = PENDING_PINGS.get().unwrap();
+                                 let mut pings = pings_mutex.lock().unwrap();
+                                 if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
+                                     tx.send(()).ok();
+                                 }
+                             }
+                         } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
                         {
                             // LOCK/UNLOCK event
@@ -307,16 +330,16 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
 
                             // Insert log
                             let _ = sqlx::query(
-                                "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id, user_name) VALUES ($1, $2, $3, $4, $5, $6)"
-                            )
-                            .bind(uuid_str)
-                            .bind(timestamp)
-                            .bind(event_type)
-                            .bind(reason)
-                            .bind(&user_id)
-                            .bind(&user_name)
-                            .execute(db_pool)
-                            .await;
+                                     "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id, user_name) VALUES ($1, $2, $3, $4, $5, $6)"
+                                 )
+                                 .bind(uuid_str)
+                                 .bind(timestamp)
+                                 .bind(event_type)
+                                 .bind(reason)
+                                 .bind(&user_id)
+                                 .bind(&user_name)
+                                 .execute(db_pool)
+                                 .await;
 
                             // Update lock_state
                             let lock_state = if lock_msg.status == "LOCKED" {
@@ -354,6 +377,65 @@ async fn publish_control_message(
     Ok(())
 }
 
+#[post("/ping/<uuid>")]
+async fn ping_device(
+    token: Token,
+    uuid: &str,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check ownership
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid_parsed)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((Some(db_user_id),)) = row {
+        if firebase_uid != db_user_id {
+            return Err(Status::Unauthorized);
+        }
+    } else {
+        return Err(Status::Unauthorized);
+    }
+
+    // Send PING
+    publish_control_message(&**mqtt_client, uuid_parsed, "PING".to_string())
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Wait for PONG
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let start = chrono::Utc::now().timestamp_millis();
+    {
+        let pings_mutex = PENDING_PINGS.get().unwrap();
+        let mut pings = pings_mutex.lock().unwrap();
+        pings.insert(uuid.to_string(), (start, tx));
+    }
+
+    // Timeout after 10 seconds
+    tokio::time::timeout(std::time::Duration::from_secs(10), rx)
+        .await
+        .map_err(|_| Status::RequestTimeout)?
+        .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
 #[get("/health")]
 fn health() -> &'static str {
     "OK"
@@ -381,35 +463,40 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
     .await
     .map_err(|_| Status::InternalServerError)?;
 
-    let devices: Vec<serde_json::Value> = rows.into_iter().map(|(
-        db_uuid,
-        db_user_id_opt,
-        last_heard,
-        uptime_ms,
-        wifi_ssid,
-        backend_url,
-        mqtt_broker_url,
-        mqtt_heartbeat_enable,
-        mqtt_heartbeat_interval_sec,
-        audio_record_timeout_sec,
-        lock_timeout_ms,
-        lock_state,
-    )| {
-        serde_json::json!({
-            "uuid": db_uuid.to_string(),
-            "user_id": firebase_uid,
-            "last_heard": last_heard.timestamp_millis(),
-            "uptime_ms": uptime_ms,
-            "wifi_ssid": wifi_ssid,
-            "backend_url": backend_url,
-            "mqtt_broker_url": mqtt_broker_url,
-            "mqtt_heartbeat_enable": mqtt_heartbeat_enable,
-            "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
-            "audio_record_timeout_sec": audio_record_timeout_sec,
-            "lock_timeout_ms": lock_timeout_ms,
-            "lock_state": lock_state
-        })
-    }).collect();
+    let devices: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(
+                db_uuid,
+                db_user_id_opt,
+                last_heard,
+                uptime_ms,
+                wifi_ssid,
+                backend_url,
+                mqtt_broker_url,
+                mqtt_heartbeat_enable,
+                mqtt_heartbeat_interval_sec,
+                audio_record_timeout_sec,
+                lock_timeout_ms,
+                lock_state,
+            )| {
+                serde_json::json!({
+                    "uuid": db_uuid.to_string(),
+                    "user_id": firebase_uid,
+                    "last_heard": last_heard.timestamp_millis(),
+                    "uptime_ms": uptime_ms,
+                    "wifi_ssid": wifi_ssid,
+                    "backend_url": backend_url,
+                    "mqtt_broker_url": mqtt_broker_url,
+                    "mqtt_heartbeat_enable": mqtt_heartbeat_enable,
+                    "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
+                    "audio_record_timeout_sec": audio_record_timeout_sec,
+                    "lock_timeout_ms": lock_timeout_ms,
+                    "lock_state": lock_state
+                })
+            },
+        )
+        .collect();
 
     Ok(serde_json::to_string(&devices).unwrap())
 }
