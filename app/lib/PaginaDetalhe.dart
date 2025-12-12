@@ -783,23 +783,25 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 20),
 
-                          // Campo ID do usuário
+                          // Campo email do usuário
                           TextFormField(
                             controller: _idUsuarioController,
                             style: TextStyle(color: Colors.white),
-                            keyboardType: TextInputType.number,
+                            keyboardType: TextInputType.emailAddress,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Digite o ID do usuário';
+                                return 'Digite o e-mail do usuário';
                               }
-                              if (int.tryParse(value) == null) {
-                                return 'Digite um número válido';
+                              // Basic email validation
+                              if (!value.contains('@') ||
+                                  !value.contains('.')) {
+                                return 'Digite um e-mail válido';
                               }
                               return null;
                             },
                             decoration: InputDecoration(
-                              labelText: 'ID do Usuário',
-                              hintText: 'Ex: 123',
+                              labelText: 'E-mail do Usuário',
+                              hintText: 'Ex: usuario@email.com',
                               labelStyle: TextStyle(color: Colors.white70),
                               hintStyle: TextStyle(color: Colors.white54),
                               enabledBorder: OutlineInputBorder(
@@ -933,67 +935,39 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
   Future<void> _enviarConvite() async {
     try {
-      final usuarioId = _idUsuarioController.text;
-      final usuario = await LocalService.getUsuarioLogado();
-      final remetenteId = usuario?['id'] ?? '';
+      final emailUsuario = _idUsuarioController.text.trim();
 
-      // Verificar se o usuário existe
-      final usuarioDoc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(usuarioId.toString())
-          .get();
-      final usuarioConvidado = usuarioDoc.exists ? usuarioDoc.data() : null;
-      if (usuarioConvidado == null) {
-        _mostrarErro('Usuário com ID $usuarioId não encontrado');
+      // Call backend to create invite
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        _mostrarErro('Erro de autenticação');
         return;
       }
 
-      // Verificar se já não é administrador
-      final adminSnapshot = await FirebaseFirestore.instance
-          .collection('administradores_fechaduras')
-          .where('fechadura_id', isEqualTo: widget.fechaduraId)
-          .where('usuario_id', isEqualTo: usuarioId)
-          .get();
-      if (adminSnapshot.docs.isNotEmpty) {
-        _mostrarErro('Este usuário já é administrador da fechadura');
-        return;
-      }
-
-      // Verificar se já não existe convite pendente
-      final convitesSnapshot = await FirebaseFirestore.instance
-          .collection('convites')
-          .where('fechadura_id', isEqualTo: widget.fechaduraId)
-          .get();
-      final convitesExistentes = convitesSnapshot.docs
-          .map((doc) => doc.data())
-          .toList();
-      final convitePendente = convitesExistentes.any(
-        (c) => c['destinatario_id'] == usuarioId && c['status'] == 0,
+      final response = await http.post(
+        Uri.parse('$backendUrl/create_invite'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $backendToken',
+        },
+        body: jsonEncode({
+          'receiver_email': emailUsuario,
+          'device_id': widget.fechaduraId,
+          'expiry_duration': _duracaoSelecionada,
+        }),
       );
 
-      if (convitePendente) {
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        _mostrarSucesso('Convite enviado com sucesso!');
+        _limparFormularioConvite();
+      } else if (response.statusCode == 404) {
+        _mostrarErro('Usuário com este e-mail não encontrado');
+      } else if (response.statusCode == 409) {
         _mostrarErro('Já existe um convite pendente para este usuário');
-        return;
+      } else {
+        _mostrarErro('Erro ao enviar convite: ${response.statusCode}');
       }
-
-      // Calcular data de expiração
-      final agora = DateTime.now();
-      final dataExpiracao = _calcularDataExpiracao(agora, _duracaoSelecionada);
-
-      // Inserir convite no Firestore
-      await FirebaseFirestore.instance.collection('convites').add({
-        'fechadura_id': widget.fechaduraId,
-        'remetente_id': remetenteId,
-        'destinatario_id': usuarioId,
-        'data_convite': agora.millisecondsSinceEpoch,
-        'data_expiracao': dataExpiracao.millisecondsSinceEpoch,
-        'status': 0, // 0 = pendente, 1 = aceito, 2 = recusado
-        'permissoes_admin': _isAdmin ? 1 : 0,
-      });
-
-      _mostrarSucesso('Convite enviado para ${usuarioConvidado['nome']}!');
-
-      _limparFormularioConvite();
     } catch (e) {
       _mostrarErro('Erro ao enviar convite: $e');
     }

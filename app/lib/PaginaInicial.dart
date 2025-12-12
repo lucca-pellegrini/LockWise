@@ -259,7 +259,7 @@ class _InicialState extends State<Inicial> {
   final List<String> _appBarTitles = [
     'Minhas LockWise', // index 0
     'Notificações', // index 1
-    'Configuracao', // index 2
+    'Configuração', // index 2
     'Acessos Temporários', // index 3
   ];
 

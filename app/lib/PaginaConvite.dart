@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'models/LocalService.dart';
 import 'dart:ui';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+const String backendUrl = 'http://192.168.0.75:12223';
 
 class PaginaConvites extends StatefulWidget {
   const PaginaConvites({super.key});
@@ -39,89 +43,120 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
       if (_usuario != null) {
         final usuarioId = _usuario!['id'] as String;
+        // Call backend to get invites
+        final backendToken = await LocalService.getBackendToken();
+        if (backendToken != null) {
+          final response = await http.get(
+            Uri.parse('$backendUrl/invites'),
+            headers: {'Authorization': 'Bearer $backendToken'},
+          );
 
-        // Carregar convites enviados com informações da fechadura e destinatário
-        final enviados = await _carregarConvitesEnviados(usuarioId);
-        final recebidos = await _carregarConvitesRecebidos(usuarioId);
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final sentInvites = data['sent'] as List;
+            final receivedInvites = data['received'] as List;
 
-        setState(() {
-          _convitesEnviados = enviados;
-          _convitesRecebidos = recebidos;
-          _isLoading = false;
-        });
+            // Transform to the expected format
+            final enviados = sentInvites.map((invite) {
+              final expiry = DateTime.fromMillisecondsSinceEpoch(
+                invite['expiry_timestamp'],
+              );
+              final created = DateTime.fromMillisecondsSinceEpoch(
+                invite['created_at'],
+              );
+              return {
+                'id': invite['id'].toString(),
+                'fechadura_id': invite['device_id'],
+                'remetente_id': usuarioId,
+                'destinatario_id': invite['receiver_id'],
+                'status': invite['status'],
+                'data_expiracao': expiry.millisecondsSinceEpoch,
+                'data_convite': created.millisecondsSinceEpoch,
+                'fechadura_nome':
+                    'Fechadura ${invite['device_id']}', // TODO: get device name from Firestore
+                'destinatario_nome': invite['receiver_name'] ?? 'Usuário',
+                'destinatario_email': invite['receiver_email'] ?? '',
+              };
+            }).toList();
+
+            final recebidos = receivedInvites.map((invite) {
+              final expiry = DateTime.fromMillisecondsSinceEpoch(
+                invite['expiry_timestamp'],
+              );
+              final created = DateTime.fromMillisecondsSinceEpoch(
+                invite['created_at'],
+              );
+              return {
+                'id': invite['id'].toString(),
+                'fechadura_id': invite['device_id'],
+                'remetente_id': invite['sender_id'],
+                'status': invite['status'],
+                'data_expiracao': expiry.millisecondsSinceEpoch,
+                'data_convite': created.millisecondsSinceEpoch,
+                'fechadura_nome':
+                    'Fechadura ${invite['device_id']}', // TODO: get device name from Firestore
+                'remetente_nome': invite['sender_name'] ?? 'Usuário',
+                'remetente_email': invite['sender_email'] ?? '',
+              };
+            }).toList();
+
+            // Fetch device names
+            final deviceNames = <String, String>{};
+            final deviceFetches = <Future>[];
+            for (final convite in [...enviados, ...recebidos]) {
+              final ownerId = convite['remetente_id'];
+              final deviceId = convite['fechadura_id'];
+              final key = '$ownerId:$deviceId';
+              if (!deviceNames.containsKey(key)) {
+                deviceFetches.add(
+                  FirebaseFirestore.instance
+                      .collection('fechaduras')
+                      .doc(ownerId)
+                      .collection('devices')
+                      .doc(deviceId)
+                      .get()
+                      .then((doc) {
+                        if (doc.exists) {
+                          deviceNames[key] = doc.data()?['nome'] ?? 'Fechadura';
+                        } else {
+                          deviceNames[key] = 'Fechadura';
+                        }
+                      }),
+                );
+              }
+            }
+            await Future.wait(deviceFetches);
+
+            // Update device names
+            for (final convite in enviados) {
+              final ownerId = convite['remetente_id'];
+              final deviceId = convite['fechadura_id'];
+              final key = '$ownerId:$deviceId';
+              convite['fechadura_nome'] = deviceNames[key] ?? 'Fechadura';
+            }
+            for (final convite in recebidos) {
+              final ownerId = convite['remetente_id'];
+              final deviceId = convite['fechadura_id'];
+              final key = '$ownerId:$deviceId';
+              convite['fechadura_nome'] = deviceNames[key] ?? 'Fechadura';
+            }
+
+            setState(() {
+              _convitesEnviados = enviados;
+              _convitesRecebidos = recebidos;
+              _isLoading = false;
+            });
+          } else {
+            setState(() => _isLoading = false);
+          }
+        } else {
+          setState(() => _isLoading = false);
+        }
       }
     } catch (e) {
       print('Erro ao carregar convites: $e');
       setState(() => _isLoading = false);
     }
-  }
-
-  Future<List<Map<String, dynamic>>> _carregarConvitesEnviados(
-    String usuarioId,
-  ) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('convites')
-        .where('remetente_id', isEqualTo: usuarioId)
-        .get();
-    final convites = querySnapshot.docs.map((doc) => doc.data()).toList();
-    final List<Map<String, dynamic>> convitesCompletos = [];
-
-    for (final convite in convites) {
-      final fechaduraDoc = await FirebaseFirestore.instance
-          .collection('fechaduras')
-          .doc(convite['remetente_id'])
-          .collection('devices')
-          .doc(convite['fechadura_id'])
-          .get();
-      final fechadura = fechaduraDoc.exists ? fechaduraDoc.data() : null;
-      final destinatarioDoc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(convite['destinatario_id'])
-          .get();
-      final destinatario = destinatarioDoc.exists
-          ? destinatarioDoc.data()
-          : null;
-
-      convitesCompletos.add({
-        ...convite,
-        'fechadura_nome': fechadura?['nome'] ?? 'Fechadura excluída',
-        'destinatario_nome': destinatario?['nome'] ?? 'Usuário não encontrado',
-      });
-    }
-
-    return convitesCompletos;
-  }
-
-  Future<List<Map<String, dynamic>>> _carregarConvitesRecebidos(
-    String usuarioId,
-  ) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('convites')
-        .where('destinatario_id', isEqualTo: usuarioId)
-        .get();
-    final convites = querySnapshot.docs.map((doc) => doc.data()).toList();
-    final List<Map<String, dynamic>> convitesCompletos = [];
-
-    for (final convite in convites) {
-      final fechaduraDoc = await FirebaseFirestore.instance
-          .collection('fechaduras')
-          .doc(convite['fechadura_id'])
-          .get();
-      final fechadura = fechaduraDoc.exists ? fechaduraDoc.data() : null;
-      final remetenteDoc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(convite['remetente_id'])
-          .get();
-      final remetente = remetenteDoc.exists ? remetenteDoc.data() : null;
-
-      convitesCompletos.add({
-        ...convite,
-        'fechadura_nome': fechadura?['nome'] ?? 'Fechadura excluída',
-        'remetente_nome': remetente?['nome'] ?? 'Usuário não encontrado',
-      });
-    }
-
-    return convitesCompletos;
   }
 
   @override
@@ -293,7 +328,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Para: ${convite['destinatario_nome']}',
+                            'Para: ${convite['destinatario_nome']} (${convite['destinatario_email']})',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 14,
@@ -421,7 +456,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'De: ${convite['remetente_nome']}',
+                  'De: ${convite['remetente_nome']} (${convite['remetente_email']})',
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 SizedBox(height: 12),
@@ -496,6 +531,12 @@ class _PaginaConvitesState extends State<PaginaConvites>
                             fontSize: 12,
                           ),
                         ],
+                      )
+                    else if (convite['status'] == 1 && !expirou)
+                      IconButton(
+                        onPressed: () => _removerAcessoRecebido(convite),
+                        icon: Icon(Icons.delete, color: Colors.red, size: 24),
+                        tooltip: 'Remover acesso',
                       ),
                   ],
                 ),
@@ -537,7 +578,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
           backgroundColor: Colors.blueGrey.shade800,
           title: Text('Revogar Convite', style: TextStyle(color: Colors.white)),
           content: Text(
-            'Tem certeza que deseja revogar o convite para "${convite['destinatario_nome']}"?',
+            'Tem certeza que deseja revogar o convite?',
             style: TextStyle(color: Colors.white70),
           ),
           actions: [
@@ -556,12 +597,32 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
     if (confirma == true) {
       try {
-        await FirebaseFirestore.instance
-            .collection('convites')
-            .doc(convite['id'])
-            .delete();
-        _mostrarSucesso('Convite revogado com sucesso');
-        await _carregarDados();
+        final backendToken = await LocalService.getBackendToken();
+        if (backendToken == null) {
+          _mostrarErro('Erro de autenticação');
+          return;
+        }
+
+        final response = await http.post(
+          Uri.parse('$backendUrl/cancel_invite/${convite['id']}'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+
+        if (response.statusCode == 200) {
+          // Delete from Firestore
+          final querySnapshot = await FirebaseFirestore.instance
+              .collection('convites')
+              .where('id', isEqualTo: convite['id'])
+              .get();
+          if (querySnapshot.docs.isNotEmpty) {
+            await querySnapshot.docs.first.reference.delete();
+          }
+
+          _mostrarSucesso('Convite revogado com sucesso');
+          await _carregarDados();
+        } else {
+          _mostrarErro('Erro ao revogar convite: ${response.statusCode}');
+        }
       } catch (e) {
         _mostrarErro('Erro ao revogar convite: $e');
       }
@@ -576,69 +637,130 @@ class _PaginaConvitesState extends State<PaginaConvites>
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: Colors.blueGrey.shade800,
-              title: Text(
-                'Alterar Expiração',
-                style: TextStyle(color: Colors.white),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Convite para: ${convite['destinatario_nome']}',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: duracaoSelecionada,
-                    style: TextStyle(color: Colors.white),
-                    dropdownColor: Colors.blueGrey.shade700,
-                    decoration: InputDecoration(
-                      labelText: 'Nova duração',
-                      labelStyle: TextStyle(color: Colors.white70),
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.blueAccent.withOpacity(0.3),
+                          Colors.blueAccent.withOpacity(0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
                     ),
-                    items: [
-                      DropdownMenuItem(value: '2_dias', child: Text('2 Dias')),
-                      DropdownMenuItem(
-                        value: '1_semana',
-                        child: Text('1 Semana'),
-                      ),
-                      DropdownMenuItem(
-                        value: '2_semanas',
-                        child: Text('2 Semanas'),
-                      ),
-                      DropdownMenuItem(value: '1_mes', child: Text('1 Mês')),
-                      DropdownMenuItem(
-                        value: 'permanente',
-                        child: Text('Permanente'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setDialogState(() {
-                        duracaoSelecionada = value!;
-                      });
-                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Alterar Expiração',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Convite para: ${convite['destinatario_nome']}',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: duracaoSelecionada,
+                          style: TextStyle(color: Colors.white),
+                          dropdownColor: Colors.blueGrey.shade700,
+                          decoration: InputDecoration(
+                            labelText: 'Nova duração',
+                            labelStyle: TextStyle(color: Colors.white70),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white70),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.blueAccent),
+                            ),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '2_dias',
+                              child: Text(
+                                '2 Dias',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: '1_semana',
+                              child: Text(
+                                '1 Semana',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: '2_semanas',
+                              child: Text(
+                                '2 Semanas',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: '1_mes',
+                              child: Text(
+                                '1 Mês',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'permanente',
+                              child: Text(
+                                'Permanente',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() {
+                              duracaoSelecionada = value!;
+                            });
+                          },
+                        ),
+                        SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            _GlassButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              text: 'Cancelar',
+                              color: Colors.grey,
+                              width: 80,
+                              height: 36,
+                            ),
+                            SizedBox(width: 12),
+                            _GlassButton(
+                              onPressed: () =>
+                                  Navigator.of(context).pop(duracaoSelecionada),
+                              text: 'Alterar',
+                              color: Colors.blueAccent,
+                              width: 80,
+                              height: 36,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(
-                    'Cancelar',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () =>
-                      Navigator.of(context).pop(duracaoSelecionada),
-                  child: Text(
-                    'Alterar',
-                    style: TextStyle(color: Colors.blueAccent),
-                  ),
-                ),
-              ],
             );
           },
         );
@@ -647,18 +769,27 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
     if (novaData != null) {
       try {
-        final agora = DateTime.now();
-        final novaDataExpiracao = _calcularDataExpiracao(agora, novaData);
+        final backendToken = await LocalService.getBackendToken();
+        if (backendToken == null) {
+          _mostrarErro('Erro de autenticação');
+          return;
+        }
 
-        await FirebaseFirestore.instance
-            .collection('convites')
-            .doc(convite['id'])
-            .update({
-              'data_expiracao': novaDataExpiracao.millisecondsSinceEpoch,
-            });
+        final response = await http.post(
+          Uri.parse('$backendUrl/update_invite/${convite['id']}'),
+          headers: {
+            'Authorization': 'Bearer $backendToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'expiry_duration': novaData}),
+        );
 
-        _mostrarSucesso('Data de expiração alterada com sucesso');
-        await _carregarDados();
+        if (response.statusCode == 200) {
+          _mostrarSucesso('Data de expiração alterada com sucesso');
+          await _carregarDados();
+        } else {
+          _mostrarErro('Erro ao alterar expiração: ${response.statusCode}');
+        }
       } catch (e) {
         _mostrarErro('Erro ao alterar expiração: $e');
       }
@@ -667,34 +798,32 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
   Future<void> _aceitarConvite(Map<String, dynamic> convite) async {
     try {
-      // Verificar se o convite tem permissões de admin
-      final temPermissoesAdmin = convite['permissoes_admin'] == 1;
-
-      // Atualizar status do convite
-      await FirebaseFirestore.instance
-          .collection('convites')
-          .doc(convite['id'])
-          .update({
-            'status': 1, // 1 = aceito
-          });
-
-      // Se tem permissões de admin, adiciona como administrador
-      if (temPermissoesAdmin) {
-        await FirebaseFirestore.instance
-            .collection('administradores_fechaduras')
-            .add({
-              'fechadura_id': convite['fechadura_id'],
-              'usuario_id': _usuario!['id'],
-            });
-        _mostrarSucesso(
-          'Convite aceito! Você agora é administrador da fechadura.',
-        );
-      } else {
-        // Se não tem permissões de admin, apenas aceita o convite (acesso básico)
-        _mostrarSucesso('Convite aceito! Você agora tem acesso à fechadura.');
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        _mostrarErro('Erro de autenticação');
+        return;
       }
 
-      await _carregarDados();
+      final response = await http.post(
+        Uri.parse('$backendUrl/accept_invite/${convite['id']}'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+
+      if (response.statusCode == 200) {
+        // Update Firestore status to accepted
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('convites')
+            .where('id', isEqualTo: convite['id'])
+            .get();
+        if (querySnapshot.docs.isNotEmpty) {
+          await querySnapshot.docs.first.reference.update({'status': 1});
+        }
+
+        _mostrarSucesso('Convite aceito! Você agora tem acesso à fechadura.');
+        await _carregarDados();
+      } else {
+        _mostrarErro('Erro ao aceitar convite: ${response.statusCode}');
+      }
     } catch (e) {
       _mostrarErro('Erro ao aceitar convite: $e');
     }
@@ -702,17 +831,142 @@ class _PaginaConvitesState extends State<PaginaConvites>
 
   Future<void> _recusarConvite(Map<String, dynamic> convite) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('convites')
-          .doc(convite['id'])
-          .update({
-            'status': 2, // 2 = recusado
-          });
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        _mostrarErro('Erro de autenticação');
+        return;
+      }
 
-      _mostrarSucesso('Convite recusado');
-      await _carregarDados();
+      final response = await http.post(
+        Uri.parse('$backendUrl/reject_invite/${convite['id']}'),
+        headers: {'Authorization': 'Bearer $backendToken'},
+      );
+
+      if (response.statusCode == 200) {
+        // Delete from Firestore
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('convites')
+            .where('id', isEqualTo: convite['id'])
+            .get();
+        if (querySnapshot.docs.isNotEmpty) {
+          await querySnapshot.docs.first.reference.delete();
+        }
+
+        _mostrarSucesso('Convite recusado');
+        await _carregarDados();
+      } else {
+        _mostrarErro('Erro ao recusar convite: ${response.statusCode}');
+      }
     } catch (e) {
       _mostrarErro('Erro ao recusar convite: $e');
+    }
+  }
+
+  Future<void> _removerAcessoRecebido(Map<String, dynamic> convite) async {
+    final confirma = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                padding: EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.blueAccent.withOpacity(0.3),
+                      Colors.blueAccent.withOpacity(0.1),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Remover Acesso',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Tem certeza que deseja remover o acesso à fechadura "${convite['fechadura_nome']}"?',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _GlassButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          text: 'Cancelar',
+                          color: Colors.grey,
+                          width: 80,
+                          height: 36,
+                        ),
+                        SizedBox(width: 12),
+                        _GlassButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          text: 'Remover',
+                          color: Colors.red,
+                          width: 80,
+                          height: 36,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirma == true) {
+      try {
+        final backendToken = await LocalService.getBackendToken();
+        if (backendToken == null) {
+          _mostrarErro('Erro de autenticação');
+          return;
+        }
+
+        final response = await http.post(
+          Uri.parse('$backendUrl/reject_invite/${convite['id']}'),
+          headers: {'Authorization': 'Bearer $backendToken'},
+        );
+
+        if (response.statusCode == 200) {
+          // Delete from Firestore
+          final querySnapshot = await FirebaseFirestore.instance
+              .collection('convites')
+              .where('id', isEqualTo: convite['id'])
+              .get();
+          if (querySnapshot.docs.isNotEmpty) {
+            await querySnapshot.docs.first.reference.delete();
+          }
+
+          _mostrarSucesso('Acesso removido com sucesso');
+          await _carregarDados();
+        } else {
+          _mostrarErro('Erro ao remover acesso: ${response.statusCode}');
+        }
+      } catch (e) {
+        _mostrarErro('Erro ao remover acesso: $e');
+      }
     }
   }
 

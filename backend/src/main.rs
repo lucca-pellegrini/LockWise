@@ -150,6 +150,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .execute(&db_pool)
         .await?;
 
+    // Create invites table if not exists
+    sqlx::query("CREATE TABLE IF NOT EXISTS invites ( id SERIAL PRIMARY KEY, device_id UUID NOT NULL, sender_id VARCHAR(255) NOT NULL, receiver_id VARCHAR(255) NOT NULL, status INTEGER NOT NULL DEFAULT 0, expiry_timestamp BIGINT NOT NULL, created_at timestamptz NOT NULL DEFAULT NOW(), FOREIGN KEY (device_id) REFERENCES devices(uuid) ON DELETE CASCADE)")
+        .execute(&db_pool)
+        .await?;
+
     // Add columns if not exists (for migration)
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)")
         .execute(&db_pool)
@@ -249,7 +254,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     update_phone,
                     update_password,
                     delete_account,
-                    verify_password
+                    verify_password,
+                    create_invite,
+                    get_invites,
+                    accept_invite,
+                    reject_invite,
+                    cancel_invite,
+                    update_invite,
+                    get_accessible_devices,
+                    get_temp_devices_status,
+                    get_temp_device,
+                    control_temp_device,
+                    ping_temp_device
                 ],
             )
             .launch()
@@ -271,7 +287,7 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                     let uuid_str = &topic[9..topic.len() - 7]; // extract UUID
                     if let Ok(uuid) = Uuid::parse_str(uuid_str) {
                         // Try to parse as LockStatusMessage first (has reason)
-                         if let Ok(lock_msg) =
+                        if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
                         {
                             // LOCK/UNLOCK event
@@ -289,9 +305,7 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                             let user_id = {
                                 let commands_mutex = RECENT_COMMANDS.get().unwrap();
                                 let mut commands = commands_mutex.lock().unwrap();
-                                if let Some((uid, cmd_time)) =
-                                    commands.get(&uuid_str.to_string())
-                                {
+                                if let Some((uid, cmd_time)) = commands.get(&uuid_str.to_string()) {
                                     let now = Utc::now().timestamp();
                                     if now - cmd_time < 5 {
                                         // within 5 seconds
@@ -413,19 +427,41 @@ async fn ping_device(
         None => return Err(Status::Unauthorized),
     };
 
-    // Check ownership
+    // Check ownership or accepted invite
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
             .map_err(|_| Status::InternalServerError)?;
-    if let Some((Some(db_user_id),)) = row {
-        if firebase_uid != db_user_id {
+    if let Some((db_user_id_opt,)) = row {
+        let has_access = if let Some(db_user_id) = db_user_id_opt {
+            // User owns the device
+            if firebase_uid == db_user_id {
+                true
+            } else {
+                // Check for accepted, non-expired invite
+                let now = Utc::now().timestamp_millis();
+                let invite_row: Option<(i32,)> = sqlx::query_as(
+                    "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+                )
+                .bind(uuid_parsed)
+                .bind(&firebase_uid)
+                .bind(now)
+                .fetch_optional(&**db_pool)
+                .await
+                .map_err(|_| Status::InternalServerError)?;
+                invite_row.is_some()
+            }
+        } else {
+            false // Unpaired device
+        };
+
+        if !has_access {
             return Err(Status::Unauthorized);
         }
     } else {
-        return Err(Status::Unauthorized);
+        return Err(Status::NotFound);
     }
 
     // Send PING
@@ -665,19 +701,38 @@ async fn control_device(
         return Err(Status::Unauthorized);
     }
 
-    // Fetch user_id for this uuid to ensure the user owns the device
-    let row: Option<(Option<String>,)> =
+    // Check if user owns the device OR has an accepted, non-expired invite
+    let device_row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
             .map_err(|_| Status::InternalServerError)?;
-    if let Some((Some(db_user_id),)) = row {
-        if request.user_id != db_user_id {
-            return Err(Status::Unauthorized);
+
+    let has_access = if let Some((Some(owner_id),)) = device_row {
+        // User owns the device
+        if request.user_id == owner_id {
+            true
+        } else {
+            // Check for accepted, non-expired invite
+            let now = Utc::now().timestamp_millis();
+            let invite_row: Option<(i32,)> = sqlx::query_as(
+                "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+            )
+            .bind(uuid)
+            .bind(&request.user_id)
+            .bind(now)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+            invite_row.is_some()
         }
     } else {
-        return Err(Status::Unauthorized); // Device not found
+        false // Device not found
+    };
+
+    if !has_access {
+        return Err(Status::Unauthorized);
     }
 
     // Store recent command
@@ -758,7 +813,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
         None => return Err(Status::Unauthorized),
     };
 
-    // Check that the device belongs to this user
+    // Check that the device belongs to this user or has accepted invite
     let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
         sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE uuid = $1")
             .bind(uuid)
@@ -780,12 +835,30 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
         lock_state,
     )) = row
     {
-        if let Some(db_user_id) = db_user_id_opt {
-            if firebase_uid != db_user_id {
-                return Err(Status::Unauthorized);
+        let has_access = if let Some(db_user_id) = db_user_id_opt {
+            // User owns the device
+            if firebase_uid == db_user_id {
+                true
+            } else {
+                // Check for accepted, non-expired invite
+                let now = Utc::now().timestamp_millis();
+                let invite_row: Option<(i32,)> = sqlx::query_as(
+                    "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+                )
+                .bind(uuid)
+                .bind(&firebase_uid)
+                .bind(now)
+                .fetch_optional(&**db_pool)
+                .await
+                .map_err(|_| Status::InternalServerError)?;
+                invite_row.is_some()
             }
         } else {
-            return Err(Status::NotFound); // Unpaired device
+            false // Unpaired device
+        };
+
+        if !has_access {
+            return Err(Status::Unauthorized);
         }
         let device = serde_json::json!({
             "uuid": db_uuid.to_string(),
@@ -807,6 +880,258 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     }
 }
 
+#[get("/temp_device/<uuid>")]
+async fn get_temp_device(
+    token: Token,
+    uuid: &str,
+    db_pool: &State<PgPool>,
+) -> Result<String, Status> {
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check for accepted, non-expired invite
+    let now = Utc::now().timestamp_millis();
+    let invite_row: Option<(i32,)> = sqlx::query_as(
+        "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+    )
+    .bind(uuid_parsed)
+    .bind(&firebase_uid)
+    .bind(now)
+    .fetch_optional(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+    if invite_row.is_none() {
+        return Err(Status::Unauthorized);
+    }
+
+    // Get device data
+    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE uuid = $1")
+            .bind(uuid_parsed)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((
+        db_uuid,
+        db_user_id_opt,
+        last_heard,
+        uptime_ms,
+        wifi_ssid,
+        backend_url,
+        mqtt_broker_url,
+        mqtt_heartbeat_enable,
+        mqtt_heartbeat_interval_sec,
+        audio_record_timeout_sec,
+        lock_timeout_ms,
+        lock_state,
+    )) = row
+    {
+        let device = serde_json::json!({
+            "uuid": db_uuid.to_string(),
+            "user_id": firebase_uid,
+            "last_heard": last_heard.timestamp_millis(),
+            "uptime_ms": uptime_ms,
+            "wifi_ssid": wifi_ssid,
+            "backend_url": backend_url,
+            "mqtt_broker_url": mqtt_broker_url,
+            "mqtt_heartbeat_enable": mqtt_heartbeat_enable,
+            "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
+            "audio_record_timeout_sec": audio_record_timeout_sec,
+            "lock_timeout_ms": lock_timeout_ms,
+            "lock_state": lock_state
+        });
+        Ok(device.to_string())
+    } else {
+        Err(Status::NotFound)
+    }
+}
+
+#[post("/temp_control/<uuid>", data = "<request>")]
+async fn control_temp_device(
+    token: Token,
+    uuid: &str,
+    request: rocket::serde::json::Json<ControlRequest>,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check Firebase UID matches request user_id
+    if firebase_uid != request.user_id {
+        return Err(Status::Unauthorized);
+    }
+
+    // Check for accepted, non-expired invite
+    let now = Utc::now().timestamp_millis();
+    let invite_row: Option<(i32,)> = sqlx::query_as(
+        "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+    )
+    .bind(uuid_parsed)
+    .bind(&request.user_id)
+    .bind(now)
+    .fetch_optional(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+    if invite_row.is_none() {
+        return Err(Status::Unauthorized);
+    }
+
+    // Store recent command
+    let now_ts = chrono::Utc::now().timestamp();
+    {
+        let commands_mutex = RECENT_COMMANDS.get().unwrap();
+        let mut commands = commands_mutex.lock().unwrap();
+        commands.insert(uuid.to_string(), (firebase_uid.clone(), now_ts));
+    }
+
+    publish_control_message(&**mqtt_client, uuid_parsed, request.command.clone())
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+    Ok(())
+}
+
+#[post("/temp_ping/<uuid>")]
+async fn ping_temp_device(
+    token: Token,
+    uuid: &str,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check for accepted, non-expired invite
+    let now = Utc::now().timestamp_millis();
+    let invite_row: Option<(i32,)> = sqlx::query_as(
+        "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+    )
+    .bind(uuid_parsed)
+    .bind(&firebase_uid)
+    .bind(now)
+    .fetch_optional(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+    if invite_row.is_none() {
+        return Err(Status::Unauthorized);
+    }
+
+    // Send PING
+    publish_control_message(&**mqtt_client, uuid_parsed, "PING".to_string())
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Wait for PONG
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let start = chrono::Utc::now().timestamp_millis();
+    {
+        let pings_mutex = PENDING_PINGS.get().unwrap();
+        let mut pings = pings_mutex.lock().unwrap();
+        pings.insert(uuid.to_string(), (start, tx));
+    }
+
+    // Timeout after 10 seconds
+    tokio::time::timeout(std::time::Duration::from_secs(10), rx)
+        .await
+        .map_err(|_| Status::RequestTimeout)?
+        .map_err(|_| Status::InternalServerError)?;
+    Ok(())
+}
+
+#[get("/temp_devices_status")]
+async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> = sqlx::query_as(
+        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.lock_state FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
+    )
+    .bind(&firebase_uid)
+    .bind(Utc::now().timestamp_millis())
+    .fetch_all(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+
+    let devices: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(
+                db_uuid,
+                db_user_id_opt,
+                last_heard,
+                uptime_ms,
+                wifi_ssid,
+                backend_url,
+                mqtt_broker_url,
+                mqtt_heartbeat_enable,
+                mqtt_heartbeat_interval_sec,
+                audio_record_timeout_sec,
+                lock_timeout_ms,
+                lock_state,
+            )| {
+                serde_json::json!({
+                    "uuid": db_uuid.to_string(),
+                    "user_id": firebase_uid,
+                    "last_heard": last_heard.timestamp_millis(),
+                    "uptime_ms": uptime_ms,
+                    "wifi_ssid": wifi_ssid,
+                    "backend_url": backend_url,
+                    "mqtt_broker_url": mqtt_broker_url,
+                    "mqtt_heartbeat_enable": mqtt_heartbeat_enable,
+                    "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
+                    "audio_record_timeout_sec": audio_record_timeout_sec,
+                    "lock_timeout_ms": lock_timeout_ms,
+                    "lock_state": lock_state
+                })
+            },
+        )
+        .collect();
+
+    Ok(serde_json::to_string(&devices).unwrap())
+}
+
 #[get("/logs/<uuid>")]
 async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
     let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
@@ -823,7 +1148,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
         None => return Err(Status::Unauthorized),
     };
 
-    // Check that the device belongs to this user
+    // Check that the device belongs to this user (logs only for owners)
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
             .bind(uuid)
@@ -835,7 +1160,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             return Err(Status::Unauthorized);
         }
     } else {
-        return Err(Status::Unauthorized); // Device not found
+        return Err(Status::Unauthorized); // Device not found or not owned
     }
 
     // Get logs, limit to 1000
@@ -1009,4 +1334,484 @@ async fn verify_password(
     }
 
     Err(Status::Unauthorized)
+}
+
+#[derive(Deserialize)]
+struct CreateInviteRequest {
+    receiver_email: String,
+    device_id: String,
+    expiry_duration: String, // "2_dias", "1_semana", etc.
+}
+
+#[post("/create_invite", data = "<request>")]
+async fn create_invite(
+    token: Token,
+    request: rocket::serde::json::Json<CreateInviteRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<String, Status> {
+    println!(
+        "DEBUG: create_invite called with receiver_email: {}, device_id: {}",
+        request.receiver_email, request.device_id
+    );
+
+    // Parse device_id to UUID
+    let device_uuid = match Uuid::parse_str(&request.device_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            println!("DEBUG: Invalid device_id format");
+            return Err(Status::BadRequest);
+        }
+    };
+
+    // Validate token and get sender
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Token validation query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let sender_id = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, sender_id: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid or user not found");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Check if sender owns the device
+    let device_row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(device_uuid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Device ownership query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let owner_id = if let Some((Some(owner),)) = device_row {
+        println!("DEBUG: Device found, owner_id: {}", owner);
+        owner
+    } else {
+        println!("DEBUG: Device not found or has no owner");
+        return Err(Status::NotFound);
+    };
+    if owner_id != sender_id {
+        println!(
+            "DEBUG: User {} does not own device {} (owned by {})",
+            sender_id, request.device_id, owner_id
+        );
+        return Err(Status::Forbidden);
+    }
+    println!("DEBUG: User owns device");
+
+    // Find receiver by email
+    let receiver_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE email = $1")
+            .bind(&request.receiver_email)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Receiver lookup query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let receiver_id = if let Some((uid,)) = receiver_row {
+        println!("DEBUG: Receiver found: {}", uid);
+        uid
+    } else {
+        println!(
+            "DEBUG: Receiver not found for email: {}",
+            request.receiver_email
+        );
+        return Err(Status::NotFound);
+    };
+
+    // Check if invite already exists and is pending
+    let existing_invite: Option<(i32,)> = sqlx::query_as(
+        "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 0",
+    )
+    .bind(device_uuid) // UUID for invites table
+    .bind(&receiver_id)
+    .fetch_optional(&**db_pool)
+    .await
+    .map_err(|e| {
+        eprintln!("DEBUG: Duplicate check query failed: {:?}", e);
+        Status::InternalServerError
+    })?;
+    if existing_invite.is_some() {
+        println!("DEBUG: Duplicate invite found");
+        return Err(Status::Conflict);
+    }
+    println!("DEBUG: No duplicate invite found");
+
+    // Calculate expiry timestamp
+    let now = Utc::now();
+    let expiry_timestamp = calculate_expiry_timestamp(now, &request.expiry_duration);
+    println!("DEBUG: Expiry timestamp calculated: {}", expiry_timestamp);
+
+    // Create invite
+    let invite_id: i32 = sqlx::query_scalar(
+        "INSERT INTO invites (device_id, sender_id, receiver_id, expiry_timestamp) VALUES ($1, $2, $3, $4) RETURNING id"
+    )
+    .bind(device_uuid)  // UUID for invites table
+    .bind(&sender_id)
+    .bind(&receiver_id)
+    .bind(expiry_timestamp)
+    .fetch_one(&**db_pool)
+    .await
+    .map_err(|e| {
+        eprintln!("DEBUG: Insert query failed: {:?}", e);
+        Status::InternalServerError
+    })?;
+    println!("DEBUG: Invite created with ID: {}", invite_id);
+
+    println!("DEBUG: Invite creation successful");
+    Ok(serde_json::json!({
+        "invite_id": invite_id,
+        "message": "Invite created successfully"
+    })
+    .to_string())
+}
+
+#[get("/invites")]
+async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    println!("DEBUG: get_invites called");
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Token validation failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let user_id = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, user_id: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Get sent invites with receiver info
+    println!("DEBUG: Querying sent invites");
+    let sent_invites: Vec<(i32, uuid::Uuid, String, String, String, String, i32, i64, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, ru.name as receiver_name, ru.email as receiver_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users ru ON i.receiver_id = ru.firebase_uid WHERE i.sender_id = $1")
+            .bind(&user_id)
+            .fetch_all(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Sent invites query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    println!("DEBUG: Found {} sent invites", sent_invites.len());
+
+    // Get received invites with sender info
+    println!("DEBUG: Querying received invites");
+    let received_invites: Vec<(i32, uuid::Uuid, String, String, String, String, i32, i64, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, su.name as sender_name, su.email as sender_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users su ON i.sender_id = su.firebase_uid WHERE i.receiver_id = $1")
+            .bind(&user_id)
+            .fetch_all(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Received invites query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    println!("DEBUG: Found {} received invites", received_invites.len());
+
+    let sent: Vec<serde_json::Value> = sent_invites
+        .into_iter()
+        .map(
+            |(
+                id,
+                device_id,
+                sender_id,
+                receiver_id,
+                receiver_name,
+                receiver_email,
+                status,
+                expiry,
+                created_at,
+            )| {
+                serde_json::json!({
+                    "id": id,
+                    "device_id": device_id.to_string(),
+                    "sender_id": sender_id,
+                    "receiver_id": receiver_id,
+                    "receiver_name": receiver_name,
+                    "receiver_email": receiver_email,
+                    "status": status,
+                    "expiry_timestamp": expiry,
+                    "created_at": created_at.timestamp_millis()
+                })
+            },
+        )
+        .collect();
+
+    let received: Vec<serde_json::Value> = received_invites
+        .into_iter()
+        .map(
+            |(
+                id,
+                device_id,
+                sender_id,
+                receiver_id,
+                sender_name,
+                sender_email,
+                status,
+                expiry,
+                created_at,
+            )| {
+                serde_json::json!({
+                    "id": id,
+                    "device_id": device_id.to_string(),
+                    "sender_id": sender_id,
+                    "receiver_id": receiver_id,
+                    "sender_name": sender_name,
+                    "sender_email": sender_email,
+                    "status": status,
+                    "expiry_timestamp": expiry,
+                    "created_at": created_at.timestamp_millis()
+                })
+            },
+        )
+        .collect();
+
+    println!("DEBUG: get_invites successful");
+    Ok(serde_json::json!({
+        "sent": sent,
+        "received": received
+    })
+    .to_string())
+}
+
+#[post("/accept_invite/<invite_id>")]
+async fn accept_invite(
+    token: Token,
+    invite_id: i32,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let user_id = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Update invite status to accepted (1)
+    let rows_affected = sqlx::query(
+        "UPDATE invites SET status = 1 WHERE id = $1 AND receiver_id = $2 AND status = 0",
+    )
+    .bind(invite_id)
+    .bind(&user_id)
+    .execute(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?
+    .rows_affected();
+
+    if rows_affected == 0 {
+        return Err(Status::NotFound);
+    }
+
+    Ok(())
+}
+
+#[post("/reject_invite/<invite_id>")]
+async fn reject_invite(
+    token: Token,
+    invite_id: i32,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    println!("DEBUG: reject_invite called with invite_id: {}", invite_id);
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Token validation query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let user_id = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, user_id: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid or user not found");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Delete the invite
+    println!(
+        "DEBUG: Deleting invite with id: {}, receiver_id: {}",
+        invite_id, user_id
+    );
+    let rows_affected = sqlx::query("DELETE FROM invites WHERE id = $1 AND receiver_id = $2")
+        .bind(invite_id)
+        .bind(&user_id)
+        .execute(&**db_pool)
+        .await
+        .map_err(|e| {
+            eprintln!("DEBUG: Delete query failed: {:?}", e);
+            Status::InternalServerError
+        })?
+        .rows_affected();
+
+    if rows_affected == 0 {
+        println!("DEBUG: No invite found to delete");
+        return Err(Status::NotFound);
+    }
+
+    println!(
+        "DEBUG: Invite deleted successfully, rows affected: {}",
+        rows_affected
+    );
+    Ok(())
+}
+
+#[post("/cancel_invite/<invite_id>")]
+async fn cancel_invite(
+    token: Token,
+    invite_id: i32,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let user_id = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Delete the invite
+    let rows_affected = sqlx::query("DELETE FROM invites WHERE id = $1 AND sender_id = $2")
+        .bind(invite_id)
+        .bind(&user_id)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    if rows_affected.rows_affected() == 0 {
+        return Err(Status::NotFound);
+    }
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct UpdateInviteRequest {
+    expiry_duration: String,
+}
+
+#[post("/update_invite/<invite_id>", data = "<request>")]
+async fn update_invite(
+    token: Token,
+    invite_id: i32,
+    request: rocket::serde::json::Json<UpdateInviteRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let user_id = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Calculate new expiry timestamp
+    let now = Utc::now();
+    let new_expiry_timestamp = calculate_expiry_timestamp(now, &request.expiry_duration);
+
+    // Update invite expiry
+    let rows_affected =
+        sqlx::query("UPDATE invites SET expiry_timestamp = $1 WHERE id = $2 AND sender_id = $3")
+            .bind(new_expiry_timestamp)
+            .bind(invite_id)
+            .bind(&user_id)
+            .execute(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    if rows_affected.rows_affected() == 0 {
+        return Err(Status::NotFound);
+    }
+
+    Ok(())
+}
+
+#[get("/accessible_devices")]
+async fn get_accessible_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let user_id = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Get accepted invites that haven't expired
+    let invites: Vec<(i32, uuid::Uuid, String, i64)> =
+        sqlx::query_as("SELECT id, device_id, sender_id, expiry_timestamp FROM invites WHERE receiver_id = $1 AND status = 1 AND expiry_timestamp > $2")
+            .bind(&user_id)
+            .bind(Utc::now().timestamp_millis())
+            .fetch_all(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    let devices: Vec<serde_json::Value> = invites
+        .into_iter()
+        .map(|(id, device_id, sender_id, expiry)| {
+            serde_json::json!({
+                "id": id,
+                "device_id": device_id.to_string(),
+                "sender_id": sender_id,
+                "expiry_timestamp": expiry
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string(&devices).unwrap())
+}
+
+fn calculate_expiry_timestamp(base_time: chrono::DateTime<chrono::Utc>, duration: &str) -> i64 {
+    let duration = match duration {
+        "2_dias" => chrono::Duration::days(2),
+        "1_semana" => chrono::Duration::days(7),
+        "2_semanas" => chrono::Duration::days(14),
+        "1_mes" => chrono::Duration::days(30),
+        "permanente" => chrono::Duration::days(36500), // 100 years
+        _ => chrono::Duration::days(7),
+    };
+    (base_time + duration).timestamp_millis()
 }

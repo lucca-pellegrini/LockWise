@@ -467,14 +467,15 @@ class _CadastroState extends State<Cadastro> {
 
                                           try {
                                             String nome =
-                                                '${_nomeController.text} ${_sobrenomeController.text}';
+                                                '${_nomeController.text.trim()} ${_sobrenomeController.text.trim()}';
 
                                             // Criar usuário no Firebase Auth
                                             UserCredential
                                             userCredential = await FirebaseAuth
                                                 .instance
                                                 .createUserWithEmailAndPassword(
-                                                  email: _emailController.text,
+                                                  email: _emailController.text
+                                                      .trim(),
                                                   password:
                                                       _senhaController.text,
                                                 );
@@ -487,10 +488,11 @@ class _CadastroState extends State<Cadastro> {
                                                   'id':
                                                       userCredential.user!.uid,
                                                   'nome': nome,
-                                                  'email':
-                                                      _emailController.text,
+                                                  'email': _emailController.text
+                                                      .trim(),
                                                   'telefone':
-                                                      _telefoneController.text,
+                                                      _telefoneController.text
+                                                          .trim(),
                                                   'created_at':
                                                       FieldValue.serverTimestamp(),
                                                 });
@@ -507,9 +509,11 @@ class _CadastroState extends State<Cadastro> {
                                                     userCredential.user!.uid,
                                                 'password':
                                                     _senhaController.text,
-                                                'email': _emailController.text,
+                                                'email': _emailController.text
+                                                    .trim(),
                                                 'phone_number':
-                                                    _telefoneController.text,
+                                                    _telefoneController.text
+                                                        .trim(),
                                                 'name': nome,
                                               }),
                                             );
