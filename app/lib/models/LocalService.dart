@@ -15,7 +15,7 @@ class LocalService {
 
   static Future<bool> getManterConectado() async {
     final valor = await _storage.read(key: _keyManterConectado);
-    return valor == 'true';
+    return valor == null ? true : valor == 'true';
   }
 
   static Future<void> setManterConectado(bool valor) async {
@@ -200,6 +200,90 @@ class LocalService {
       await _storage.deleteAll();
     } catch (e) {
       print('Erro ao fazer logout: $e');
+    }
+  }
+
+  // ==================== UPDATE PHONE ====================
+  static Future<bool> updatePhone(String phoneNumber) async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/update_phone'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'phone_number': phoneNumber}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao atualizar telefone: $e');
+      return false;
+    }
+  }
+
+  // ==================== UPDATE PASSWORD ====================
+  static Future<bool> updatePassword(String newPassword) async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/update_password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'password': newPassword}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao atualizar senha: $e');
+      return false;
+    }
+  }
+
+  // ==================== DELETE ACCOUNT ====================
+  static Future<bool> deleteAccount() async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/delete_account'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao deletar conta: $e');
+      return false;
+    }
+  }
+
+  // ==================== VERIFY PASSWORD ====================
+  static Future<bool> verifyPassword(String password) async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/verify_password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'password': password}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao verificar senha: $e');
+      return false;
     }
   }
 }

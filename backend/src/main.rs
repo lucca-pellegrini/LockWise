@@ -245,7 +245,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     get_device,
                     get_logs,
                     register_device,
-                    ping_device
+                    ping_device,
+                    update_phone,
+                    update_password,
+                    delete_account,
+                    verify_password
                 ],
             )
             .launch()
@@ -843,4 +847,166 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .map_err(|_| Status::InternalServerError)?;
 
     Ok(serde_json::to_string(&logs).unwrap())
+}
+
+#[derive(Deserialize)]
+struct UpdatePhoneRequest {
+    phone_number: String,
+}
+
+#[post("/update_phone", data = "<request>")]
+async fn update_phone(
+    token: Token,
+    request: rocket::serde::json::Json<UpdatePhoneRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Update phone number
+    sqlx::query("UPDATE users SET phone_number = $1 WHERE firebase_uid = $2")
+        .bind(&request.phone_number)
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct UpdatePasswordRequest {
+    password: String,
+}
+
+#[post("/update_password", data = "<request>")]
+async fn update_password(
+    token: Token,
+    request: rocket::serde::json::Json<UpdatePasswordRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Hash the new password
+    let salt =
+        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let argon2 = Argon2::default();
+    let hashed_password = argon2
+        .hash_password(request.password.as_bytes(), &salt)
+        .map_err(|_| Status::InternalServerError)?
+        .to_string();
+
+    // Update password
+    sqlx::query("UPDATE users SET hashed_password = $1 WHERE firebase_uid = $2")
+        .bind(&hashed_password)
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
+#[post("/delete_account")]
+async fn delete_account(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Unpair all devices owned by this user
+    sqlx::query("UPDATE devices SET user_id = NULL WHERE user_id = $1")
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Delete all logs for devices owned by this user
+    sqlx::query("DELETE FROM logs WHERE user_id = $1")
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Delete the user
+    sqlx::query("DELETE FROM users WHERE firebase_uid = $1")
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct VerifyPasswordRequest {
+    password: String,
+}
+
+#[post("/verify_password", data = "<request>")]
+async fn verify_password(
+    token: Token,
+    request: rocket::serde::json::Json<VerifyPasswordRequest>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Get hashed password
+    let password_row: Option<(String,)> =
+        sqlx::query_as("SELECT hashed_password FROM users WHERE firebase_uid = $1")
+            .bind(&firebase_uid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    if let Some((hashed_password,)) = password_row {
+        let parsed_hash = PasswordHash::new(&hashed_password);
+        if let Ok(hash) = parsed_hash {
+            let argon2 = Argon2::default();
+            if argon2
+                .verify_password(request.password.as_bytes(), &hash)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(Status::Unauthorized)
 }

@@ -311,10 +311,21 @@ class _PaginaContaState extends State<PaginaConta> {
                           }
 
                           try {
+                            // Update Firebase Firestore
                             await FirebaseFirestore.instance
                                 .collection('usuarios')
                                 .doc(FirebaseAuth.instance.currentUser!.uid)
                                 .update({'telefone': novoTelefone});
+
+                            // Update backend
+                            final backendSuccess =
+                                await LocalService.updatePhone(novoTelefone);
+                            if (!backendSuccess) {
+                              _mostrarErro(
+                                'Telefone atualizado no Firebase, mas falhou no backend',
+                              );
+                              return;
+                            }
 
                             await _carregarUsuario();
                             Navigator.of(context).pop();
@@ -472,8 +483,19 @@ class _PaginaContaState extends State<PaginaConta> {
                           }
 
                           try {
+                            // Update Firebase Auth
                             await FirebaseAuth.instance.currentUser!
                                 .updatePassword(novaSenha);
+
+                            // Update backend
+                            final backendSuccess =
+                                await LocalService.updatePassword(novaSenha);
+                            if (!backendSuccess) {
+                              _mostrarErro(
+                                'Senha atualizada no Firebase, mas falhou no backend',
+                              );
+                              return;
+                            }
 
                             await _carregarUsuario();
                             Navigator.of(context).pop();
@@ -578,12 +600,16 @@ class _PaginaContaState extends State<PaginaConta> {
                             return;
                           }
 
-                          if (usuario!['senha'] != senha) {
+                          // Verify password against backend
+                          final passwordValid =
+                              await LocalService.verifyPassword(senha);
+                          if (!passwordValid) {
                             _mostrarErro('Senha incorreta');
                             return;
                           }
 
                           try {
+                            // Delete devices from Firestore
                             final fechadurasSnapshot = await FirebaseFirestore
                                 .instance
                                 .collection('fechaduras')
@@ -600,6 +626,17 @@ class _PaginaContaState extends State<PaginaConta> {
                                 .doc(usuario!['id'])
                                 .delete();
                             await FirebaseAuth.instance.currentUser!.delete();
+
+                            // Delete from backend
+                            final backendSuccess =
+                                await LocalService.deleteAccount();
+                            if (!backendSuccess) {
+                              _mostrarErro(
+                                'Conta deletada do Firebase, mas falhou no backend',
+                              );
+                              return;
+                            }
+
                             await LocalService.logout();
 
                             Navigator.of(context).pop();

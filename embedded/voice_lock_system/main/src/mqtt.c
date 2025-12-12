@@ -398,7 +398,7 @@ void mqtt_publish_lock_event(lock_state_t state, door_reason_t reason)
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
 	cbor_encoder_create_map(&encoder, &map_encoder, 4);
-	cbor_encode_text_stringz(&map_encoder, "status");
+	cbor_encode_text_stringz(&map_encoder, "lock");
 	cbor_encode_text_stringz(&map_encoder, status_str);
 	cbor_encode_text_stringz(&map_encoder, "reason");
 	cbor_encode_text_stringz(&map_encoder, reason_str);
