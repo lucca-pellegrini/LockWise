@@ -27,7 +27,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool _isLoading = true;
   Map<String, dynamic>? fechadura;
   List<Map<String, dynamic>> logs = [];
+  int? lastHeard;
   String _duracaoSelecionada = '1_semana';
+
+  bool get isConnected =>
+      lastHeard != null &&
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 15000;
   final _conviteFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();
   Timer? _pollingTimer;
@@ -88,9 +93,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         if (deviceResponse.statusCode == 200) {
           final deviceData = jsonDecode(deviceResponse.body);
           final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
-          if (newIsOpen != isOpen) {
+          final newLastHeard = deviceData['last_heard'];
+          if (newIsOpen != isOpen || newLastHeard != lastHeard) {
             setState(() {
               isOpen = newIsOpen;
+              lastHeard = newLastHeard;
             });
           }
         }
@@ -167,6 +174,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         if (deviceResponse.statusCode == 200) {
           final deviceData = jsonDecode(deviceResponse.body);
           isOpen = deviceData['lock_state'] == 'UNLOCKED';
+          lastHeard = deviceData['last_heard'];
         }
 
         final logsResponse = await http.get(
@@ -373,7 +381,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 ),
                               ),
                               Text(
-                                'Conectada: Sim',
+                                'Conectada: ${isConnected ? 'Sim' : 'Não'}',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Colors.white,
@@ -398,15 +406,16 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _GlassButton(
-                          onPressed: remoteAccessEnabled
+                          onPressed: remoteAccessEnabled && isConnected
                               ? () {
                                   final acao = isOpen ? 'Fechar' : 'Abrir';
                                   _registrarAcao(acao);
                                 }
-                              : null, // Desabilita se acesso remoto estiver off
+                              : null, // Desabilita se acesso remoto estiver off ou desconectado
                           text: (isOpen ? 'Fechar' : 'Abrir'),
                           isEnabled:
-                              remoteAccessEnabled, // Passa o estado para o widget
+                              remoteAccessEnabled &&
+                              isConnected, // Passa o estado para o widget
                         ),
 
                         _GlassButton(

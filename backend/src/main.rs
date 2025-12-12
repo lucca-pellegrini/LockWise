@@ -620,8 +620,8 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     };
 
     // Check that the device belongs to this user
-    let row: Option<(Uuid, Option<String>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
-        sqlx::query_as("SELECT uuid, user_id, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE uuid = $1")
+    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
@@ -629,6 +629,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     if let Some((
         db_uuid,
         db_user_id_opt,
+        last_heard,
         uptime_ms,
         wifi_ssid,
         backend_url,
@@ -650,6 +651,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
         let device = serde_json::json!({
             "uuid": db_uuid.to_string(),
             "user_id": firebase_uid,
+            "last_heard": last_heard.timestamp_millis(),
             "uptime_ms": uptime_ms,
             "wifi_ssid": wifi_ssid,
             "backend_url": backend_url,
