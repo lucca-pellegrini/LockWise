@@ -23,7 +23,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool remoteAccessEnabled = false;
   bool administrador = true;
   bool isOpen = true;
-  bool _isAdmin = false;
   bool _isLoading = true;
   Map<String, dynamic>? fechadura;
   List<Map<String, dynamic>> logs = [];
@@ -862,35 +861,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 16),
 
-                          // Switch Administrador
-                          SwitchListTile(
-                            title: Text(
-                              'Permissões de Administrador',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                            ),
-                            subtitle: Text(
-                              _isAdmin
-                                  ? 'Pode convidar outros e alterar configurações'
-                                  : 'Apenas acesso básico',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                            value: _isAdmin,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                _isAdmin = value;
-                              });
-                            },
-                            activeColor: Colors.blueAccent,
-                            inactiveTrackColor: Colors.white24,
-                          ),
-                          const SizedBox(height: 24),
-
                           // Botões
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -993,7 +963,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   void _limparFormularioConvite() {
     _idUsuarioController.clear();
     _duracaoSelecionada = '1_semana';
-    _isAdmin = false;
   }
 
   void _mostrarSucesso(String mensagem) {

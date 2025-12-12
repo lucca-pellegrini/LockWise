@@ -671,6 +671,13 @@ async fn register_device(
         .await
         .map_err(|_| Status::InternalServerError)?;
 
+    // Remove any invites from previous owners
+    sqlx::query("DELETE FROM invites WHERE device_id = $1")
+        .bind(device_uuid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
     Ok(())
 }
 
@@ -790,6 +797,13 @@ async fn unpair_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Res
     // Remove all logs for this device
     sqlx::query("DELETE FROM logs WHERE device_id = $1")
         .bind(uuid.to_string())
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Remove all invites for this device
+    sqlx::query("DELETE FROM invites WHERE device_id = $1")
+        .bind(uuid)
         .execute(&**db_pool)
         .await
         .map_err(|_| Status::InternalServerError)?;
@@ -1274,6 +1288,13 @@ async fn delete_account(token: Token, db_pool: &State<PgPool>) -> Result<(), Sta
 
     // Delete all logs for devices owned by this user
     sqlx::query("DELETE FROM logs WHERE user_id = $1")
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // Delete all invites sent or received by this user
+    sqlx::query("DELETE FROM invites WHERE sender_id = $1 OR receiver_id = $1")
         .bind(&firebase_uid)
         .execute(&**db_pool)
         .await
