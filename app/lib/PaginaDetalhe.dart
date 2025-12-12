@@ -303,10 +303,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     return Container(
       decoration: BoxDecoration(
         image: DecorationImage(
@@ -332,133 +328,118 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           centerTitle: true,
           backgroundColor: Colors.transparent,
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image placeholder and description
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Placeholder image
-                  Container(
-                    width: 100,
-                    height: 100,
-                    color: Colors.transparent,
-                    child: Icon(
-                      _getIconeFechadura(),
-                      size: 50,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Description with status
-                  Expanded(
-                    child: Column(
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Image placeholder and description
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          fechadura?['nome'] ?? 'Fechadura',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                        // Placeholder image
+                        Container(
+                          width: 100,
+                          height: 100,
+                          color: Colors.transparent,
+                          child: Icon(
+                            _getIconeFechadura(),
+                            size: 50,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Status: ${isOpen ? 'Aberta' : 'Fechada'}',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                        Text(
-                          'Conectada: Sim',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                        Text(
-                          'Último acesso: ${_ultimoLog == null ? 'N/A' : '${_formatarHorario(_ultimoLog!['data_hora'] as int)} • '
-                                    '${_ultimoLog!['usuario'] ?? 'Usuário'} • '
-                                    '${_ultimoLog!['acao'] ?? ''}'}',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
+                        const SizedBox(width: 16),
+                        // Description with status
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fechadura?['nome'] ?? 'Fechadura',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Status: ${isOpen ? 'Aberta' : 'Fechada'}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                'Conectada: Sim',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                'Último acesso: ${_ultimoLog == null ? 'N/A' : '${_formatarHorario(_ultimoLog!['data_hora'] as int)} • '
+                                          '${_ultimoLog!['usuario'] ?? 'Usuário'}'}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // Control buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _GlassButton(
-                    onPressed: remoteAccessEnabled
-                        ? () {
-                            final acao = isOpen ? 'Fechar' : 'Abrir';
-                            _registrarAcao(acao);
-                          }
-                        : null, // Desabilita se acesso remoto estiver off
-                    text: (isOpen ? 'Fechar' : 'Abrir'),
-                    isEnabled:
-                        remoteAccessEnabled, // Passa o estado para o widget
-                  ),
+                    const SizedBox(height: 20),
+                    // Control buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _GlassButton(
+                          onPressed: remoteAccessEnabled
+                              ? () {
+                                  final acao = isOpen ? 'Fechar' : 'Abrir';
+                                  _registrarAcao(acao);
+                                }
+                              : null, // Desabilita se acesso remoto estiver off
+                          text: (isOpen ? 'Fechar' : 'Abrir'),
+                          isEnabled:
+                              remoteAccessEnabled, // Passa o estado para o widget
+                        ),
 
-                  _GlassButton(
-                    onPressed: administrador
-                        ? () {
-                            _mostrarDialogoConvite();
-                          }
-                        : null, // Desabilita se não for administrador
-                    text: ('Convidar'),
-                    isEnabled: administrador, // Sempre habilitado
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+                        _GlassButton(
+                          onPressed: administrador
+                              ? () {
+                                  _mostrarDialogoConvite();
+                                }
+                              : null, // Desabilita se não for administrador
+                          text: ('Convidar'),
+                          isEnabled: administrador, // Sempre habilitado
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-              Text(
-                'Configurações:',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
+                    Text(
+                      'Configurações:',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
 
-              SwitchListTile(
-                title: Text(
-                  'Notificações',
-                  style: TextStyle(color: Colors.white),
-                ),
-                value: notificationsEnabled,
-                onChanged: (bool value) async {
-                  setState(() {
-                    notificationsEnabled = value;
-                  });
-
-                  final usuario = await LocalService.getUsuarioLogado();
-                  final userId = usuario?['id'] as String;
-                  await FirebaseFirestore.instance
-                      .collection('fechaduras')
-                      .doc(userId)
-                      .collection('devices')
-                      .doc(widget.fechaduraId)
-                      .update({'notificacoes': value ? 1 : 0});
-                },
-                activeColor: Colors.blueAccent.withOpacity(0.5),
-                inactiveTrackColor: Colors.transparent,
-              ),
-
-              SwitchListTile(
-                title: Text(
-                  'Acesso remoto',
-                  style: TextStyle(color: Colors.white),
-                ),
-                value: remoteAccessEnabled,
-                onChanged: administrador
-                    ? (bool value) async {
+                    SwitchListTile(
+                      title: Text(
+                        'Notificações',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      value: notificationsEnabled,
+                      onChanged: (bool value) async {
                         setState(() {
-                          remoteAccessEnabled = value;
+                          notificationsEnabled = value;
                         });
 
                         final usuario = await LocalService.getUsuarioLogado();
@@ -468,184 +449,218 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                             .doc(userId)
                             .collection('devices')
                             .doc(widget.fechaduraId)
-                            .update({
-                              'acesso_remoto': remoteAccessEnabled ? 1 : 0,
-                            });
-                      }
-                    : null, // Desabilita se não for administrador
+                            .update({'notificacoes': value ? 1 : 0});
+                      },
+                      activeColor: Colors.blueAccent.withOpacity(0.5),
+                      inactiveTrackColor: Colors.transparent,
+                    ),
 
-                activeColor: administrador
-                    ? Colors.blueAccent.withOpacity(0.5)
-                    : Colors.grey,
-
-                inactiveTrackColor: Colors.transparent,
-              ),
-              const SizedBox(height: 20),
-
-              Text(
-                'Histórico de Acessos',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-
-              Padding(padding: EdgeInsets.only(bottom: 15)),
-
-              Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 13, sigmaY: 13),
-
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.9,
-                      height: MediaQuery.of(context).size.height * 0.78,
-                      padding: const EdgeInsets.all(30),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.blueAccent.withOpacity(0.2),
-                            Colors.blueAccent.withOpacity(0.1),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
-                          width: 1,
-                        ),
+                    SwitchListTile(
+                      title: Text(
+                        'Acesso remoto',
+                        style: TextStyle(color: Colors.white),
                       ),
+                      value: remoteAccessEnabled,
+                      onChanged: administrador
+                          ? (bool value) async {
+                              setState(() {
+                                remoteAccessEnabled = value;
+                              });
 
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.9,
-                        ),
+                              final usuario =
+                                  await LocalService.getUsuarioLogado();
+                              final userId = usuario?['id'] as String;
+                              await FirebaseFirestore.instance
+                                  .collection('fechaduras')
+                                  .doc(userId)
+                                  .collection('devices')
+                                  .doc(widget.fechaduraId)
+                                  .update({
+                                    'acesso_remoto': remoteAccessEnabled
+                                        ? 1
+                                        : 0,
+                                  });
+                            }
+                          : null, // Desabilita se não for administrador
 
-                        child: Column(
-                          children: [
-                            // CORPO SCROLLÁVEL
-                            Expanded(
-                              child: logs.isEmpty
-                                  ? Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.all(20),
-                                        child: Text(
-                                          'Nenhum log disponível',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  : SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: DataTable(
-                                        columns: const [
-                                          DataColumn(
-                                            label: Text(
-                                              'Horário',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          DataColumn(
-                                            label: Text(
-                                              'Conta',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          DataColumn(
-                                            label: Text(
-                                              'Ação',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          DataColumn(
-                                            label: Text(
-                                              'Motivo',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        rows: logs.map((log) {
-                                          final horario = _formatarHorario(
-                                            log['data_hora'] as int,
-                                          );
+                      activeColor: administrador
+                          ? Colors.blueAccent.withOpacity(0.5)
+                          : Colors.grey,
 
-                                          return DataRow(
-                                            cells: [
-                                              DataCell(
-                                                Text(
-                                                  horario,
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Text(
-                                                  log['usuario'] ?? 'N/A',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Text(
-                                                  log['acao'] ?? 'N/A',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Text(
-                                                  log['reason'] ?? 'N/A',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        }).toList(),
-                                      ),
-                                    ),
+                      inactiveTrackColor: Colors.transparent,
+                    ),
+                    const SizedBox(height: 20),
+
+                    Text(
+                      'Histórico de Acessos',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+
+                    Padding(padding: EdgeInsets.only(bottom: 15)),
+
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 13, sigmaY: 13),
+
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.9,
+                            height: MediaQuery.of(context).size.height * 0.78,
+                            padding: const EdgeInsets.all(30),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.blueAccent.withOpacity(0.2),
+                                  Colors.blueAccent.withOpacity(0.1),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 1,
+                              ),
                             ),
-                          ],
+
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth:
+                                    MediaQuery.of(context).size.width * 0.9,
+                              ),
+
+                              child: Column(
+                                children: [
+                                  // CORPO SCROLLÁVEL
+                                  Expanded(
+                                    child: logs.isEmpty
+                                        ? Center(
+                                            child: Padding(
+                                              padding: EdgeInsets.all(20),
+                                              child: Text(
+                                                'Nenhum log disponível',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: DataTable(
+                                              columns: const [
+                                                DataColumn(
+                                                  label: Text(
+                                                    'Horário',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                DataColumn(
+                                                  label: Text(
+                                                    'Conta',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                DataColumn(
+                                                  label: Text(
+                                                    'Ação',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                DataColumn(
+                                                  label: Text(
+                                                    'Motivo',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              rows: logs.map((log) {
+                                                final horario =
+                                                    _formatarHorario(
+                                                      log['data_hora'] as int,
+                                                    );
+
+                                                return DataRow(
+                                                  cells: [
+                                                    DataCell(
+                                                      Text(
+                                                        horario,
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    DataCell(
+                                                      Text(
+                                                        log['usuario'] ?? 'N/A',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    DataCell(
+                                                      Text(
+                                                        log['acao'] ?? 'N/A',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    DataCell(
+                                                      Text(
+                                                        log['reason'] ?? 'N/A',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }

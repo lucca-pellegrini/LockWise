@@ -1,4 +1,4 @@
-import 'package:fechaduraflow/PaginaEsqueci.dart';
+import 'PaginaEsqueci.dart';
 import 'package:flutter/material.dart';
 import 'PaginaNovaSenha.dart';
 import 'dart:ui';

@@ -28,13 +28,46 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FechaduraFlow',
+      title: 'LockWise',
       debugShowCheckedModeBanner: false,
       navigatorObservers: [routeObserver],
 
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        fontFamily: 'Montserrat',
+        textTheme: const TextTheme(
+          headlineLarge: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineMedium: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineSmall: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          titleLarge: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: TextStyle(
+            fontFamily: 'Raleway',
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: TextStyle(fontFamily: 'Montserrat'),
+          bodyMedium: TextStyle(fontFamily: 'Montserrat'),
+          bodySmall: TextStyle(fontFamily: 'Montserrat'),
+          labelLarge: TextStyle(fontFamily: 'Montserrat'),
+          labelMedium: TextStyle(fontFamily: 'Montserrat'),
+          labelSmall: TextStyle(fontFamily: 'Montserrat'),
+        ),
       ),
       home: FutureBuilder(
         future: AssetPreloader.preloadAssets(),
