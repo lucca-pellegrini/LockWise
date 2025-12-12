@@ -425,7 +425,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 children: [
                                   Icon(
                                     isOpen ? Icons.lock_open : Icons.lock,
-                                    color: isOpen ? Colors.green : Colors.white,
+                                    color: isOpen ? Colors.orange.shade800 : Colors.green,
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
