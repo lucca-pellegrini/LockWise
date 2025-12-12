@@ -1416,8 +1416,8 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
     Ok(serde_json::to_string(&logs).unwrap())
 }
 
-#[get("/notifications")]
-async fn get_notifications(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+#[get("/notifications?<devices>")]
+async fn get_notifications(token: Token, devices: Option<String>, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
@@ -1430,12 +1430,28 @@ async fn get_notifications(token: Token, db_pool: &State<PgPool>) -> Result<Stri
         None => return Err(Status::Unauthorized),
     };
 
-    // Get logs for all owned devices, limit to 1000
-    let logs: Vec<LogEntry> =
-        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
+    // Get logs for owned devices, optionally filtered by devices list
+    let logs: Vec<LogEntry> = if let Some(devices_str) = devices {
+        let device_uuids: Vec<Uuid> = devices_str.split(',')
+            .filter_map(|s| Uuid::parse_str(s.trim()).ok())
+            .collect();
+        if device_uuids.is_empty() {
+            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
+                .fetch_all(&**db_pool)
+                .await
+                .map_err(|_| Status::InternalServerError)?
+        } else {
+            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) AND l.device_id::uuid = ANY($2) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid, &device_uuids)
+                .fetch_all(&**db_pool)
+                .await
+                .map_err(|_| Status::InternalServerError)?
+        }
+    } else {
+        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
             .fetch_all(&**db_pool)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?
+    };
 
     Ok(serde_json::to_string(&logs).unwrap())
 }

@@ -65,8 +65,9 @@ class _NotificacaoState extends State<Notificacao>
       final backendToken = await LocalService.getBackendToken();
       if (backendToken == null) return;
 
-      // Fetch device names from Firestore
+      // Fetch device names and notifications from Firestore
       final usuario = await LocalService.getUsuarioLogado();
+      Map<String, Map<String, dynamic>> deviceInfo = {};
       if (usuario != null) {
         final userId = usuario['id'] as String;
         final querySnapshot = await FirebaseFirestore.instance
@@ -79,12 +80,25 @@ class _NotificacaoState extends State<Notificacao>
         for (var doc in deviceDocs) {
           final data = doc.data();
           deviceNames[doc.id] = data['nome'] as String;
+          deviceInfo[doc.id] = {
+            'nome': data['nome'],
+            'notificacoes': data['notificacoes'] ?? 0,
+          };
         }
       }
 
-      // Fetch notifications from backend
+      // Filter to devices with notifications enabled
+      final enabledDeviceIds = deviceInfo.entries
+          .where((e) => e.value['notificacoes'] == 1)
+          .map((e) => e.key)
+          .toList();
+
+      // Fetch notifications from backend, filtered by enabled devices
+      final queryParams = enabledDeviceIds.isNotEmpty
+          ? '?devices=${enabledDeviceIds.join(',')}'
+          : '';
       final notificationsResponse = await http.get(
-        Uri.parse('$backendUrl/notifications'),
+        Uri.parse('$backendUrl/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       List<Map<String, dynamic>> allLogs = [];
@@ -165,8 +179,9 @@ class _NotificacaoState extends State<Notificacao>
         return;
       }
 
-      // Fetch device names from Firestore
+      // Fetch device names and notifications from Firestore
       final usuario = await LocalService.getUsuarioLogado();
+      Map<String, Map<String, dynamic>> deviceInfo = {};
       if (usuario != null) {
         final userId = usuario['id'] as String;
         final querySnapshot = await FirebaseFirestore.instance
@@ -179,12 +194,25 @@ class _NotificacaoState extends State<Notificacao>
         for (var doc in deviceDocs) {
           final data = doc.data();
           deviceNames[doc.id] = data['nome'] as String;
+          deviceInfo[doc.id] = {
+            'nome': data['nome'],
+            'notificacoes': data['notificacoes'] ?? 0,
+          };
         }
       }
 
-      // Fetch notifications from backend
+      // Filter to devices with notifications enabled
+      final enabledDeviceIds = deviceInfo.entries
+          .where((e) => e.value['notificacoes'] == 1)
+          .map((e) => e.key)
+          .toList();
+
+      // Fetch notifications from backend, filtered by enabled devices
+      final queryParams = enabledDeviceIds.isNotEmpty
+          ? '?devices=${enabledDeviceIds.join(',')}'
+          : '';
       final notificationsResponse = await http.get(
-        Uri.parse('$backendUrl/notifications'),
+        Uri.parse('$backendUrl/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       List<Map<String, dynamic>> allLogs = [];
