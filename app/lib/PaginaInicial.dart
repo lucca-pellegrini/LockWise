@@ -447,6 +447,13 @@ class _InicialState extends State<Inicial> {
                                         }
                                       }
 
+                                      // Remove from local list immediately
+                                      setState(() {
+                                        cartoes.removeWhere(
+                                          (c) => c['id'] == cartao['id'],
+                                        );
+                                      });
+
                                       await FirebaseFirestore.instance
                                           .collection('fechaduras')
                                           .doc(widget.usuarioId)
@@ -1017,7 +1024,8 @@ class _InicialState extends State<Inicial> {
                   final lastHeard = device['last_heard'];
                   final isOnline =
                       lastHeard != null &&
-                      (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
+                      (DateTime.now().millisecondsSinceEpoch - lastHeard) <
+                          15000;
                   final isUnlocked = device['lock_state'] == 'UNLOCKED';
                   cartao['isOnline'] = isOnline;
                   cartao['isUnlocked'] = isUnlocked;
