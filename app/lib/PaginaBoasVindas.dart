@@ -214,7 +214,7 @@ class _BoasVindasState extends State<BoasVindas> {
               ),
 
               PageViewModel(
-                title: 'Registros Compreensivos',
+                title: '',
                 bodyWidget: GlassCard(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -223,7 +223,7 @@ class _BoasVindasState extends State<BoasVindas> {
                       _buildImage('Notificacao.png'),
                       const SizedBox(height: 0),
                       const Text(
-                        "Segurança em Primeiro Lugar",
+                        "Registros Compreensivos",
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
