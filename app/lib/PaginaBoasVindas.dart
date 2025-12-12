@@ -119,7 +119,7 @@ class _BoasVindasState extends State<BoasVindas> {
                       ),
                       const SizedBox(height: 25),
                       Text(
-                        "Conecte suas fechaduras ao aplicativo e nao necessite mais de chaves.",
+                        "Conecte suas fechaduras ao aplicativo e não necessite mais de chaves.",
                         style: TextStyle(
                           fontSize: 20,
                           color: Colors.white.withOpacity(0.9),
@@ -214,7 +214,7 @@ class _BoasVindasState extends State<BoasVindas> {
               ),
 
               PageViewModel(
-                title: '',
+                title: 'Registros Compreensivos',
                 bodyWidget: GlassCard(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -233,7 +233,7 @@ class _BoasVindasState extends State<BoasVindas> {
                       ),
                       const SizedBox(height: 25),
                       Text(
-                        "Receba notificações instantâneas sobre atividades suspeitas.",
+                        "Veja registros de acesso a qualquer momento para identificar quaisquer atividades suspeitas.",
                         style: TextStyle(
                           fontSize: 20,
                           color: Colors.white.withOpacity(0.9),
@@ -282,7 +282,7 @@ class _BoasVindasState extends State<BoasVindas> {
                       const SizedBox(height: 50),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton(
+                        child: GlassButton(
                           onPressed: _assetsReady
                               ? () {
                                   Navigator.push(
@@ -293,17 +293,15 @@ class _BoasVindasState extends State<BoasVindas> {
                                   );
                                 }
                               : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            textStyle: const TextStyle(fontSize: 18),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
                           child: _assetsReady
-                              ? const Text('Fazer Login')
+                              ? const Text(
+                                  'Fazer Login',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
                               : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: const [
@@ -312,11 +310,18 @@ class _BoasVindasState extends State<BoasVindas> {
                                       height: 22,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2.4,
-                                        color: Colors.black54,
+                                        color: Colors.white,
                                       ),
                                     ),
                                     SizedBox(width: 12),
-                                    Text('Carregando...'),
+                                    Text(
+                                      'Carregando...',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ],
                                 ),
                         ),
@@ -324,7 +329,7 @@ class _BoasVindasState extends State<BoasVindas> {
                       const SizedBox(height: 25),
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton(
+                        child: GlassButton(
                           onPressed: _assetsReady
                               ? () {
                                   Navigator.push(
@@ -335,16 +340,14 @@ class _BoasVindasState extends State<BoasVindas> {
                                   );
                                 }
                               : null,
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            textStyle: const TextStyle(fontSize: 18),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                          child: const Text(
+                            'Criar Conta',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          child: const Text('Criar Conta'),
                         ),
                       ),
                     ],
@@ -387,9 +390,9 @@ class _BoasVindasState extends State<BoasVindas> {
 
             dotsDecorator: const DotsDecorator(
               size: Size(10.0, 40.0),
-              color: Colors.white,
+              color: Colors.white54,
               activeSize: Size(22.0, 10.0),
-              activeColor: Colors.black54,
+              activeColor: Colors.blueAccent,
               activeShape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.all(Radius.circular(25.0)),
               ),
@@ -482,3 +485,49 @@ class GlassCard extends StatelessWidget {
   }
 }
 
+class GlassButton extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onPressed;
+  final double borderRadius;
+  final double blurIntensity;
+  final EdgeInsets padding;
+
+  const GlassButton({
+    Key? key,
+    required this.child,
+    this.onPressed,
+    this.borderRadius = 12.0,
+    this.blurIntensity = 5.0,
+    this.padding = const EdgeInsets.symmetric(vertical: 15),
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurIntensity, sigmaY: blurIntensity),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.25),
+                Colors.white.withOpacity(0.1),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+          ),
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(borderRadius),
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}

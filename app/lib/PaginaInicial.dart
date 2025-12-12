@@ -1295,7 +1295,7 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // Container com Glass Effect
+            // Container with Glass Effect
             Positioned(
               bottom: 0,
               left: 0,
@@ -1305,7 +1305,7 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                   child: Container(
-                    height: 56,
+                    height: 68, // Increased height for better alignment
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -1326,7 +1326,7 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
               ),
             ),
 
-            // Items da Navigation
+            // Navigation Items
             Positioned.fill(
               child: Padding(
                 padding: const EdgeInsets.only(top: 12.0),
@@ -1338,10 +1338,9 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
 
                     return GestureDetector(
                       onTap: () {
-                        // Primeiro atualiza o item selecionado (causa rebuild do pai)
-                        widget.onTap(index); // causa o lift
+                        widget.onTap(index); // Update selected item
                         Future.delayed(const Duration(milliseconds: 100), () {
-                          widget.animateTheIcon(index); // dispara após o lift
+                          widget.animateTheIcon(index); // Animate icon
                         });
                       },
                       child: AnimatedContainer(
@@ -1354,7 +1353,7 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
                         ),
                         child: Container(
                           width: 56,
-                          height: 56,
+                          height: 56, // Maintain height for the container
                           decoration: isSelected
                               ? BoxDecoration(
                                   shape: BoxShape.circle,
@@ -1379,30 +1378,27 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
                                   ],
                                 )
                               : null,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                height: 36,
-                                width: 36,
-                                child: Opacity(
-                                  opacity: isSelected ? 1.0 : 0.5,
-                                  child: rive.RiveAnimation.asset(
-                                    riveIcon.src,
-                                    artboard: riveIcon.artboard,
-                                    key: ValueKey('nav_rive_$index'),
-                                    onInit: (artboard) {
-                                      widget.riveOnInit(
-                                        index,
-                                        artboard,
-                                        stateMachineName:
-                                            riveIcon.stateMachineName,
-                                      );
-                                    },
-                                  ),
+                          child: Center( // Center the icon vertically and horizontally
+                            child: SizedBox(
+                              height: 36, // Set height for the icon
+                              width: 36, // Set width for the icon
+                              child: Opacity(
+                                opacity: isSelected ? 1.0 : 0.5,
+                                child: rive.RiveAnimation.asset(
+                                  riveIcon.src,
+                                  artboard: riveIcon.artboard,
+                                  key: ValueKey('nav_rive_$index'),
+                                  onInit: (artboard) {
+                                    widget.riveOnInit(
+                                      index,
+                                      artboard,
+                                      stateMachineName:
+                                          riveIcon.stateMachineName,
+                                    );
+                                  },
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
