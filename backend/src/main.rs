@@ -1,5 +1,6 @@
 use argon2::password_hash::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use base64::Engine;
 use chrono::{Duration, TimeZone, Utc};
 use jsonwebtoken::Algorithm;
 use reqwest::Client;
@@ -14,6 +15,7 @@ use sqlx::{ConnectOptions, PgPool, Row};
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Mutex, OnceLock};
+use tokio::io::AsyncReadExt;
 use url::Url;
 use uuid::Uuid;
 
@@ -167,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     // Create users table if not exists
-    sqlx::query("CREATE TABLE IF NOT EXISTS users ( firebase_uid VARCHAR(255) PRIMARY KEY, hashed_password VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, phone_number VARCHAR(255), name VARCHAR(255) NOT NULL, current_token VARCHAR(255), created_at timestamptz NOT NULL DEFAULT NOW(), last_login timestamptz)")
+    sqlx::query("CREATE TABLE IF NOT EXISTS users ( firebase_uid VARCHAR(255) PRIMARY KEY, hashed_password VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, phone_number VARCHAR(255), name VARCHAR(255) NOT NULL, current_token VARCHAR(255), voice_embeddings BYTEA, created_at timestamptz NOT NULL DEFAULT NOW(), last_login timestamptz)")
     .execute(&db_pool)
     .await?;
 
@@ -216,6 +218,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .execute(&db_pool)
         .await?;
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS locked_down_at timestamptz")
+        .execute(&db_pool)
+        .await?;
+    sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_embeddings BYTEA")
         .execute(&db_pool)
         .await?;
 
@@ -301,7 +306,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     get_temp_devices_status,
                     get_temp_device,
                     control_temp_device,
-                    ping_temp_device
+                    ping_temp_device,
+                    register_voice,
+                    delete_voice,
+                    verify_voice,
+                    voice_status
                 ],
             )
             .launch()
@@ -328,40 +337,44 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                         if let Ok(heartbeat_msg) =
                             serde_cbor::from_slice::<HeartbeatMessage>(&publish.payload)
                         {
-                             println!("DEBUG: Parsed as HeartbeatMessage with heartbeat: {}", heartbeat_msg.heartbeat);
-                             if heartbeat_msg.heartbeat == "HEARTBEAT" {
-                                 // Handle HEARTBEAT
-                                 let now = Utc::now();
-                                 let lock_state =
-                                     heartbeat_msg.lock_state.as_deref().unwrap_or("UNKNOWN");
+                            println!(
+                                "DEBUG: Parsed as HeartbeatMessage with heartbeat: {}",
+                                heartbeat_msg.heartbeat
+                            );
+                            if heartbeat_msg.heartbeat == "HEARTBEAT" {
+                                // Handle HEARTBEAT
+                                let now = Utc::now();
+                                let lock_state =
+                                    heartbeat_msg.lock_state.as_deref().unwrap_or("UNKNOWN");
 
-                                 // Check if device is in lockdown and heartbeat is at least 10 seconds after lockdown
-                                 let should_clear_lockdown = {
-                                     let row: Option<(Option<chrono::DateTime<chrono::Utc>>,)> = sqlx::query_as(
-                                         "SELECT locked_down_at FROM devices WHERE uuid = $1"
-                                     )
-                                     .bind(uuid)
-                                     .fetch_optional(db_pool)
-                                     .await
-                                     .unwrap_or(None);
+                                // Check if device is in lockdown and heartbeat is at least 10 seconds after lockdown
+                                let should_clear_lockdown = {
+                                    let row: Option<(Option<chrono::DateTime<chrono::Utc>>,)> =
+                                        sqlx::query_as(
+                                            "SELECT locked_down_at FROM devices WHERE uuid = $1",
+                                        )
+                                        .bind(uuid)
+                                        .fetch_optional(db_pool)
+                                        .await
+                                        .unwrap_or(None);
 
-                                     if let Some((Some(locked_down_at),)) = row {
-                                         let duration_since_lockdown = now - locked_down_at;
-                                         duration_since_lockdown.num_seconds() >= 10
-                                     } else {
-                                         false
-                                     }
-                                 };
+                                    if let Some((Some(locked_down_at),)) = row {
+                                        let duration_since_lockdown = now - locked_down_at;
+                                        duration_since_lockdown.num_seconds() >= 10
+                                    } else {
+                                        false
+                                    }
+                                };
 
-                                 let update_query = if should_clear_lockdown {
-                                     "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, hashed_passphrase, locked_down_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NULL)
+                                let update_query = if should_clear_lockdown {
+                                    "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, hashed_passphrase, locked_down_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NULL)
                                          ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, pairing_timeout_sec = $12, lock_state = $13, locked_down_at = NULL"
-                                 } else {
-                                     "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)
+                                } else {
+                                    "INSERT INTO devices (uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, hashed_passphrase) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)
                                          ON CONFLICT (uuid) DO UPDATE SET user_id = $2, last_heard = $3, uptime_ms = $4, wifi_ssid = $5, backend_url = $6, mqtt_broker_url = $7, mqtt_heartbeat_enable = $8, mqtt_heartbeat_interval_sec = $9, audio_record_timeout_sec = $10, lock_timeout_ms = $11, pairing_timeout_sec = $12, lock_state = $13"
-                                 };
+                                };
 
-                                 let _ = sqlx::query(update_query)
+                                let _ = sqlx::query(update_query)
                                     .bind(uuid)
                                     .bind(&heartbeat_msg.user_id)
                                     .bind(now)
@@ -375,82 +388,100 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                     .bind(heartbeat_msg.lock_timeout_ms)
                                     .bind(heartbeat_msg.pairing_timeout_sec)
                                     .bind(&lock_state)
-                                   .execute(db_pool)
-                                   .await;
-                             }
-                         } else if let Ok(event_msg) =
-                             serde_cbor::from_slice::<EventMessage>(&publish.payload)
-                         {
-                             println!("DEBUG: Parsed as EventMessage with event: {}", event_msg.event);
-                             if event_msg.event == "PONG" {
-                                 // Handle PONG
-                                 let pings_mutex = PENDING_PINGS.get().unwrap();
-                                 let mut pings = pings_mutex.lock().unwrap();
-                                 if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
-                                     tx.send(()).ok();
-                                 }
-                             } else if event_msg.event == "CONFIG_UPDATED" {
-                                 // Handle CONFIG_UPDATED
-                                 let updates_mutex = PENDING_CONFIG_UPDATES.get().unwrap();
-                                 let mut updates = updates_mutex.lock().unwrap();
-                                 if let Some(tx) = updates.remove(&uuid_str.to_string()) {
-                                     tx.send(()).ok();
-                                 }
-                             } else if event_msg.event == "LOCKING_DOWN" {
-                                 // LOCKING_DOWN event - set locked_down_at
-                                 println!("DEBUG: Received LOCKING_DOWN event for device {}", uuid_str);
-                                 let timestamp = Utc
-                                     .timestamp_millis_opt(event_msg.timestamp as i64 * 1000)
-                                     .unwrap();
-                                 println!("DEBUG: Setting locked_down_at to {} for device {}", timestamp, uuid_str);
-                                 let result = sqlx::query(
-                                     "UPDATE devices SET locked_down_at = $1 WHERE uuid = $2"
-                                 )
-                                 .bind(timestamp)
-                                 .bind(uuid)
-                                 .execute(db_pool)
-                                 .await;
-                                 match result {
-                                     Ok(_) => println!("DEBUG: Successfully updated locked_down_at for device {}", uuid_str),
-                                     Err(e) => println!("DEBUG: Failed to update locked_down_at for device {}: {:?}", uuid_str, e),
-                                 }
-                             }
-                          } else if let Ok(lock_msg) =
-                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
-                         {
-                             // LOCK/UNLOCK event
-                             println!("DEBUG: Parsed as LockStatusMessage with lock: {}", lock_msg.lock);
-                             let event_type = if lock_msg.lock == "LOCKED" {
-                                 "LOCK"
-                             } else {
-                                 "UNLOCK"
-                             };
-                             let reason = &lock_msg.reason;
-                             let timestamp = Utc
-                                 .timestamp_millis_opt(lock_msg.timestamp as i64 * 1000)
-                                 .unwrap();
+                                    .execute(db_pool)
+                                    .await;
+                            }
+                        } else if let Ok(event_msg) =
+                            serde_cbor::from_slice::<EventMessage>(&publish.payload)
+                        {
+                            println!(
+                                "DEBUG: Parsed as EventMessage with event: {}",
+                                event_msg.event
+                            );
+                            if event_msg.event == "PONG" {
+                                // Handle PONG
+                                let pings_mutex = PENDING_PINGS.get().unwrap();
+                                let mut pings = pings_mutex.lock().unwrap();
+                                if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
+                                    tx.send(()).ok();
+                                }
+                            } else if event_msg.event == "CONFIG_UPDATED" {
+                                // Handle CONFIG_UPDATED
+                                let updates_mutex = PENDING_CONFIG_UPDATES.get().unwrap();
+                                let mut updates = updates_mutex.lock().unwrap();
+                                if let Some(tx) = updates.remove(&uuid_str.to_string()) {
+                                    tx.send(()).ok();
+                                }
+                            } else if event_msg.event == "LOCKING_DOWN" {
+                                // LOCKING_DOWN event - set locked_down_at
+                                println!(
+                                    "DEBUG: Received LOCKING_DOWN event for device {}",
+                                    uuid_str
+                                );
+                                let timestamp = Utc
+                                    .timestamp_millis_opt(event_msg.timestamp as i64 * 1000)
+                                    .unwrap();
+                                println!(
+                                    "DEBUG: Setting locked_down_at to {} for device {}",
+                                    timestamp, uuid_str
+                                );
+                                let result = sqlx::query(
+                                    "UPDATE devices SET locked_down_at = $1 WHERE uuid = $2",
+                                )
+                                .bind(timestamp)
+                                .bind(uuid)
+                                .execute(db_pool)
+                                .await;
+                                match result {
+                                    Ok(_) => println!(
+                                        "DEBUG: Successfully updated locked_down_at for device {}",
+                                        uuid_str
+                                    ),
+                                    Err(e) => println!(
+                                        "DEBUG: Failed to update locked_down_at for device {}: {:?}",
+                                        uuid_str, e
+                                    ),
+                                }
+                            }
+                        } else if let Ok(lock_msg) =
+                            serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
+                        {
+                            // LOCK/UNLOCK event
+                            println!(
+                                "DEBUG: Parsed as LockStatusMessage with lock: {}",
+                                lock_msg.lock
+                            );
+                            let event_type = if lock_msg.lock == "LOCKED" {
+                                "LOCK"
+                            } else {
+                                "UNLOCK"
+                            };
+                            let reason = &lock_msg.reason;
+                            let timestamp = Utc
+                                .timestamp_millis_opt(lock_msg.timestamp as i64 * 1000)
+                                .unwrap();
 
-                             // Check for recent command
-                             let user_id = {
-                                 let commands_mutex = RECENT_COMMANDS.get().unwrap();
-                                 let mut commands = commands_mutex.lock().unwrap();
-                                 if let Some((uid, cmd_time)) = commands.get(&uuid_str.to_string()) {
-                                     let now = Utc::now().timestamp();
-                                     if now - cmd_time < 5 {
-                                         // within 5 seconds
-                                         let uid = uid.clone();
-                                         commands.remove(&uuid_str.to_string());
-                                         Some(uid)
-                                     } else {
-                                         None
-                                     }
-                                 } else {
-                                     None
-                                 }
-                             };
+                            // Check for recent command
+                            let user_id = {
+                                let commands_mutex = RECENT_COMMANDS.get().unwrap();
+                                let mut commands = commands_mutex.lock().unwrap();
+                                if let Some((uid, cmd_time)) = commands.get(&uuid_str.to_string()) {
+                                    let now = Utc::now().timestamp();
+                                    if now - cmd_time < 5 {
+                                        // within 5 seconds
+                                        let uid = uid.clone();
+                                        commands.remove(&uuid_str.to_string());
+                                        Some(uid)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            };
 
-                             // Insert log
-                             let _ = sqlx::query(
+                            // Insert log
+                            let _ = sqlx::query(
                                        "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id) VALUES ($1, $2, $3, $4, $5)"
                                    )
                                    .bind(uuid_str)
@@ -461,19 +492,19 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                    .execute(db_pool)
                                    .await;
 
-                             // Update lock_state
-                             let lock_state = if lock_msg.lock == "LOCKED" {
-                                 "LOCKED"
-                             } else {
-                                 "UNLOCKED"
-                             };
-                             let _ =
-                                 sqlx::query("UPDATE devices SET lock_state = $1 WHERE uuid = $2")
-                                     .bind(lock_state)
-                                     .bind(uuid_str)
-                                     .execute(db_pool)
-                                     .await;
-                         }
+                            // Update lock_state
+                            let lock_state = if lock_msg.lock == "LOCKED" {
+                                "LOCKED"
+                            } else {
+                                "UNLOCKED"
+                            };
+                            let _ =
+                                sqlx::query("UPDATE devices SET lock_state = $1 WHERE uuid = $2")
+                                    .bind(lock_state)
+                                    .bind(uuid_str)
+                                    .execute(db_pool)
+                                    .await;
+                        }
                     }
                 }
             }
@@ -1861,6 +1892,342 @@ async fn verify_password(
     Err(Status::Unauthorized)
 }
 
+#[post("/register_voice", data = "<audio_data>")]
+async fn register_voice(
+    token: Token,
+    audio_data: rocket::data::Data<'_>,
+    db_pool: &State<PgPool>,
+) -> Result<(), Status> {
+    println!("DEBUG: register_voice called");
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Token validation query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, firebase_uid: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Read audio data
+    let mut data = Vec::new();
+    audio_data
+        .open(rocket::data::ByteUnit::max_value())
+        .read_to_end(&mut data)
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to read audio data: {:?}", e);
+            Status::BadRequest
+        })?;
+
+    println!("DEBUG: Read {} bytes of audio data", data.len());
+
+    if data.is_empty() {
+        println!("DEBUG: Audio data is empty");
+        return Err(Status::BadRequest);
+    }
+
+    // Call speechbrain service
+    println!("DEBUG: Calling speechbrain service at http://localhost:5008/embed");
+    let client = Client::new();
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+    println!("DEBUG: Base64 encoded data length: {}", base64_data.len());
+
+    let response = client
+        .post("http://localhost:5008/embed")
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "pcm_base64": base64_data
+        }))
+        .send()
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to call speechbrain service: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+    println!("DEBUG: Speechbrain response status: {}", response.status());
+
+    if !response.status().is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        println!("DEBUG: Speechbrain service error: {}", error_text);
+        return Err(Status::InternalServerError);
+    }
+
+    let embed_response: serde_json::Value = response.json().await.map_err(|e| {
+        println!("DEBUG: Failed to parse speechbrain response: {:?}", e);
+        Status::InternalServerError
+    })?;
+
+    println!("DEBUG: Speechbrain response: {:?}", embed_response);
+
+    let embedding_b64 = embed_response["embedding"].as_str().ok_or_else(|| {
+        println!("DEBUG: No 'embedding' field in response");
+        Status::InternalServerError
+    })?;
+
+    println!("DEBUG: Embedding base64 length: {}", embedding_b64.len());
+
+    // Decode base64 to binary data
+    let embedding_bytes = base64::engine::general_purpose::STANDARD
+        .decode(embedding_b64)
+        .map_err(|e| {
+            println!("DEBUG: Failed to decode base64 embedding: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+    println!(
+        "DEBUG: Embedding binary length: {} bytes",
+        embedding_bytes.len()
+    );
+
+    // Store in database
+    println!(
+        "DEBUG: Storing embedding in database for user {}",
+        firebase_uid
+    );
+    sqlx::query("UPDATE users SET voice_embeddings = $1 WHERE firebase_uid = $2")
+        .bind(&embedding_bytes)
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to store embedding in database: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+    println!("DEBUG: Voice registration successful");
+    Ok(())
+}
+
+#[post("/delete_voice")]
+async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
+    println!("DEBUG: delete_voice called");
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Token validation query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, firebase_uid: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Delete voice embeddings
+    println!("DEBUG: Deleting voice embeddings for user {}", firebase_uid);
+    sqlx::query("UPDATE users SET voice_embeddings = NULL WHERE firebase_uid = $1")
+        .bind(&firebase_uid)
+        .execute(&**db_pool)
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to delete voice embeddings: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+    println!("DEBUG: Voice deletion successful");
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct VoiceVerifyRequest {
+    device_id: String,
+}
+
+#[post("/verify_voice/<device_id>", data = "<audio_data>")]
+async fn verify_voice(
+    device_id: &str,
+    audio_data: rocket::data::Data<'_>,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    println!("DEBUG: verify_voice called for device {}", device_id);
+
+    let device_uuid = Uuid::parse_str(device_id).map_err(|e| {
+        println!("DEBUG: Invalid device UUID: {:?}", e);
+        Status::BadRequest
+    })?;
+
+    // Get user_id for device
+    let device_row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(device_uuid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Failed to query device: {:?}", e);
+                Status::InternalServerError
+            })?;
+
+    let user_id = match device_row {
+        Some((Some(uid),)) => {
+            println!("DEBUG: Device found, user_id: {}", uid);
+            uid
+        }
+        _ => {
+            println!("DEBUG: Device not found or has no user");
+            return Err(Status::NotFound);
+        }
+    };
+
+    // Get voice embeddings
+    let user_row: Option<(Option<Vec<u8>>,)> =
+        sqlx::query_as("SELECT voice_embeddings FROM users WHERE firebase_uid = $1")
+            .bind(&user_id)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Failed to query user embeddings: {:?}", e);
+                Status::InternalServerError
+            })?;
+
+    let embedding_bytes = match user_row {
+        Some((Some(emb),)) => {
+            println!(
+                "DEBUG: Found voice embeddings for user {} ({} bytes)",
+                user_id,
+                emb.len()
+            );
+            emb
+        }
+        _ => {
+            println!("DEBUG: No voice embeddings found for user {}", user_id);
+            return Err(Status::BadRequest); // No voice registered
+        }
+    };
+
+    // Encode binary data back to base64 for speechbrain service
+    let embeddings = base64::engine::general_purpose::STANDARD.encode(&embedding_bytes);
+    println!(
+        "DEBUG: Encoded embeddings to base64 ({} chars)",
+        embeddings.len()
+    );
+
+    // Read audio data
+    let mut data = Vec::new();
+    audio_data
+        .open(rocket::data::ByteUnit::max_value())
+        .read_to_end(&mut data)
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to read audio data: {:?}", e);
+            Status::BadRequest
+        })?;
+
+    println!("DEBUG: Read {} bytes of audio data", data.len());
+
+    if data.is_empty() {
+        println!("DEBUG: Audio data is empty");
+        return Err(Status::BadRequest);
+    }
+
+    // Call speechbrain service
+    println!("DEBUG: Calling speechbrain verify service at http://localhost:5008/verify");
+    let client = Client::new();
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+
+    let response = client
+        .post("http://localhost:5008/verify")
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "pcm_base64": base64_data,
+            "candidates": [embeddings]
+        }))
+        .send()
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to call speechbrain verify service: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+    println!(
+        "DEBUG: Speechbrain verify response status: {}",
+        response.status()
+    );
+
+    if !response.status().is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        println!("DEBUG: Speechbrain verify service error: {}", error_text);
+        return Err(Status::InternalServerError);
+    }
+
+    let verify_response: serde_json::Value = response.json().await.map_err(|e| {
+        println!(
+            "DEBUG: Failed to parse speechbrain verify response: {:?}",
+            e
+        );
+        Status::InternalServerError
+    })?;
+
+    println!("DEBUG: Speechbrain verify response: {:?}", verify_response);
+
+    let score = verify_response["score"].as_f64().ok_or_else(|| {
+        println!("DEBUG: No 'score' field in verify response");
+        Status::InternalServerError
+    })?;
+
+    println!("DEBUG: Verification score: {}", score);
+
+    if score > 0.75 {
+        println!("DEBUG: Score {} > 0.75, unlocking device", score);
+
+        // Unlock the device
+        publish_control_message(&**mqtt_client, device_uuid, "UNLOCK".to_string())
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Failed to publish unlock message: {:?}", e);
+                Status::InternalServerError
+            })?;
+
+        // Log the event
+        sqlx::query("INSERT INTO logs (device_id, event_type, reason) VALUES ($1, $2, $3)")
+            .bind(device_id)
+            .bind("UNLOCK")
+            .bind("voice activation")
+            .execute(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Failed to log voice activation event: {:?}", e);
+                Status::InternalServerError
+            })?;
+
+        println!("DEBUG: Device unlocked via voice activation");
+    } else {
+        println!("DEBUG: Score {} <= 0.75, not unlocking", score);
+    }
+
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct CreateInviteRequest {
     receiver_email: String,
@@ -2327,6 +2694,60 @@ async fn get_accessible_devices(token: Token, db_pool: &State<PgPool>) -> Result
         .collect();
 
     Ok(serde_json::to_string(&devices).unwrap())
+}
+
+#[get("/voice_status")]
+async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    println!("DEBUG: voice_status called");
+
+    // Validate token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Token validation query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, firebase_uid: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Check if user has voice embeddings
+    let voice_row: Option<(Option<Vec<u8>>,)> =
+        sqlx::query_as("SELECT voice_embeddings FROM users WHERE firebase_uid = $1")
+            .bind(&firebase_uid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|e| {
+                println!("DEBUG: Voice embeddings query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
+
+    let has_voice = match voice_row {
+        Some((Some(_),)) => {
+            println!("DEBUG: User {} has voice embeddings", firebase_uid);
+            true
+        }
+        _ => {
+            println!(
+                "DEBUG: User {} does not have voice embeddings",
+                firebase_uid
+            );
+            false
+        }
+    };
+
+    println!("DEBUG: voice_status returning: {}", has_voice);
+    Ok(has_voice.to_string())
 }
 
 fn calculate_expiry_timestamp(base_time: chrono::DateTime<chrono::Utc>, duration: &str) -> i64 {

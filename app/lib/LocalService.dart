@@ -286,4 +286,99 @@ class LocalService {
       return false;
     }
   }
+
+  // ==================== VOICE EMBEDDINGS ====================
+  static Future<bool> hasVoiceEmbeddings() async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.get(
+        Uri.parse('$backendUrl/devices'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode != 200) return false;
+
+      // Check if user has voice embeddings (this is a simple check, might need backend endpoint)
+      // For now, assume we need to check via backend
+      return true; // Placeholder - backend should provide this info
+    } catch (e) {
+      print('Erro ao verificar embeddings de voz: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> registerVoice(List<int> audioData) async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/register_voice'),
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Authorization': 'Bearer $token',
+        },
+        body: audioData,
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao registrar voz: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteVoice() async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) return false;
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/delete_voice'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao deletar voz: $e');
+      return false;
+    }
+  }
+
+  // ==================== VOICE STATUS ====================
+  static Future<bool> getVoiceStatus() async {
+    try {
+      final token = await _storage.read(key: _keyBackendToken);
+      if (token == null) {
+        print('DEBUG: No backend token found');
+        return false;
+      }
+
+      print('DEBUG: Calling /voice_status endpoint');
+      final response = await http.get(
+        Uri.parse('$backendUrl/voice_status'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      print('DEBUG: Voice status response status: ${response.statusCode}');
+      print('DEBUG: Voice status response body: "${response.body}"');
+
+      if (response.statusCode == 200) {
+        // The endpoint returns plain "true" or "false" string
+        final hasVoice = response.body.trim() == 'true';
+        print('DEBUG: Parsed has_voice: $hasVoice');
+        return hasVoice;
+      }
+
+      print(
+        'DEBUG: Voice status request failed with status ${response.statusCode}',
+      );
+      return false;
+    } catch (e) {
+      print('Erro ao verificar status de voz: $e');
+      return false;
+    }
+  }
 }

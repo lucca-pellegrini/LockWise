@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'dart:io';
 import 'LocalService.dart';
 import 'PaginaLogin.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:record/record.dart';
 
 class PaginaConta extends StatefulWidget {
   const PaginaConta({super.key});
@@ -15,11 +17,31 @@ class PaginaConta extends StatefulWidget {
 class _PaginaContaState extends State<PaginaConta> {
   bool _isLoading = true;
   Map<String, dynamic>? usuario;
+  bool _hasVoiceEmbeddings = false;
+  bool _isRecording = false;
+  final AudioRecorder _audioRecorder = AudioRecorder();
 
   @override
   void initState() {
     super.initState();
     _carregarUsuario();
+    _checkVoiceStatus();
+  }
+
+  Future<void> _checkVoiceStatus() async {
+    try {
+      print('DEBUG: Checking voice status...');
+      final hasVoice = await LocalService.getVoiceStatus();
+      print('DEBUG: Voice status result: $hasVoice');
+      setState(() {
+        _hasVoiceEmbeddings = hasVoice;
+      });
+    } catch (e) {
+      print('Erro ao verificar status de voz: $e');
+      setState(() {
+        _hasVoiceEmbeddings = false; // Default to false on error
+      });
+    }
   }
 
   Future<void> _carregarUsuario() async {
@@ -217,6 +239,15 @@ class _PaginaContaState extends State<PaginaConta> {
                 label: 'Redefinir Senha',
                 color: Colors.orange,
                 onPressed: _mostrarDialogoRedefinirSenha,
+              ),
+
+              SizedBox(height: 12),
+
+              _ActionButton(
+                icon: Icons.mic,
+                label: _hasVoiceEmbeddings ? 'Gerenciar Voz' : 'Registrar Voz',
+                color: Colors.green,
+                onPressed: _mostrarDialogoGerenciarVoz,
               ),
 
               SizedBox(height: 12),
@@ -664,6 +695,209 @@ class _PaginaContaState extends State<PaginaConta> {
         );
       },
     );
+  }
+
+  void _mostrarDialogoGerenciarVoz() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: _GlassDialog(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.mic, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text(
+
+                    _hasVoiceEmbeddings ?
+                        'Gerenciar Voz' :
+                        'Cadastrar Voz',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    _hasVoiceEmbeddings
+                        ? 'Você já possui uma amostra de voz cadastrada. Deseja cadastrar uma nova ou remover a atual?'
+                        : 'Cadastre sua voz para desbloquear dispositivos por comando de voz. A gravação durará 10 segundos. Esteja em um ambiente completamente silencioso e fale clara e continuamente bem próximo ao microfone.',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 24),
+                  if (_hasVoiceEmbeddings) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _GlassDialogButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          text: 'Cancelar',
+                          color: Colors.grey,
+                        ),
+                        _GlassDialogButton(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _deletarVoz();
+                          },
+                          text: 'Remover',
+                          color: Colors.red,
+                        ),
+                        _GlassDialogButton(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _registrarVoz();
+                          },
+                          text: 'Nova Amostra',
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _GlassDialogButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          text: 'Cancelar',
+                          color: Colors.red,
+                        ),
+                        SizedBox(width: 12),
+                        _GlassDialogButton(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _registrarVoz();
+                          },
+                          text: 'Registrar',
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _registrarVoz() async {
+    try {
+      // Request microphone permission
+      if (!await _audioRecorder.hasPermission()) {
+        _mostrarErro('Permissão de microfone necessária');
+        return;
+      }
+
+      setState(() => _isRecording = true);
+
+      // Start recording
+      final tempDir = await Directory.systemTemp.createTemp();
+      final tempPath = '${tempDir.path}/voice_record.wav';
+      final path = await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
+        path: tempPath,
+      );
+
+      // Show recording dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: _GlassDialog(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.mic, color: Colors.red, size: 48),
+                    SizedBox(height: 16),
+                    Text(
+                      'Gravando...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Fale claramente por 10 segundos',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      // Record for 10 seconds
+      await Future.delayed(Duration(seconds: 10));
+
+      // Stop recording
+      final audioPath = await _audioRecorder.stop();
+      setState(() => _isRecording = false);
+
+      Navigator.of(context).pop(); // Close recording dialog
+
+      if (audioPath != null) {
+        // Read audio file
+        final audioFile = File(audioPath);
+        final audioData = await audioFile.readAsBytes();
+
+        // Send to backend
+        final success = await LocalService.registerVoice(audioData);
+
+        // Clean up temp file first
+        await audioFile.delete();
+
+        if (success) {
+          await _checkVoiceStatus();
+          _mostrarSucesso('Voz registrada com sucesso!');
+        } else {
+          _mostrarErro('Erro ao registrar voz');
+        }
+      } else {
+        _mostrarErro('Erro na gravação');
+      }
+    } catch (e) {
+      setState(() => _isRecording = false);
+      Navigator.of(context).pop(); // Close any open dialogs
+      _mostrarErro('Erro ao registrar voz: $e');
+    }
+  }
+
+  Future<void> _deletarVoz() async {
+    try {
+      final success = await LocalService.deleteVoice();
+      if (success) {
+        await _checkVoiceStatus();
+        _mostrarSucesso('Voz removida com sucesso!');
+      } else {
+        _mostrarErro('Erro ao remover voz');
+      }
+    } catch (e) {
+      _mostrarErro('Erro ao remover voz: $e');
+    }
   }
 
   void _mostrarSucesso(String mensagem) {

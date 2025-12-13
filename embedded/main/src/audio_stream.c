@@ -55,7 +55,7 @@ esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 		memset(dat, 0, sizeof(dat));
 		snprintf(dat, sizeof(dat), "%d", AUDIO_CHANNELS);
 		esp_http_client_set_header(http, "x-audio-channels", dat);
-		esp_http_client_set_header(http, "Content-Type", "audio/raw");
+		esp_http_client_set_header(http, "Content-Type", "application/octet-stream");
 		if (strlen(config.backend_bearer_token) > 0) {
 			char auth_header[256 + 10];
 			snprintf(auth_header, sizeof(auth_header), "Bearer %s", config.backend_bearer_token);
@@ -165,7 +165,9 @@ static void start_streaming(void)
 
 	setup_pipeline();
 
-	audio_element_set_uri(http_stream_writer, config.backend_url);
+	char voice_url[512];
+	snprintf(voice_url, sizeof(voice_url), "%s/verify_voice/%s", config.backend_url, config.device_id);
+	audio_element_set_uri(http_stream_writer, voice_url);
 
 	audio_pipeline_run(pipeline);
 
