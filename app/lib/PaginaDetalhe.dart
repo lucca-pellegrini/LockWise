@@ -525,26 +525,29 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                   ),
                                 ],
                               ),
-                              Row(
-                                children: [
-                                  Icon(
-                                    isConnected ? Icons.wifi : Icons.wifi_off,
-                                    color: isConnected
-                                        ? Colors.green
-                                        : Colors.orange.shade800,
-                                    size: 20,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    isConnected ? 'Conectada' : 'Desconectada',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white,
+                              if (!isLockedDown)
+                                Row(
+                                  children: [
+                                    Icon(
+                                      isConnected ? Icons.wifi : Icons.wifi_off,
+                                      color: isConnected
+                                          ? Colors.green
+                                          : Colors.orange.shade800,
+                                      size: 20,
                                     ),
-                                  ),
-                                ],
-                              ),
-                              if (isConnected)
+                                    SizedBox(width: 8),
+                                    Text(
+                                      isConnected
+                                          ? 'Conectada'
+                                          : 'Desconectada',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (!isLockedDown && isConnected)
                                 Row(
                                   children: [
                                     Icon(
