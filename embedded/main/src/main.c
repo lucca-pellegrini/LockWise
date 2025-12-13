@@ -1,5 +1,7 @@
 /* Main Application */
 
+#include "audio_hal.h"
+#include "audio_mem.h"
 #include "audio_stream.h"
 #include "board.h"
 #include "config.h"
@@ -7,10 +9,6 @@
 #include "driver/i2c_master.h"
 #include "driver/uart.h"
 #include "esp_err.h"
-#include "hal/touch_sensor_types.h"
-#include <limits.h>
-#include <lwip/sockets.h>
-#include <lwip/netdb.h>
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
@@ -19,6 +17,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "hal/i2c_types.h"
+#include "hal/touch_sensor_types.h"
 #include "i2c_bus.h"
 #include "lock.h"
 #include "mqtt.h"
@@ -27,6 +26,9 @@
 #include "system_utils.h"
 #include "wifi.h"
 #include <cJSON.h>
+#include <limits.h>
+#include <lwip/netdb.h>
+#include <lwip/sockets.h>
 #include <string.h>
 
 static const char *TAG = "\033[1mLOCKWISE:\033[0m\033[1mMAIN";
@@ -35,6 +37,8 @@ static i2c_master_bus_handle_t g_i2c_handle;
 static TaskHandle_t setup_blink_task = NULL;
 TaskHandle_t idle_blink_task = NULL; // Not static because `audio_stream.c` needs it
 TaskHandle_t heartbeat_task = NULL;
+
+audio_board_handle_t g_board_handle;
 
 static void touch_monitor_task(void *param)
 {
@@ -151,7 +155,14 @@ void app_main(void)
 	}
 
 	// Initialize audio board early to set up I2C
-	audio_board_handle_t board_handle = audio_board_init();
+	g_board_handle = audio_calloc(1, sizeof(struct audio_board_handle));
+	AUDIO_MEM_CHECK(TAG, g_board_handle, return);
+	audio_hal_codec_config_t cfg = AUDIO_CODEC_DEFAULT_CONFIG();
+	cfg.adc_input = AUDIO_HAL_ADC_INPUT_LINE1; // Should be LINE2 for AUX_IN
+	g_board_handle->audio_hal = audio_hal_init(&cfg, &AUDIO_CODEC_ES8388_DEFAULT_HANDLE);
+	AUDIO_NULL_CHECK(TAG, g_board_handle->audio_hal, return);
+
+	// Get I²C handle
 	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
 
 	// Initialize WiFi (station mode)

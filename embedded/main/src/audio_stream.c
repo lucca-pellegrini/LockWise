@@ -22,6 +22,7 @@
 #include <string.h>
 
 extern TaskHandle_t idle_blink_task;
+extern audio_board_handle_t g_board_handle;
 
 static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 
@@ -113,8 +114,7 @@ static void setup_pipeline(void)
 	ESP_LOGI(TAG, "Setting up audio pipeline for streaming");
 
 	// Initialize audio board
-	audio_board_handle_t board_handle = audio_board_init();
-	audio_hal_ctrl_codec(board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
+	audio_hal_ctrl_codec(g_board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_BOTH, AUDIO_HAL_CTRL_START);
 
 	audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
 	pipeline = audio_pipeline_init(&pipeline_cfg);
@@ -124,8 +124,7 @@ static void setup_pipeline(void)
 	http_cfg.event_handle = _http_stream_event_handle;
 	http_stream_writer = http_stream_init(&http_cfg);
 
-	i2s_stream_cfg_t i2s_cfg =
-		I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(CODEC_ADC_I2S_PORT, 44100, 16, AUDIO_STREAM_READER, 1);
+	i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(CODEC_ADC_I2S_PORT, 44100, 16, AUDIO_STREAM_READER, 1);
 	i2s_cfg.type = AUDIO_STREAM_READER;
 	i2s_cfg.out_rb_size = 64 * 1024; // Large buffer to prevent underruns
 	i2s_stream_reader = i2s_stream_init(&i2s_cfg);
