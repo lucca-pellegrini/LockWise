@@ -1377,7 +1377,10 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
 
 #[get("/logs/<uuid>")]
 async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
-    let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+    println!("DEBUG: get_logs called for uuid: {}", uuid);
+
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+    println!("DEBUG: UUID parsed: {}", uuid_parsed);
 
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
@@ -1385,74 +1388,115 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|e| {
+                eprintln!("DEBUG: Token validation failed: {:?}", e);
+                Status::InternalServerError
+            })?;
     let firebase_uid = match user_row {
-        Some((uid,)) => uid,
-        None => return Err(Status::Unauthorized),
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, firebase_uid: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
     };
 
     // Check that the device belongs to this user (logs only for owners)
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
-            .bind(uuid)
+            .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|e| {
+                eprintln!("DEBUG: Device ownership query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
     if let Some((Some(db_user_id),)) = row {
         if firebase_uid != db_user_id {
+            println!("DEBUG: User {} does not own device {}", firebase_uid, uuid_parsed);
             return Err(Status::Unauthorized);
         }
+        println!("DEBUG: Ownership validated");
     } else {
+        println!("DEBUG: Device {} not found or not owned", uuid_parsed);
         return Err(Status::Unauthorized); // Device not found or not owned
     }
 
     // Get logs, limit to 1000
+    println!("DEBUG: Querying logs for device {}", uuid_parsed);
     let logs: Vec<LogEntry> =
-        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000", uuid.to_string())
+        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000", uuid_parsed.to_string())
             .fetch_all(&**db_pool)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|e| {
+                eprintln!("DEBUG: Logs query failed: {:?}", e);
+                Status::InternalServerError
+            })?;
 
+    println!("DEBUG: Retrieved {} logs", logs.len());
     Ok(serde_json::to_string(&logs).unwrap())
 }
 
 #[get("/notifications?<devices>")]
 async fn get_notifications(token: Token, devices: Option<String>, db_pool: &State<PgPool>) -> Result<String, Status> {
+    println!("DEBUG: get_notifications called with devices: {:?}", devices);
+
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|_| Status::InternalServerError)?;
+            .map_err(|e| {
+                eprintln!("DEBUG: Token validation failed: {:?}", e);
+                Status::InternalServerError
+            })?;
     let firebase_uid = match user_row {
-        Some((uid,)) => uid,
-        None => return Err(Status::Unauthorized),
+        Some((uid,)) => {
+            println!("DEBUG: Token valid, firebase_uid: {}", uid);
+            uid
+        }
+        None => {
+            println!("DEBUG: Token invalid");
+            return Err(Status::Unauthorized);
+        }
     };
 
     // Get logs for owned devices, optionally filtered by devices list
     let logs: Vec<LogEntry> = if let Some(devices_str) = devices {
+        println!("DEBUG: Devices string: {}", devices_str);
         let device_uuids: Vec<Uuid> = devices_str.split(',')
             .filter_map(|s| Uuid::parse_str(s.trim()).ok())
             .collect();
+        println!("DEBUG: Parsed device UUIDs: {:?}", device_uuids);
         if device_uuids.is_empty() {
-            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
+            println!("DEBUG: No valid device UUIDs, fetching all owned logs");
+            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
                 .fetch_all(&**db_pool)
                 .await
-                .map_err(|_| Status::InternalServerError)?
+                .map_err(|e| {
+                    eprintln!("DEBUG: Query failed for all owned logs: {:?}", e);
+                    Status::InternalServerError
+                })?
         } else {
-            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) AND l.device_id::uuid = ANY($2) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid, &device_uuids)
+            let device_strings: Vec<String> = device_uuids.iter().map(|u| u.to_string()).collect();
+            println!("DEBUG: Device strings: {:?}", device_strings);
+            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) AND l.device_id = ANY($2) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid, &device_strings)
                 .fetch_all(&**db_pool)
                 .await
-                .map_err(|_| Status::InternalServerError)?
+                .map_err(|e| {
+                    eprintln!("DEBUG: Query failed for filtered logs: {:?}", e);
+                    Status::InternalServerError
+                })?
         }
     } else {
-        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
-            .fetch_all(&**db_pool)
-            .await
-            .map_err(|_| Status::InternalServerError)?
+        println!("DEBUG: No devices param provided, rejecting request");
+        return Err(Status::BadRequest);
     };
 
+    println!("DEBUG: Retrieved {} logs", logs.len());
     Ok(serde_json::to_string(&logs).unwrap())
 }
 

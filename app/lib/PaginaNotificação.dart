@@ -93,10 +93,18 @@ class _NotificacaoState extends State<Notificacao>
           .map((e) => e.key)
           .toList();
 
+      // If no devices have notifications enabled, clear logs and skip request
+      if (enabledDeviceIds.isEmpty) {
+        if (logs.isNotEmpty) {
+          setState(() {
+            logs = [];
+          });
+        }
+        return;
+      }
+
       // Fetch notifications from backend, filtered by enabled devices
-      final queryParams = enabledDeviceIds.isNotEmpty
-          ? '?devices=${enabledDeviceIds.join(',')}'
-          : '';
+      final queryParams = '?devices=${enabledDeviceIds.join(',')}';
       final notificationsResponse = await http.get(
         Uri.parse('$backendUrl/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},
@@ -207,10 +215,17 @@ class _NotificacaoState extends State<Notificacao>
           .map((e) => e.key)
           .toList();
 
+      // If no devices have notifications enabled, set logs to empty
+      if (enabledDeviceIds.isEmpty) {
+        setState(() {
+          logs = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
       // Fetch notifications from backend, filtered by enabled devices
-      final queryParams = enabledDeviceIds.isNotEmpty
-          ? '?devices=${enabledDeviceIds.join(',')}'
-          : '';
+      final queryParams = '?devices=${enabledDeviceIds.join(',')}';
       final notificationsResponse = await http.get(
         Uri.parse('$backendUrl/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},

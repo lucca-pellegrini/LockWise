@@ -153,10 +153,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       if (logsResponse.statusCode == 200) {
         final logsData = jsonDecode(logsResponse.body) as List;
         final transformedLogs = logsData.map((log) {
-          final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
-          final user = log[6] ?? log[5] ?? 'Sistema';
-          final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-          final reason = translateReason(log[4]);
+          final timestamp = DateTime.parse(
+            log['timestamp'],
+          ).millisecondsSinceEpoch;
+          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+          final reason = translateReason(log['reason']);
           return {
             'data_hora': timestamp,
             'usuario': user,
@@ -177,6 +179,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   }
 
   Future<void> _carregarDadosFechadura() async {
+    print('DEBUG: Starting _carregarDadosFechadura');
     try {
       final usuario = await LocalService.getUsuarioLogado();
       bool admin = false;
@@ -191,6 +194,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           .doc(widget.fechaduraId)
           .get();
       final f = doc.exists ? doc.data() : null;
+      print('DEBUG: f: $f');
 
       // Verificar se é dono (se o doc existe sob o user_id)
       admin = doc.exists;
@@ -206,6 +210,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         );
         if (deviceResponse.statusCode == 200) {
           final deviceData = jsonDecode(deviceResponse.body);
+          print('DEBUG: deviceData: $deviceData');
           isOpen = deviceData['lock_state'] == 'UNLOCKED';
           lastHeard = deviceData['last_heard'];
           _wifiSsidController.text = deviceData['wifi_ssid'] ?? '';
@@ -232,12 +237,17 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         );
         if (logsResponse.statusCode == 200) {
           final logsData = jsonDecode(logsResponse.body) as List;
-          // Transform to map format: [id, device_id, timestamp, event_type, reason, user_id, user_name]
+          print('DEBUG: logsData length: ${logsData.length}');
+          // Transform to map format: {id, device_id, timestamp, event_type, reason, user_id, user_name}
           final transformedLogs = logsData.map((log) {
-            final timestamp = DateTime.parse(log[2]).millisecondsSinceEpoch;
-            final user = log[6] ?? log[5] ?? 'Sistema';
-            final action = log[3] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = translateReason(log[4]);
+            print('DEBUG: processing log: $log');
+            final timestamp = DateTime.parse(
+              log['timestamp'],
+            ).millisecondsSinceEpoch;
+            final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+            print('DEBUG: user: $user');
+            final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = translateReason(log['reason']);
             return {
               'data_hora': timestamp,
               'usuario': user,
@@ -246,6 +256,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             };
           }).toList();
           logs = transformedLogs;
+          print('DEBUG: logs set, length: ${logs.length}');
         }
       }
 
