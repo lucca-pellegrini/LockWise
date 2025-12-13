@@ -31,7 +31,7 @@ class _NotificacaoState extends State<Notificacao>
       case 'TIMEOUT':
         return 'Tempo esgotado';
       case 'MQTT':
-        return 'Remoto';
+        return 'Aplicativo';
       case 'VOICE':
         return 'Voz';
       case 'REBOOT':
@@ -42,6 +42,16 @@ class _NotificacaoState extends State<Notificacao>
         return 'Depuração por UART';
       default:
         return reason;
+    }
+  }
+
+  String getUserDisplay(String? userName, String? userId, String reason) {
+    if (userName != null || userId != null) {
+      return userName ?? userId!;
+    } else if (reason == 'MQTT') {
+      return 'Desconhecido';
+    } else {
+      return 'Sistema';
     }
   }
 
@@ -116,7 +126,11 @@ class _NotificacaoState extends State<Notificacao>
           final timestamp = DateTime.parse(
             log['timestamp'],
           ).millisecondsSinceEpoch;
-          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final user = getUserDisplay(
+            log['user_name'],
+            log['user_id'],
+            log['reason'],
+          );
           final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
           final reason = translateReason(log['reason']);
           return {
@@ -237,7 +251,11 @@ class _NotificacaoState extends State<Notificacao>
           final timestamp = DateTime.parse(
             log['timestamp'],
           ).millisecondsSinceEpoch;
-          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final user = getUserDisplay(
+            log['user_name'],
+            log['user_id'],
+            log['reason'],
+          );
           final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
           final reason = translateReason(log['reason']);
           return {
@@ -321,7 +339,7 @@ class _NotificacaoState extends State<Notificacao>
                               ),
                               DataColumn(
                                 label: Text(
-                                  'Conta',
+                                  'Responsável',
                                   style: TextStyle(color: Colors.white),
                                 ),
                               ),

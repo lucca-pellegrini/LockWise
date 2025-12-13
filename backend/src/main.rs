@@ -10,7 +10,7 @@ use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::{ConnectOptions, PgPool, Row};
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Mutex, OnceLock};
@@ -268,37 +268,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .manage(mqtt_client)
             .mount(
                 "/",
-                 routes![
-                     health,
-                     get_devices,
-                     register_user,
-                     login_user,
-                     logout_user,
-                     control_device,
-                     unpair_device,
-                     get_device,
-                      get_logs,
-                      get_notifications,
-                      register_device,
-                     ping_device,
-                     update_config,
-                     reboot_device,
-                     update_phone,
-                     update_password,
-                     delete_account,
-                     verify_password,
-                     create_invite,
-                     get_invites,
-                     accept_invite,
-                     reject_invite,
-                     cancel_invite,
-                     update_invite,
-                     get_accessible_devices,
-                     get_temp_devices_status,
-                     get_temp_device,
-                     control_temp_device,
-                     ping_temp_device
-                 ],
+                routes![
+                    health,
+                    get_devices,
+                    register_user,
+                    login_user,
+                    logout_user,
+                    control_device,
+                    unpair_device,
+                    get_device,
+                    get_logs,
+                    get_notifications,
+                    register_device,
+                    ping_device,
+                    update_config,
+                    reboot_device,
+                    update_phone,
+                    update_password,
+                    delete_account,
+                    verify_password,
+                    create_invite,
+                    get_invites,
+                    accept_invite,
+                    reject_invite,
+                    cancel_invite,
+                    update_invite,
+                    get_accessible_devices,
+                    get_temp_devices_status,
+                    get_temp_device,
+                    control_temp_device,
+                    ping_temp_device
+                ],
             )
             .launch()
             .await
@@ -509,7 +509,8 @@ async fn update_config(
             }
             "lock_timeout" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 5000 || val > 300000 { // ms
+                if val < 5000 || val > 300000 {
+                    // ms
                     println!("DEBUG: Invalid lock_timeout: {}", val);
                     return Err(Status::BadRequest);
                 }
@@ -531,7 +532,13 @@ async fn update_config(
 
     // Send updates sequentially
     for (i, config) in request.configs.iter().enumerate() {
-        println!("DEBUG: Sending config update {}/{}: key={}, value={}", i+1, request.configs.len(), config.key, config.value);
+        println!(
+            "DEBUG: Sending config update {}/{}: key={}, value={}",
+            i + 1,
+            request.configs.len(),
+            config.key,
+            config.value
+        );
 
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
         {
@@ -547,12 +554,17 @@ async fn update_config(
             "command": "update_config",
             "key": config.key,
             "value": config.value
-        })).map_err(|_| Status::InternalServerError)?;
-        println!("DEBUG: Publishing to topic {}: {:?}", topic, serde_json::json!({
-            "command": "update_config",
-            "key": config.key,
-            "value": config.value
-        }));
+        }))
+        .map_err(|_| Status::InternalServerError)?;
+        println!(
+            "DEBUG: Publishing to topic {}: {:?}",
+            topic,
+            serde_json::json!({
+                "command": "update_config",
+                "key": config.key,
+                "value": config.value
+            })
+        );
         mqtt_client
             .publish(topic, QoS::AtMostOnce, false, msg)
             .await
@@ -569,7 +581,10 @@ async fn update_config(
                 return Err(Status::InternalServerError);
             }
             Err(_) => {
-                println!("DEBUG: Timeout waiting for CONFIG_UPDATED for config {}", config.key);
+                println!(
+                    "DEBUG: Timeout waiting for CONFIG_UPDATED for config {}",
+                    config.key
+                );
                 return Err(Status::RequestTimeout);
             }
         }
@@ -1415,7 +1430,10 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             })?;
     if let Some((Some(db_user_id),)) = row {
         if firebase_uid != db_user_id {
-            println!("DEBUG: User {} does not own device {}", firebase_uid, uuid_parsed);
+            println!(
+                "DEBUG: User {} does not own device {}",
+                firebase_uid, uuid_parsed
+            );
             return Err(Status::Unauthorized);
         }
         println!("DEBUG: Ownership validated");
@@ -1426,22 +1444,41 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
 
     // Get logs, limit to 1000
     println!("DEBUG: Querying logs for device {}", uuid_parsed);
-    let logs: Vec<LogEntry> =
-        sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000", uuid_parsed.to_string())
-            .fetch_all(&**db_pool)
-            .await
-            .map_err(|e| {
-                eprintln!("DEBUG: Logs query failed: {:?}", e);
-                Status::InternalServerError
-            })?;
+    let rows = sqlx::query("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000")
+        .bind(uuid_parsed.to_string())
+        .fetch_all(&**db_pool)
+        .await
+        .map_err(|e| {
+            eprintln!("DEBUG: Logs query failed: {:?}", e);
+            Status::InternalServerError
+        })?;
+    let logs: Vec<LogEntry> = rows
+        .into_iter()
+        .map(|row| LogEntry {
+            id: row.get(0),
+            device_id: row.get(1),
+            timestamp: row.get(2),
+            event_type: row.get(3),
+            reason: row.get(4),
+            user_id: row.get(5),
+            user_name: row.get(6),
+        })
+        .collect();
 
     println!("DEBUG: Retrieved {} logs", logs.len());
     Ok(serde_json::to_string(&logs).unwrap())
 }
 
 #[get("/notifications?<devices>")]
-async fn get_notifications(token: Token, devices: Option<String>, db_pool: &State<PgPool>) -> Result<String, Status> {
-    println!("DEBUG: get_notifications called with devices: {:?}", devices);
+async fn get_notifications(
+    token: Token,
+    devices: Option<String>,
+    db_pool: &State<PgPool>,
+) -> Result<String, Status> {
+    println!(
+        "DEBUG: get_notifications called with devices: {:?}",
+        devices
+    );
 
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
@@ -1467,33 +1504,77 @@ async fn get_notifications(token: Token, devices: Option<String>, db_pool: &Stat
     // Get logs for owned devices, optionally filtered by devices list
     let logs: Vec<LogEntry> = if let Some(devices_str) = devices {
         println!("DEBUG: Devices string: {}", devices_str);
-        let device_uuids: Vec<Uuid> = devices_str.split(',')
+        let device_uuids: Vec<Uuid> = devices_str
+            .split(',')
             .filter_map(|s| Uuid::parse_str(s.trim()).ok())
             .collect();
         println!("DEBUG: Parsed device UUIDs: {:?}", device_uuids);
         if device_uuids.is_empty() {
             println!("DEBUG: No valid device UUIDs, fetching all owned logs");
-            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid)
+            let rows = sqlx::query("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000")
+                .bind(firebase_uid)
                 .fetch_all(&**db_pool)
                 .await
                 .map_err(|e| {
                     eprintln!("DEBUG: Query failed for all owned logs: {:?}", e);
                     Status::InternalServerError
-                })?
+                })?;
+            rows.into_iter()
+                .map(|row| LogEntry {
+                    id: row.get(0),
+                    device_id: row.get(1),
+                    timestamp: row.get(2),
+                    event_type: row.get(3),
+                    reason: row.get(4),
+                    user_id: row.get(5),
+                    user_name: row.get(6),
+                })
+                .collect()
         } else {
             let device_strings: Vec<String> = device_uuids.iter().map(|u| u.to_string()).collect();
             println!("DEBUG: Device strings: {:?}", device_strings);
-            sqlx::query_as!(LogEntry, "SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, COALESCE(u.name, '') as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) AND l.device_id = ANY($2) ORDER BY l.timestamp DESC LIMIT 1000", firebase_uid, &device_strings)
+            let rows = sqlx::query("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) AND l.device_id = ANY($2) ORDER BY l.timestamp DESC LIMIT 1000")
+                .bind(firebase_uid)
+                .bind(&device_strings)
                 .fetch_all(&**db_pool)
                 .await
                 .map_err(|e| {
                     eprintln!("DEBUG: Query failed for filtered logs: {:?}", e);
                     Status::InternalServerError
-                })?
+                })?;
+            rows.into_iter()
+                .map(|row| LogEntry {
+                    id: row.get(0),
+                    device_id: row.get(1),
+                    timestamp: row.get(2),
+                    event_type: row.get(3),
+                    reason: row.get(4),
+                    user_id: row.get(5),
+                    user_name: row.get(6),
+                })
+                .collect()
         }
     } else {
-        println!("DEBUG: No devices param provided, rejecting request");
-        return Err(Status::BadRequest);
+        println!("DEBUG: No devices param provided, fetching all owned logs");
+        let rows = sqlx::query("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id IN (SELECT uuid::text FROM devices WHERE user_id = $1) ORDER BY l.timestamp DESC LIMIT 1000")
+            .bind(firebase_uid)
+            .fetch_all(&**db_pool)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Query failed for all owned logs (no filter): {:?}", e);
+                Status::InternalServerError
+            })?;
+        rows.into_iter()
+            .map(|row| LogEntry {
+                id: row.get(0),
+                device_id: row.get(1),
+                timestamp: row.get(2),
+                event_type: row.get(3),
+                reason: row.get(4),
+                user_id: row.get(5),
+                user_name: row.get(6),
+            })
+            .collect()
     };
 
     println!("DEBUG: Retrieved {} logs", logs.len());

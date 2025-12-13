@@ -60,7 +60,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       case 'TIMEOUT':
         return 'Tempo esgotado';
       case 'MQTT':
-        return 'Remoto';
+        return 'Aplicativo';
       case 'VOICE':
         return 'Voz';
       case 'REBOOT':
@@ -71,6 +71,16 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         return 'Depuração por UART';
       default:
         return reason;
+    }
+  }
+
+  String getUserDisplay(String? userName, String? userId, String reason) {
+    if (userName != null || userId != null) {
+      return userName ?? userId!;
+    } else if (reason == 'MQTT') {
+      return 'Desconhecido';
+    } else {
+      return 'Sistema';
     }
   }
 
@@ -156,7 +166,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           final timestamp = DateTime.parse(
             log['timestamp'],
           ).millisecondsSinceEpoch;
-          final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+          final user = getUserDisplay(
+            log['user_name'],
+            log['user_id'],
+            log['reason'],
+          );
           final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
           final reason = translateReason(log['reason']);
           return {
@@ -244,7 +258,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             final timestamp = DateTime.parse(
               log['timestamp'],
             ).millisecondsSinceEpoch;
-            final user = log['user_name'] ?? log['user_id'] ?? 'Sistema';
+            final user = getUserDisplay(
+              log['user_name'],
+              log['user_id'],
+              log['reason'],
+            );
             print('DEBUG: user: $user');
             final action = log['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
             final reason = translateReason(log['reason']);
@@ -977,7 +995,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                                 ),
                                                 DataColumn(
                                                   label: Text(
-                                                    'Conta',
+                                                    'Responsável',
                                                     style: TextStyle(
                                                       color: Colors.white,
                                                       fontSize: 20,
