@@ -1,7 +1,7 @@
 import 'PaginaLogin.dart';
 import 'package:flutter/material.dart';
 import 'PaginaChave.dart';
-import 'models/LocalService.dart';
+import 'LocalService.dart';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 

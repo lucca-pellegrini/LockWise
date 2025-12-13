@@ -4,7 +4,7 @@ import 'PaginaDetalhe.dart';
 import 'PaginaConfig.dart';
 import 'PaginaNotificação.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
-import 'models/LocalService.dart';
+import 'LocalService.dart';
 import 'dart:ui';
 import 'models/nav_item_model.dart';
 import 'PaginaTemporaria.dart';

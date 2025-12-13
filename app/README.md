@@ -79,8 +79,8 @@ app/
 │   ├── PaginaEsqueci.dart           # Recuperação de senha
 │   ├── PaginaNovaSenha.dart         # Alteração de senha
 │   ├── PaginaTemporaria.dart        # Acessos temporários
+│   ├── LocalService.dart             # Serviços locais (auth, storage)
 │   ├── models/
-│   │   ├── LocalService.dart        # Serviços locais (auth, storage)
 │   │   ├── AssetPreloader.dart      # Pré-carregamento de assets
 │   │   ├── nav_item_model.dart      # Modelo de navegação
 │   │   └── rive_model.dart          # Modelo Rive animations
@@ -99,7 +99,7 @@ app/
 3. Configure as regras do Firestore para permitir acesso autenticado
 
 ### 2. Configuração do Back-end
-Atualize a URL do back-end em `lib/models/LocalService.dart`:
+Atualize a URL do back-end em `lib/LocalService.dart`:
 
 ```dart
 const String backendUrl = 'http://SEU_BACKEND_URL:12223';

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'PaginaSobre.dart';
 import 'dart:ui';
-import 'models/LocalService.dart';
+import 'LocalService.dart';
 import 'PaginaLogin.dart';
 import 'PaginaConvite.dart';
 import 'PaginaConta.dart';

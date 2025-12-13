@@ -2,7 +2,7 @@ import 'PaginaEsqueci.dart';
 import 'package:flutter/material.dart';
 import 'PaginaInicial.dart';
 import 'PaginaCadastro.dart';
-import 'models/LocalService.dart';
+import 'LocalService.dart';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 
