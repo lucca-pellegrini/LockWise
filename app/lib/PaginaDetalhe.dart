@@ -1509,9 +1509,12 @@ class _GlassButton extends StatelessWidget {
                   : () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Opção desabilitada'),
-                          backgroundColor: Colors.orange,
-                          duration: Duration(seconds: 2),
+                          content: Text(
+                            'A fechadura não pode ser alcançada no momento. Pode se tratar de um problema de conexão ou de um lockdown de emergência.',
+                            style: TextStyle(color: Colors.black),
+                          ),
+                          backgroundColor: Colors.orange.shade300,
+                          duration: Duration(seconds: 5),
                         ),
                       );
                     },
