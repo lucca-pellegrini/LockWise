@@ -444,7 +444,20 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           actions: [
             IconButton(
               icon: Icon(Icons.security, color: Colors.white, size: 30.0),
-              onPressed: administrador ? () => _showLockdownDialog() : null,
+              onPressed: administrador
+                  ? (isLockedDown
+                        ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'A porta já está em modo de bloqueio!',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        : () => _showLockdownDialog())
+                  : null,
             ),
           ],
         ),
@@ -1146,16 +1159,16 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.blueAccent.withOpacity(0.3),
-                          Colors.blueAccent.withOpacity(0.1),
+                          Colors.orangeAccent.withOpacity(0.4),
+                          Colors.yellow.withOpacity(0.2),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 1,
+                        color: Colors.orangeAccent.withOpacity(0.5),
+                        width: 3,
                       ),
                     ),
                     child: Column(
@@ -1186,7 +1199,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                   confirmed = value ?? false;
                                 });
                               },
-                              activeColor: Colors.blueAccent,
+                              activeColor: Colors.blue,
+                              side: BorderSide(color: Colors.white, width: 2),
                             ),
                             Expanded(
                               child: Text(
@@ -1208,14 +1222,23 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                               height: 50,
                             ),
                             _GlassButton(
-                              onPressed: confirmed
-                                  ? () async {
-                                      Navigator.of(context).pop();
-                                      await _activateLockdown();
-                                    }
-                                  : null,
+                              onPressed: () {
+                                if (confirmed) {
+                                  Navigator.of(context).pop();
+                                  _activateLockdown();
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Marque a caixa de confirmação primeiro.',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              },
                               text: 'Confirmar',
-                              color: Colors.red,
+                              color: confirmed ? Colors.red : Colors.grey,
                               width: 120,
                               height: 50,
                             ),
@@ -1701,7 +1724,7 @@ class _GlassButton extends StatelessWidget {
                   text,
                   style: TextStyle(
                     color: isEnabled ? Colors.white : Colors.grey[400],
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

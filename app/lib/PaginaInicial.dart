@@ -208,14 +208,36 @@ class _InicialState extends State<Inicial> {
         final isOnline = cartao['isOnline'] ?? false;
         final isUnlocked = cartao['isUnlocked'] ?? false;
         Border myBorder;
+        List<BoxShadow>? myShadow;
+        LinearGradient myGradient = LinearGradient(
+          colors: [
+            Colors.blueAccent.withOpacity(0.3),
+            Colors.blueAccent.withOpacity(0.1),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
         if (cartao['locked_down_at'] != null) {
           myBorder = Border.all(color: Colors.red, width: 5);
-        } else if (!isOnline) {
-          myBorder = Border.all(color: Colors.orange.shade800, width: 3);
-        } else if (isUnlocked) {
-          myBorder = Border.all(color: Colors.green, width: 3);
+          myShadow = [
+            BoxShadow(
+              color: Colors.red.withOpacity(0.5),
+              blurRadius: 15,
+              spreadRadius: 3,
+            ),
+          ];
         } else {
-          myBorder = Border.all(color: Colors.white.withOpacity(0.5), width: 1);
+          myShadow = null;
+          if (!isOnline) {
+            myBorder = Border.all(color: Colors.orange.shade800, width: 3);
+          } else if (isUnlocked) {
+            myBorder = Border.all(color: Colors.green, width: 3);
+          } else {
+            myBorder = Border.all(
+              color: Colors.white.withOpacity(0.5),
+              width: 1,
+            );
+          }
         }
         return Card.outlined(
           key: ValueKey(cartao['id']),
@@ -230,21 +252,16 @@ class _InicialState extends State<Inicial> {
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.blueAccent.withOpacity(0.3),
-                      Colors.blueAccent.withOpacity(0.1),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: myGradient,
                   borderRadius: BorderRadius.circular(20),
                   border: myBorder,
+                  boxShadow: myShadow,
                 ),
                 child: _ConteudoCartao(
                   Name: cartao['name'],
                   icon: cartao['icon'],
                   fechaduraId: cartao['id'],
+                  isLockedDown: cartao['locked_down_at'] != null,
                 ),
               ),
             ),
@@ -1195,11 +1212,13 @@ class _ConteudoCartao extends StatelessWidget {
   final String Name;
   final IconData icon;
   final String fechaduraId;
+  final bool isLockedDown;
 
   const _ConteudoCartao({
     required this.Name,
     required this.icon,
     required this.fechaduraId,
+    required this.isLockedDown,
   });
 
   @override
@@ -1219,12 +1238,46 @@ class _ConteudoCartao extends StatelessWidget {
           debugPrint('Card tapped.');
         },
 
-        child: Row(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Text(Name, style: TextStyle(color: Colors.white)),
-            SizedBox(width: 10),
-            Icon(icon, color: Colors.white),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(Name, style: TextStyle(color: Colors.white)),
+                SizedBox(width: 10),
+                Icon(icon, color: Colors.white),
+              ],
+            ),
+            if (isLockedDown) ...[
+              SizedBox(height: 8),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.5),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.security, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'Bloqueada',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
