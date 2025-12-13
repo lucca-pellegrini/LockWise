@@ -571,6 +571,45 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                     ),
                                   ],
                                 ),
+                              if (!isLockedDown &&
+                                  !isConnected &&
+                                  lastHeard != null)
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.schedule,
+                                      color: Colors.orange.shade800,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Última conexão: ${_formatarHorario(lastHeard!)}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (isLockedDown &&
+                                  fechadura?['locked_down_at'] != null)
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.lock_clock,
+                                      color: Colors.red,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Bloqueada em: ${_formatarHorario(fechadura!['locked_down_at'])}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               Text(
                                 'Último acesso: ${_ultimoLog == null ? 'N/A' : '${_formatarHorario(_ultimoLog!['data_hora'] as int)} • '
                                           '${_ultimoLog!['usuario'] ?? 'Usuário'}'}',

@@ -807,6 +807,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   Timer? _pollingTimer;
   bool _isAppInForeground = true;
   bool isLockedDown = false;
+  int? lockedDownAt;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -848,13 +849,16 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
           final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
           final newLastHeard = deviceData['last_heard'];
           final newIsLockedDown = deviceData['locked_down_at'] != null;
+          final newLockedDownAt = deviceData['locked_down_at'];
           if (newIsOpen != isOpen ||
               newLastHeard != lastHeard ||
-              newIsLockedDown != isLockedDown) {
+              newIsLockedDown != isLockedDown ||
+              newLockedDownAt != lockedDownAt) {
             setState(() {
               isOpen = newIsOpen;
               lastHeard = newLastHeard;
               isLockedDown = newIsLockedDown;
+              lockedDownAt = newLockedDownAt;
             });
           }
         }
@@ -900,6 +904,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
           isOpen = deviceData['lock_state'] == 'UNLOCKED';
           lastHeard = deviceData['last_heard'];
           isLockedDown = deviceData['locked_down_at'] != null;
+          lockedDownAt = deviceData['locked_down_at'];
         }
       }
       setState(() {});
@@ -972,6 +977,12 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
         ),
       );
     }
+  }
+
+  String _formatarHorario(int millis) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(millis);
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -1121,6 +1132,44 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                       SizedBox(width: 8),
                                       Text(
                                         'Ping: ${pingMs ?? '?'}ms',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                if (!isLockedDown &&
+                                    !isConnected &&
+                                    lastHeard != null)
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.schedule,
+                                        color: Colors.orange.shade800,
+                                        size: 20,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Última conexão: ${_formatarHorario(lastHeard!)}',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                if (isLockedDown && lockedDownAt != null)
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.lock_clock,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Bloqueada em: ${_formatarHorario(lockedDownAt!)}',
                                         style: TextStyle(
                                           fontSize: 16,
                                           color: Colors.white,
