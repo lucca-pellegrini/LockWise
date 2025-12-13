@@ -139,7 +139,6 @@ class _InicialState extends State<Inicial> {
               cartao['isUnlocked'] = isUnlocked;
               cartao['locked_down_at'] = lockedDownAt;
             } else {
-              cartao['isOnline'] = false;
               cartao['isUnlocked'] = false;
               cartao['locked_down_at'] = null;
             }
@@ -205,7 +204,7 @@ class _InicialState extends State<Inicial> {
       ),
       itemBuilder: (context, index) {
         final cartao = cartoes[index];
-        final isOnline = cartao['isOnline'] ?? false;
+        final isOnline = cartao['isOnline'] ?? true;
         final isUnlocked = cartao['isUnlocked'] ?? false;
         Border myBorder;
         List<BoxShadow>? myShadow;
@@ -262,7 +261,7 @@ class _InicialState extends State<Inicial> {
                   icon: cartao['icon'],
                   fechaduraId: cartao['id'],
                   isLockedDown: cartao['locked_down_at'] != null,
-                  isOnline: cartao['isOnline'] ?? false,
+                  isOnline: cartao['isOnline'] ?? true,
                   isUnlocked: cartao['isUnlocked'] ?? false,
                 ),
               ),
@@ -1022,6 +1021,7 @@ class _InicialState extends State<Inicial> {
                 ),
                 'notificacoes': f['notificacoes'],
                 'acesso_remoto': f['acesso_remoto'],
+                'isOnline': true, // Start as online by default
               },
             )
             .toList();
@@ -1056,7 +1056,6 @@ class _InicialState extends State<Inicial> {
                   cartao['isUnlocked'] = isUnlocked;
                   cartao['locked_down_at'] = lockedDownAt;
                 } else {
-                  cartao['isOnline'] = false;
                   cartao['isUnlocked'] = false;
                   cartao['locked_down_at'] = null;
                 }

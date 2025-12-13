@@ -103,6 +103,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                     'device': device,
                     'proprietario': proprietario,
                     'data_expiracao': dataExpiracao,
+                    'isOnline': true, // Start as online by default
                   });
                 }
               }
@@ -160,7 +161,6 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               item['isUnlocked'] = isUnlocked;
               item['locked_down_at'] = lockedDownAt;
             } else {
-              item['isOnline'] = false;
               item['isUnlocked'] = false;
               item['locked_down_at'] = null;
             }
@@ -244,6 +244,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                     'device': device,
                     'proprietario': proprietario,
                     'data_expiracao': dataExpiracao,
+                    'isOnline': true, // Start as online by default
                   });
                 }
               }
@@ -363,7 +364,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
     final horasRestantes = dataExpiracao.difference(agora).inHours;
     final isPermanente = diasRestantes > 30000;
 
-    final isOnline = item['isOnline'] ?? false;
+    final isOnline = item['isOnline'] ?? true;
     final isUnlocked = item['isUnlocked'] ?? false;
 
     Border myBorder;
