@@ -155,11 +155,14 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                   lastHeard != null &&
                   (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
+              final lockedDownAt = device['locked_down_at'];
               item['isOnline'] = isOnline;
               item['isUnlocked'] = isUnlocked;
+              item['locked_down_at'] = lockedDownAt;
             } else {
               item['isOnline'] = false;
               item['isUnlocked'] = false;
+              item['locked_down_at'] = null;
             }
           }
         });
@@ -364,7 +367,9 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
     final isUnlocked = item['isUnlocked'] ?? false;
 
     Border myBorder;
-    if (!isOnline) {
+    if (item['locked_down_at'] != null) {
+      myBorder = Border.all(color: Colors.red, width: 5);
+    } else if (!isOnline) {
       myBorder = Border.all(color: Colors.orange.shade800, width: 3);
     } else if (isUnlocked) {
       myBorder = Border.all(color: Colors.green, width: 3);
@@ -664,6 +669,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   int? pingMs;
   Timer? _pollingTimer;
   bool _isAppInForeground = true;
+  bool isLockedDown = false;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -704,10 +710,14 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
           final deviceData = jsonDecode(deviceResponse.body);
           final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
           final newLastHeard = deviceData['last_heard'];
-          if (newIsOpen != isOpen || newLastHeard != lastHeard) {
+          final newIsLockedDown = deviceData['locked_down_at'] != null;
+          if (newIsOpen != isOpen ||
+              newLastHeard != lastHeard ||
+              newIsLockedDown != isLockedDown) {
             setState(() {
               isOpen = newIsOpen;
               lastHeard = newLastHeard;
+              isLockedDown = newIsLockedDown;
             });
           }
         }
@@ -752,6 +762,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
           final deviceData = jsonDecode(deviceResponse.body);
           isOpen = deviceData['lock_state'] == 'UNLOCKED';
           lastHeard = deviceData['last_heard'];
+          isLockedDown = deviceData['locked_down_at'] != null;
         }
       }
       setState(() {});
@@ -908,15 +919,23 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                 Row(
                                   children: [
                                     Icon(
-                                      isOpen ? Icons.lock_open : Icons.lock,
-                                      color: isOpen
-                                          ? Colors.orange.shade800
-                                          : Colors.green,
+                                      isLockedDown
+                                          ? Icons.security
+                                          : (isOpen
+                                                ? Icons.lock_open
+                                                : Icons.lock),
+                                      color: isLockedDown
+                                          ? Colors.red
+                                          : (isOpen
+                                                ? Colors.orange.shade800
+                                                : Colors.green),
                                       size: 20,
                                     ),
                                     SizedBox(width: 8),
                                     Text(
-                                      isOpen ? 'Aberta' : 'Fechada',
+                                      isLockedDown
+                                          ? 'Bloqueada'
+                                          : (isOpen ? 'Aberta' : 'Fechada'),
                                       style: TextStyle(
                                         fontSize: 16,
                                         color: Colors.white,
@@ -979,14 +998,14 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _GlassButton(
-                            onPressed: isConnected
+                            onPressed: isConnected && !isLockedDown
                                 ? () {
                                     final acao = isOpen ? 'Fechar' : 'Abrir';
                                     _registrarAcao(acao);
                                   }
                                 : null,
                             text: (isOpen ? 'Fechar' : 'Abrir'),
-                            isEnabled: isConnected,
+                            isEnabled: isConnected && !isLockedDown,
                           ),
                         ],
                       ),

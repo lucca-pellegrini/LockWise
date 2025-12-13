@@ -134,11 +134,14 @@ class _InicialState extends State<Inicial> {
                   lastHeard != null &&
                   (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
+              final lockedDownAt = device['locked_down_at'];
               cartao['isOnline'] = isOnline;
               cartao['isUnlocked'] = isUnlocked;
+              cartao['locked_down_at'] = lockedDownAt;
             } else {
               cartao['isOnline'] = false;
               cartao['isUnlocked'] = false;
+              cartao['locked_down_at'] = null;
             }
           }
         });
@@ -205,7 +208,9 @@ class _InicialState extends State<Inicial> {
         final isOnline = cartao['isOnline'] ?? false;
         final isUnlocked = cartao['isUnlocked'] ?? false;
         Border myBorder;
-        if (!isOnline) {
+        if (cartao['locked_down_at'] != null) {
+          myBorder = Border.all(color: Colors.red, width: 5);
+        } else if (!isOnline) {
           myBorder = Border.all(color: Colors.orange.shade800, width: 3);
         } else if (isUnlocked) {
           myBorder = Border.all(color: Colors.green, width: 3);
@@ -1027,11 +1032,14 @@ class _InicialState extends State<Inicial> {
                       (DateTime.now().millisecondsSinceEpoch - lastHeard) <
                           15000;
                   final isUnlocked = device['lock_state'] == 'UNLOCKED';
+                  final lockedDownAt = device['locked_down_at'];
                   cartao['isOnline'] = isOnline;
                   cartao['isUnlocked'] = isUnlocked;
+                  cartao['locked_down_at'] = lockedDownAt;
                 } else {
                   cartao['isOnline'] = false;
                   cartao['isUnlocked'] = false;
+                  cartao['locked_down_at'] = null;
                 }
               }
             });
@@ -1378,7 +1386,8 @@ class _CurvedGlassNavigationBarState extends State<CurvedGlassNavigationBar> {
                                   ],
                                 )
                               : null,
-                          child: Center( // Center the icon vertically and horizontally
+                          child: Center(
+                            // Center the icon vertically and horizontally
                             child: SizedBox(
                               height: 36, // Set height for the icon
                               width: 36, // Set width for the icon

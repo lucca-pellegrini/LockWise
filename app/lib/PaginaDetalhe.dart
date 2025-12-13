@@ -92,6 +92,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     _startPolling();
   }
 
+  bool get isLockedDown => fechadura?['locked_down_at'] != null;
+
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       _pollUpdates();
@@ -117,12 +119,26 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         );
         if (deviceResponse.statusCode == 200) {
           final deviceData = jsonDecode(deviceResponse.body);
+          print('DEBUG: Polled device data: $deviceData');
+
+          // Update fechadura with latest locked_down_at
+          if (fechadura != null) {
+            fechadura!['locked_down_at'] = deviceData['locked_down_at'];
+          }
+
           final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
           final newLastHeard = deviceData['last_heard'];
-          if (newIsOpen != isOpen || newLastHeard != lastHeard) {
+          final newIsLockedDown = deviceData['locked_down_at'] != null;
+          print(
+            'DEBUG: newIsLockedDown: $newIsLockedDown, current isLockedDown: ${isLockedDown}',
+          );
+          if (newIsOpen != isOpen ||
+              newLastHeard != lastHeard ||
+              newIsLockedDown != isLockedDown) {
             setState(() {
               isOpen = newIsOpen;
               lastHeard = newLastHeard;
+              // Note: isLockedDown is computed from fechadura, not stored as state
             });
           }
         }
@@ -243,6 +259,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           _initialAudioTimeout = _audioTimeoutController.text;
           _initialLockTimeout = _lockTimeoutController.text;
           _initialPairingTimeout = _pairingTimeoutController.text;
+
+          // Update fechadura with locked_down_at
+          if (f != null) {
+            f['locked_down_at'] = deviceData['locked_down_at'];
+          }
         }
 
         final logsResponse = await http.get(
@@ -420,6 +441,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
           centerTitle: true,
           backgroundColor: Colors.transparent,
+          actions: [
+            IconButton(
+              icon: Icon(Icons.security, color: Colors.white, size: 30.0),
+              onPressed: administrador ? () => _showLockdownDialog() : null,
+            ),
+          ],
         ),
         body: _isLoading
             ? Center(child: CircularProgressIndicator())
@@ -461,15 +488,23 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                               Row(
                                 children: [
                                   Icon(
-                                    isOpen ? Icons.lock_open : Icons.lock,
-                                    color: isOpen
-                                        ? Colors.orange.shade800
-                                        : Colors.green,
+                                    isLockedDown
+                                        ? Icons.security
+                                        : (isOpen
+                                              ? Icons.lock_open
+                                              : Icons.lock),
+                                    color: isLockedDown
+                                        ? Colors.red
+                                        : (isOpen
+                                              ? Colors.orange.shade800
+                                              : Colors.green),
                                     size: 20,
                                   ),
                                   SizedBox(width: 8),
                                   Text(
-                                    isOpen ? 'Aberta' : 'Fechada',
+                                    isLockedDown
+                                        ? 'Bloqueada'
+                                        : (isOpen ? 'Aberta' : 'Fechada'),
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Colors.white,
@@ -539,16 +574,18 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _GlassButton(
-                          onPressed: administrador && isConnected
+                          onPressed:
+                              administrador && isConnected && !isLockedDown
                               ? () {
                                   final acao = isOpen ? 'Fechar' : 'Abrir';
                                   _registrarAcao(acao);
                                 }
-                              : null, // Desabilita se não for administrador ou desconectado
+                              : null, // Desabilita se não for administrador, desconectado ou em lockdown
                           text: (isOpen ? 'Fechar' : 'Abrir'),
                           isEnabled:
                               administrador &&
-                              isConnected, // Passa o estado para o widget
+                              isConnected &&
+                              !isLockedDown, // Passa o estado para o widget
                         ),
 
                         _GlassButton(
@@ -1089,6 +1126,147 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
               ),
       ),
     );
+  }
+
+  void _showLockdownDialog() {
+    bool confirmed = false;
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.blueAccent.withOpacity(0.3),
+                          Colors.blueAccent.withOpacity(0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Ativar Modo de Bloqueio de Emergência',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Uma vez ativado, o modo de bloqueio só pode ser desativado acessando fisicamente o lado seguro da porta e reiniciando o dispositivo manualmente.',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: confirmed,
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  confirmed = value ?? false;
+                                });
+                              },
+                              activeColor: Colors.blueAccent,
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Li e entendi as consequências',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _GlassButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              text: 'Cancelar',
+                              color: Colors.blue,
+                              width: 120,
+                              height: 50,
+                            ),
+                            _GlassButton(
+                              onPressed: confirmed
+                                  ? () async {
+                                      Navigator.of(context).pop();
+                                      await _activateLockdown();
+                                    }
+                                  : null,
+                              text: 'Confirmar',
+                              color: Colors.red,
+                              width: 120,
+                              height: 50,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _activateLockdown() async {
+    try {
+      final backendToken = await LocalService.getBackendToken();
+      if (backendToken == null) {
+        throw Exception('No backend token');
+      }
+
+      final response = await http.post(
+        Uri.parse('$backendUrl/lockdown/${widget.fechaduraId}'),
+        headers: {
+          'Authorization': 'Bearer $backendToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Backend error: ${response.statusCode}');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Modo de bloqueio ativado com sucesso!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao ativar modo de bloqueio: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _mostrarDialogoConvite() {
