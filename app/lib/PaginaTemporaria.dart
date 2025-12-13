@@ -368,24 +368,24 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
 
     Border myBorder;
     List<BoxShadow>? myShadow;
-    LinearGradient myGradient = LinearGradient(
-      colors: [
-        Colors.blueAccent.withOpacity(0.3),
-        Colors.blueAccent.withOpacity(0.1),
-      ],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    LinearGradient myGradient;
     if (item['locked_down_at'] != null) {
-      myBorder = Border.all(color: Colors.red, width: 5);
-      myShadow = [
-        BoxShadow(
-          color: Colors.red.withOpacity(0.5),
-          blurRadius: 15,
-          spreadRadius: 3,
-        ),
-      ];
+      myGradient = LinearGradient(
+        colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+      myBorder = Border.all(color: Colors.red, width: 3);
+      myShadow = null;
     } else {
+      myGradient = LinearGradient(
+        colors: [
+          Colors.blueAccent.withOpacity(0.3),
+          Colors.blueAccent.withOpacity(0.1),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
       myShadow = null;
       if (!isOnline) {
         myBorder = Border.all(color: Colors.orange.shade800, width: 3);
@@ -487,10 +487,43 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
+                            color: Colors.red.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.red.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.security, size: 12, color: Colors.red),
+                              SizedBox(width: 4),
+                              Text(
+                                'Bloqueada',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                    ] else if (isOnline && isUnlocked) ...[
+                      Center(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.green.withOpacity(0.5),
                               width: 1,
                             ),
                           ),
@@ -498,15 +531,52 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.security,
+                                Icons.lock_open,
                                 size: 12,
-                                color: Colors.white,
+                                color: Colors.green,
                               ),
                               SizedBox(width: 4),
                               Text(
-                                'Bloqueada',
+                                'Aberta',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.green,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                    ] else if (!isOnline) ...[
+                      Center(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade800.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.orange.shade800.withOpacity(0.5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.wifi_off,
+                                size: 12,
+                                color: Colors.orange.shade800,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Desconectada',
+                                style: TextStyle(
+                                  color: Colors.orange.shade800,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -682,7 +752,20 @@ class _GlassButton extends StatelessWidget {
             border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
           ),
           child: InkWell(
-            onTap: isEnabled ? onPressed : null,
+            onTap: isEnabled
+                ? onPressed
+                : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'A fechadura não pode ser alcançada no momento. Pode se tratar de um problema de conexão ou de um lockdown de emergência.',
+                          style: TextStyle(color: Colors.black),
+                        ),
+                        backgroundColor: Colors.orange.shade300,
+                        duration: Duration(seconds: 5),
+                      ),
+                    );
+                  },
             child: Center(
               child: Text(
                 text,
@@ -996,28 +1079,31 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                     ),
                                   ],
                                 ),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      isConnected ? Icons.wifi : Icons.wifi_off,
-                                      color: isConnected
-                                          ? Colors.green
-                                          : Colors.orange.shade800,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      isConnected
-                                          ? 'Conectada'
-                                          : 'Desconectada',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.white,
+                                if (!isLockedDown)
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        isConnected
+                                            ? Icons.wifi
+                                            : Icons.wifi_off,
+                                        color: isConnected
+                                            ? Colors.green
+                                            : Colors.orange.shade800,
+                                        size: 20,
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                if (isConnected)
+                                      SizedBox(width: 8),
+                                      Text(
+                                        isConnected
+                                            ? 'Conectada'
+                                            : 'Desconectada',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                if (!isLockedDown && isConnected)
                                   Row(
                                     children: [
                                       Icon(

@@ -209,24 +209,24 @@ class _InicialState extends State<Inicial> {
         final isUnlocked = cartao['isUnlocked'] ?? false;
         Border myBorder;
         List<BoxShadow>? myShadow;
-        LinearGradient myGradient = LinearGradient(
-          colors: [
-            Colors.blueAccent.withOpacity(0.3),
-            Colors.blueAccent.withOpacity(0.1),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
+        LinearGradient myGradient;
         if (cartao['locked_down_at'] != null) {
-          myBorder = Border.all(color: Colors.red, width: 5);
-          myShadow = [
-            BoxShadow(
-              color: Colors.red.withOpacity(0.5),
-              blurRadius: 15,
-              spreadRadius: 3,
-            ),
-          ];
+          myGradient = LinearGradient(
+            colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+          myBorder = Border.all(color: Colors.red, width: 3);
+          myShadow = null;
         } else {
+          myGradient = LinearGradient(
+            colors: [
+              Colors.blueAccent.withOpacity(0.3),
+              Colors.blueAccent.withOpacity(0.1),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
           myShadow = null;
           if (!isOnline) {
             myBorder = Border.all(color: Colors.orange.shade800, width: 3);
@@ -262,6 +262,8 @@ class _InicialState extends State<Inicial> {
                   icon: cartao['icon'],
                   fechaduraId: cartao['id'],
                   isLockedDown: cartao['locked_down_at'] != null,
+                  isOnline: cartao['isOnline'] ?? false,
+                  isUnlocked: cartao['isUnlocked'] ?? false,
                 ),
               ),
             ),
@@ -1213,12 +1215,16 @@ class _ConteudoCartao extends StatelessWidget {
   final IconData icon;
   final String fechaduraId;
   final bool isLockedDown;
+  final bool isOnline;
+  final bool isUnlocked;
 
   const _ConteudoCartao({
     required this.Name,
     required this.icon,
     required this.fechaduraId,
     required this.isLockedDown,
+    required this.isOnline,
+    required this.isUnlocked,
   });
 
   @override
@@ -1254,22 +1260,82 @@ class _ConteudoCartao extends StatelessWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.red.withOpacity(0.5),
                     width: 1,
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.security, size: 12, color: Colors.white),
+                    Icon(Icons.security, size: 12, color: Colors.red),
                     SizedBox(width: 4),
                     Text(
                       'Bloqueada',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Colors.red,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (isOnline && isUnlocked) ...[
+              SizedBox(height: 8),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.green.withOpacity(0.5),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_open, size: 12, color: Colors.green),
+                    SizedBox(width: 4),
+                    Text(
+                      'Aberta',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (!isOnline) ...[
+              SizedBox(height: 8),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade800.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.orange.shade800.withOpacity(0.5),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.wifi_off,
+                      size: 12,
+                      color: Colors.orange.shade800,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Desconectada',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
