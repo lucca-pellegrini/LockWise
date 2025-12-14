@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  lockwise-backend:
+    build: .
+    ports:
+      - "12223:12223"
+    environment:
+      - DATABASE_URL=postgresql://username:password@localhost/dbname
+      - MQTT_HOST=broker.example.com
+      - MQTT_PORT=1883
+      - MQTT_TLS=false
+      - MQTT_USERNAME=your_username
+      - MQTT_PASSWORD=your_password
+      - SPEECHBRAIN_URL=http://localhost:5008
+      - PORT=12223
+    volumes:
+      - ./models:/app/models:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:12223/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
