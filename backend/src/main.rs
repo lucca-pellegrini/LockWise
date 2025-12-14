@@ -224,6 +224,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS voice_detection_enable BOOLEAN DEFAULT true")
         .execute(&db_pool)
         .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS voice_invite_enable BOOLEAN DEFAULT true")
+        .execute(&db_pool)
+        .await?;
     sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_embeddings BYTEA")
         .execute(&db_pool)
         .await?;
@@ -616,6 +619,13 @@ async fn update_config(
                     return Err(Status::BadRequest);
                 }
             }
+            "voice_invite_enable" => {
+                let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                if val < 0 || val > 1 {
+                    println!("DEBUG: Invalid voice_invite_enable: {}", val);
+                    return Err(Status::BadRequest);
+                }
+            }
             _ => {
                 println!("DEBUG: Invalid config key: {}", config.key);
                 return Err(Status::BadRequest);
@@ -893,8 +903,8 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
         None => return Err(Status::Unauthorized),
     };
 
-    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>)> = sqlx::query_as(
-        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable FROM devices WHERE user_id = $1",
+    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>, Option<bool>)> = sqlx::query_as(
+        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable FROM devices WHERE user_id = $1",
     )
     .bind(&firebase_uid)
     .fetch_all(&**db_pool)
@@ -920,6 +930,7 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
                 lock_state,
                 locked_down_at,
                 voice_detection_enable,
+                voice_invite_enable,
             )| {
                 serde_json::json!({
                     "uuid": db_uuid.to_string(),
@@ -936,7 +947,8 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
                     "pairing_timeout_sec": pairing_timeout_sec,
                     "lock_state": lock_state,
                     "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
-                    "voice_detection_enable": voice_detection_enable
+                    "voice_detection_enable": voice_detection_enable,
+                    "voice_invite_enable": voice_invite_enable
                 })
             },
         )
@@ -1221,8 +1233,8 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     };
 
     // Check that the device belongs to this user or has accepted invite
-    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>)> =
-        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable FROM devices WHERE uuid = $1")
+    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>, Option<bool>)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
@@ -1243,6 +1255,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
         lock_state,
         locked_down_at,
         voice_detection_enable,
+        voice_invite_enable,
     )) = row
     {
         let has_access = if let Some(db_user_id) = db_user_id_opt {
@@ -1285,7 +1298,8 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
             "pairing_timeout_sec": pairing_timeout_sec,
             "lock_state": lock_state,
             "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
-            "voice_detection_enable": voice_detection_enable
+            "voice_detection_enable": voice_detection_enable,
+            "voice_invite_enable": voice_invite_enable
         });
         Ok(device.to_string())
     } else {
@@ -1329,8 +1343,8 @@ async fn get_temp_device(
     }
 
     // Get device data
-    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>)> =
-        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, locked_down_at, voice_detection_enable FROM devices WHERE uuid = $1")
+    let row: Option<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>, Option<bool>)> =
+        sqlx::query_as("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable FROM devices WHERE uuid = $1")
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
@@ -1350,6 +1364,7 @@ async fn get_temp_device(
         lock_state,
         locked_down_at,
         voice_detection_enable,
+        voice_invite_enable,
     )) = row
     {
         let device = serde_json::json!({
@@ -1366,7 +1381,8 @@ async fn get_temp_device(
             "lock_timeout_ms": lock_timeout_ms,
             "lock_state": lock_state,
             "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
-            "voice_detection_enable": voice_detection_enable
+            "voice_detection_enable": voice_detection_enable,
+            "voice_invite_enable": voice_invite_enable
         });
         Ok(device.to_string())
     } else {
@@ -1502,8 +1518,8 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
         None => return Err(Status::Unauthorized),
     };
 
-    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>)> = sqlx::query_as(
-        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.lock_state, d.locked_down_at, d.voice_detection_enable FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
+    let rows: Vec<(Uuid, Option<String>, chrono::DateTime<chrono::Utc>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<i32>, Option<i32>, Option<i32>, Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<bool>, Option<bool>)> = sqlx::query_as(
+        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.lock_state, d.locked_down_at, d.voice_detection_enable, d.voice_invite_enable FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
     )
     .bind(&firebase_uid)
     .bind(Utc::now().timestamp_millis())
@@ -1529,6 +1545,7 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
                 lock_state,
                 locked_down_at,
                 voice_detection_enable,
+                voice_invite_enable,
             )| {
                 serde_json::json!({
                     "uuid": db_uuid.to_string(),
@@ -1544,7 +1561,8 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
                     "lock_timeout_ms": lock_timeout_ms,
                     "lock_state": lock_state,
                     "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
-                    "voice_detection_enable": voice_detection_enable
+                    "voice_detection_enable": voice_detection_enable,
+                    "voice_invite_enable": voice_invite_enable
                 })
             },
         )
@@ -2092,9 +2110,9 @@ async fn verify_voice(
 
     let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
 
-    // Get user_id for device
-    let device_row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+    // Get device info including voice_invite_enable
+    let device_row: Option<(Option<String>, Option<bool>)> =
+        sqlx::query_as("SELECT user_id, voice_invite_enable FROM devices WHERE uuid = $1")
             .bind(device_uuid)
             .fetch_optional(&**db_pool)
             .await
@@ -2103,10 +2121,10 @@ async fn verify_voice(
                 Status::InternalServerError
             })?;
 
-    let user_id = match device_row {
-        Some((Some(uid),)) => {
-            println!("DEBUG: Device found, user_id: {}", uid);
-            uid
+    let (user_id, voice_invite_enable) = match device_row {
+        Some((Some(uid), Some(vie))) => {
+            println!("DEBUG: Device found, user_id: {}, voice_invite_enable: {}", uid, vie);
+            (uid, vie)
         }
         _ => {
             println!("DEBUG: Device not found or has no user");
@@ -2114,38 +2132,66 @@ async fn verify_voice(
         }
     };
 
-    // Get voice embeddings
-    let user_row: Option<(Option<Vec<u8>>,)> =
+    // Collect embeddings
+    let mut user_embeddings = Vec::new();
+    let mut user_ids = Vec::new();
+
+    // Always include owner
+    let owner_row: Option<(Option<Vec<u8>>,)> =
         sqlx::query_as("SELECT voice_embeddings FROM users WHERE firebase_uid = $1")
             .bind(&user_id)
             .fetch_optional(&**db_pool)
             .await
             .map_err(|e| {
-                println!("DEBUG: Failed to query user embeddings: {:?}", e);
+                println!("DEBUG: Failed to query owner embeddings: {:?}", e);
                 Status::InternalServerError
             })?;
 
-    let embedding_bytes = match user_row {
-        Some((Some(emb),)) => {
+    if let Some((Some(emb),)) = owner_row {
+        println!(
+            "DEBUG: Found voice embeddings for owner {} ({} bytes)",
+            user_id,
+            emb.len()
+        );
+        user_embeddings.push(base64::engine::general_purpose::STANDARD.encode(&emb));
+        user_ids.push(user_id.clone());
+    } else {
+        println!("DEBUG: No voice embeddings found for owner {}", user_id);
+        return Err(Status::BadRequest); // Owner must have voice registered
+    }
+
+    // If voice_invite_enable, include invited users
+    if voice_invite_enable {
+        let now = Utc::now().timestamp_millis();
+        let invite_rows: Vec<(String, Vec<u8>)> = sqlx::query_as(
+            "SELECT u.firebase_uid, u.voice_embeddings FROM users u JOIN invites i ON u.firebase_uid = i.receiver_id WHERE i.device_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2 AND u.voice_embeddings IS NOT NULL"
+        )
+        .bind(device_uuid)
+        .bind(now)
+        .fetch_all(&**db_pool)
+        .await
+        .map_err(|e| {
+            println!("DEBUG: Failed to query invited user embeddings: {:?}", e);
+            Status::InternalServerError
+        })?;
+
+        for (invite_user_id, emb) in invite_rows {
             println!(
-                "DEBUG: Found voice embeddings for user {} ({} bytes)",
-                user_id,
+                "DEBUG: Found voice embeddings for invited user {} ({} bytes)",
+                invite_user_id,
                 emb.len()
             );
-            emb
+            user_embeddings.push(base64::engine::general_purpose::STANDARD.encode(&emb));
+            user_ids.push(invite_user_id);
         }
-        _ => {
-            println!("DEBUG: No voice embeddings found for user {}", user_id);
-            return Err(Status::BadRequest); // No voice registered
-        }
-    };
+    }
 
-    // Encode binary data back to base64 for speechbrain service
-    let embeddings = base64::engine::general_purpose::STANDARD.encode(&embedding_bytes);
-    println!(
-        "DEBUG: Encoded embeddings to base64 ({} chars)",
-        embeddings.len()
-    );
+    if user_embeddings.is_empty() {
+        println!("DEBUG: No embeddings available");
+        return Err(Status::BadRequest);
+    }
+
+    println!("DEBUG: Collected {} embeddings from users: {:?}", user_embeddings.len(), user_ids);
 
     // Read audio data
     let mut data = Vec::new();
@@ -2175,7 +2221,7 @@ async fn verify_voice(
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "pcm_base64": base64_data,
-            "candidates": [embeddings]
+            "candidates": user_embeddings
         }))
         .send()
         .await
@@ -2208,31 +2254,38 @@ async fn verify_voice(
 
     println!("DEBUG: Speechbrain verify response: {:?}", verify_response);
 
+    let best_index = verify_response["best_index"].as_u64().ok_or_else(|| {
+        println!("DEBUG: No 'best_index' field in verify response");
+        Status::InternalServerError
+    })? as usize;
+
     let score = verify_response["score"].as_f64().ok_or_else(|| {
         println!("DEBUG: No 'score' field in verify response");
         Status::InternalServerError
     })?;
 
-    println!("DEBUG: Verification score: {}", score);
+    println!("DEBUG: Verification best_index: {}, score: {}", best_index, score);
 
-    if score > 0.60 {
-        println!("DEBUG: Score {} > 0.60, allowing unlock", score);
+    if score > 0.60 && best_index < user_ids.len() {
+        println!("DEBUG: Score {} > 0.60, allowing unlock for user at index {}", score, best_index);
+
+        let matched_user_id = &user_ids[best_index];
 
         // Store recent voice verification
         let now = chrono::Utc::now().timestamp();
         {
             let commands_mutex = RECENT_COMMANDS.get().unwrap();
             let mut commands = commands_mutex.lock().unwrap();
-            commands.insert(device_id.to_string(), (user_id.clone(), now));
+            commands.insert(device_id.to_string(), (matched_user_id.clone(), now));
         }
 
         println!(
             "DEBUG: Stored recent voice verification for user {}",
-            user_id
+            matched_user_id
         );
-        Ok(rocket::serde::json::Json(serde_json::json!({"index": 0})))
+        Ok(rocket::serde::json::Json(serde_json::json!({"index": best_index})))
     } else {
-        println!("DEBUG: Score {} <= 0.60, denying unlock", score);
+        println!("DEBUG: Score {} <= 0.60 or invalid index {}, denying unlock", score, best_index);
         Err(Status::Forbidden)
     }
 }

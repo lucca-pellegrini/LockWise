@@ -44,7 +44,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   String _initialLockTimeout = '';
   String _initialPairingTimeout = '';
   bool _initialVoiceDetectionEnabled = true;
+  bool _initialVoiceInviteEnabled = true;
   bool _voiceDetectionEnabled = true;
+  bool _voiceInviteEnabled = true;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -256,7 +258,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           _pairingTimeoutController.text =
               (deviceData['pairing_timeout_sec'] ?? 300).toString();
           _voiceDetectionEnabled = deviceData['voice_detection_enable'] ?? true;
+          _voiceInviteEnabled = deviceData['voice_invite_enable'] ?? true;
           _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
+          _initialVoiceInviteEnabled = _voiceInviteEnabled;
 
           // Store initial values
           _initialWifiSsid = _wifiSsidController.text;
@@ -763,6 +767,22 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                       onChanged: (bool value) {
                                         setState(() {
                                           _voiceDetectionEnabled = value;
+                                        });
+                                      },
+                                      activeColor: Colors.blueAccent
+                                          .withOpacity(0.5),
+                                      inactiveTrackColor: Colors.transparent,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    SwitchListTile(
+                                      title: Text(
+                                        'Permitir voz de convidados',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      value: _voiceInviteEnabled,
+                                      onChanged: (bool value) {
+                                        setState(() {
+                                          _voiceInviteEnabled = value;
                                         });
                                       },
                                       activeColor: Colors.blueAccent
@@ -1699,6 +1719,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           'value': _voiceDetectionEnabled ? '1' : '0',
         });
       }
+      if (_voiceInviteEnabled != _initialVoiceInviteEnabled) {
+        configs.add({
+          'key': 'voice_invite_enable',
+          'value': _voiceInviteEnabled ? '1' : '0',
+        });
+      }
 
       if (configs.isEmpty) {
         _mostrarSucesso('Nenhuma alteração detectada.');
@@ -1722,6 +1748,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         _initialLockTimeout = _lockTimeoutController.text;
         _initialPairingTimeout = _pairingTimeoutController.text;
         _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
+        _initialVoiceInviteEnabled = _voiceInviteEnabled;
       } else {
         _mostrarErro('Erro ao salvar configurações: ${response.statusCode}');
       }
