@@ -3,6 +3,7 @@ version: '3.8'
 services:
   lockwise-backend:
     build: .
+    container_name: lockwise-backend
     ports:
       - "12223:12223"
     environment:
@@ -15,8 +16,6 @@ services:
       - SPEECHBRAIN_URL=http://localhost:5008
       - HOMEPAGE_URL=https://example.com
       - PORT=12223
-    volumes:
-      - /srv/lockwise-backend/models:/app/models
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:12223/health"]

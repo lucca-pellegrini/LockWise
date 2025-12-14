@@ -40,6 +40,24 @@ COPY speechbrain_service.py .
 # Create models directory for SpeechBrain
 RUN mkdir -p models/spkrec
 
+# Preload SpeechBrain model
+RUN python - <<'EOF'
+from pathlib import Path
+from speechbrain.inference import SpeakerRecognition
+from speechbrain.utils.fetching import LocalStrategy
+
+MODEL_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"
+MODEL_DIR = Path("models/spkrec")
+
+# Download model (no symlinks)
+spkrec = SpeakerRecognition.from_hparams(
+	source=MODEL_SOURCE,
+	savedir=str(MODEL_DIR),
+	run_opts={"device": "cpu"},
+	local_strategy=LocalStrategy.NO_LINK
+)
+EOF
+
 # Declare volume for model persistence across container restarts
 VOLUME ["/app/models"]
 
