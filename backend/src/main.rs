@@ -2,14 +2,13 @@ use argon2::password_hash::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::Engine;
 use chrono::{TimeZone, Utc};
-use num_cpus;
 use reqwest::Client;
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome};
 use rocket::{Request, State, get, post, routes};
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
-use serde_json;
+
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{ConnectOptions, PgPool, Row};
 use std::collections::HashMap;
@@ -22,16 +21,19 @@ use uuid::Uuid;
 struct SpeechbrainUrl(String);
 struct HomepageUrl(String);
 
-static RECENT_COMMANDS: OnceLock<Mutex<HashMap<String, (String, i64)>>> = OnceLock::new();
-static PENDING_PINGS: OnceLock<Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>> =
-    OnceLock::new();
-static PENDING_CONFIG_UPDATES: OnceLock<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>> =
-    OnceLock::new();
+type RecentCommands = Mutex<HashMap<String, (String, i64)>>;
+type PendingPings = Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>;
+type PendingConfigUpdates = Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>;
+
+static RECENT_COMMANDS: OnceLock<RecentCommands> = OnceLock::new();
+static PENDING_PINGS: OnceLock<PendingPings> = OnceLock::new();
+static PENDING_CONFIG_UPDATES: OnceLock<PendingConfigUpdates> = OnceLock::new();
 
 #[derive(Deserialize)]
 struct HeartbeatMessage {
     heartbeat: String,
     uptime_ms: u64,
+    #[allow(dead_code)]
     timestamp: u64,
     wifi_ssid: String,
     backend_url: String,
@@ -49,6 +51,7 @@ struct HeartbeatMessage {
 #[derive(Deserialize)]
 struct EventMessage {
     event: String,
+    #[allow(dead_code)]
     uptime_ms: u64,
     timestamp: u64,
 }
@@ -69,6 +72,7 @@ struct ControlRequest {
 struct LockStatusMessage {
     lock: String,
     reason: String,
+    #[allow(dead_code)]
     uptime_ms: u64,
     timestamp: u64,
 }
@@ -82,6 +86,32 @@ struct LogEntry {
     reason: String,
     user_id: Option<String>,
     user_name: Option<String>,
+}
+
+#[derive(sqlx::FromRow, Serialize)]
+struct SentInviteInfo {
+    id: i32,
+    device_id: uuid::Uuid,
+    sender_id: String,
+    receiver_id: String,
+    receiver_name: String,
+    receiver_email: String,
+    status: i32,
+    expiry_timestamp: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow, Serialize)]
+struct ReceivedInviteInfo {
+    id: i32,
+    device_id: uuid::Uuid,
+    sender_id: String,
+    receiver_id: String,
+    sender_name: String,
+    sender_email: String,
+    status: i32,
+    expiry_timestamp: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize)]
@@ -108,11 +138,6 @@ struct RegisterRequest {
 struct LoginRequest {
     firebase_uid: String,
     password: String,
-}
-
-struct AppState {
-    db_pool: PgPool,
-    mqtt_client: AsyncClient,
 }
 
 struct Token(String);
@@ -261,14 +286,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscribe("lockwise/+/status", QoS::AtMostOnce)
         .await?;
 
-    let state = AppState {
-        db_pool: db_pool.clone(),
-        mqtt_client: mqtt_client.clone(),
-    };
-
     // Spawn MQTT event handler
+    let db_pool_clone = db_pool.clone();
     tokio::spawn(async move {
-        handle_mqtt_events(&state.db_pool, &mut eventloop).await;
+        handle_mqtt_events(&db_pool_clone, &mut eventloop).await;
     });
 
     // Spawn log cleanup task
@@ -405,7 +426,7 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                     .bind(heartbeat_msg.audio_record_timeout_sec)
                                     .bind(heartbeat_msg.lock_timeout_ms)
                                     .bind(heartbeat_msg.pairing_timeout_sec)
-                                    .bind(&lock_state)
+                                    .bind(lock_state)
                                     .bind(heartbeat_msg.voice_detection_enable)
                                     .execute(db_pool)
                                     .await;
@@ -439,10 +460,7 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                 .bind(uuid)
                                 .execute(db_pool)
                                 .await;
-                                match result {
-                                    Ok(_) => {}
-                                    Err(_) => {}
-                                }
+                                if result.is_ok() {}
                             }
                         } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
@@ -573,38 +591,38 @@ async fn update_config(
             "wifi_pass" => {} // Allow empty to not change
             "audio_timeout" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 3 || val > 60 {
+                if !(3..=60).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
             "lock_timeout" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 5000 || val > 300000 {
+                if !(5000..=300000).contains(&val) {
                     // ms
                     return Err(Status::BadRequest);
                 }
             }
             "pairing_timeout" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 60 || val > 600 {
+                if !(60..=600).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
             "voice_detection_enable" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 0 || val > 1 {
+                if !(0..=1).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
             "voice_invite_enable" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 0 || val > 1 {
+                if !(0..=1).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
             "voice_threshold" => {
                 let val: f64 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if val < 0.20 || val > 0.90 {
+                if !(0.20..=0.90).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
@@ -656,7 +674,7 @@ async fn update_config(
     }
 
     // Send device configs to the device
-    for (i, config) in device_configs.iter().enumerate() {
+    for config in device_configs {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
         {
             let updates_mutex = PENDING_CONFIG_UPDATES.get().unwrap();
@@ -729,7 +747,7 @@ async fn reboot_device(
     }
 
     // Send REBOOT
-    publish_control_message(&**mqtt_client, uuid_parsed, "REBOOT".to_string())
+    publish_control_message(mqtt_client, uuid_parsed, "REBOOT".to_string())
         .await
         .map_err(|_| Status::InternalServerError)?;
 
@@ -773,7 +791,7 @@ async fn lockdown_device(
     }
 
     // Send LOCKDOWN
-    publish_control_message(&**mqtt_client, uuid_parsed, "LOCKDOWN".to_string())
+    publish_control_message(mqtt_client, uuid_parsed, "LOCKDOWN".to_string())
         .await
         .map_err(|_| Status::InternalServerError)?;
 
@@ -839,7 +857,7 @@ async fn ping_device(
     }
 
     // Send PING
-    publish_control_message(&**mqtt_client, uuid_parsed, "PING".to_string())
+    publish_control_message(mqtt_client, uuid_parsed, "PING".to_string())
         .await
         .map_err(|_| Status::InternalServerError)?;
 
@@ -1136,7 +1154,7 @@ async fn control_device(
         commands.insert(uuid.to_string(), (firebase_uid.clone(), now));
     }
 
-    publish_control_message(&**mqtt_client, uuid, request.command.clone())
+    publish_control_message(mqtt_client, uuid, request.command.clone())
         .await
         .map_err(|_| Status::InternalServerError)?;
     Ok(())
@@ -1420,7 +1438,7 @@ async fn control_temp_device(
         commands.insert(uuid.to_string(), (firebase_uid.clone(), now_ts));
     }
 
-    publish_control_message(&**mqtt_client, uuid_parsed, request.command.clone())
+    publish_control_message(mqtt_client, uuid_parsed, request.command.clone())
         .await
         .map_err(|_| Status::InternalServerError)?;
     Ok(())
@@ -1463,7 +1481,7 @@ async fn ping_temp_device(
     }
 
     // Send PING
-    publish_control_message(&**mqtt_client, uuid_parsed, "PING".to_string())
+    publish_control_message(mqtt_client, uuid_parsed, "PING".to_string())
         .await
         .map_err(|_| Status::InternalServerError)?;
 
@@ -1559,7 +1577,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let firebase_uid = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -1573,7 +1591,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     if let Some((Some(db_user_id),)) = row {
         if firebase_uid != db_user_id {
             return Err(Status::Unauthorized);
@@ -1587,7 +1605,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
         .bind(uuid_parsed.to_string())
         .fetch_all(&**db_pool)
         .await
-        .map_err(|e| {
+        .map_err(|_| {
             Status::InternalServerError
         })?;
     let logs: Vec<LogEntry> = rows
@@ -1618,7 +1636,7 @@ async fn get_notifications(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let firebase_uid = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -1637,7 +1655,7 @@ async fn get_notifications(
                 .bind(firebase_uid)
                 .fetch_all(&**db_pool)
                 .await
-                .map_err(|e| {
+                .map_err(|_| {
                     Status::InternalServerError
                 })?;
             rows.into_iter()
@@ -1658,7 +1676,7 @@ async fn get_notifications(
                 .bind(&device_strings)
                 .fetch_all(&**db_pool)
                 .await
-                .map_err(|e| {
+                .map_err(|_| {
                     Status::InternalServerError
                 })?;
             rows.into_iter()
@@ -1678,7 +1696,7 @@ async fn get_notifications(
             .bind(firebase_uid)
             .fetch_all(&**db_pool)
             .await
-            .map_err(|e| {
+            .map_err(|_| {
                 Status::InternalServerError
             })?;
         rows.into_iter()
@@ -1879,7 +1897,7 @@ async fn register_voice(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let firebase_uid = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -1893,7 +1911,7 @@ async fn register_voice(
         .open(rocket::data::ByteUnit::max_value())
         .read_to_end(&mut data)
         .await
-        .map_err(|e| Status::BadRequest)?;
+        .map_err(|_| Status::BadRequest)?;
 
     if data.is_empty() {
         return Err(Status::BadRequest);
@@ -1911,29 +1929,25 @@ async fn register_voice(
         }))
         .send()
         .await
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     if !response.status().is_success() {
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(Status::InternalServerError);
     }
 
     let embed_response: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     let embedding_b64 = embed_response["embedding"]
         .as_str()
-        .ok_or_else(|| Status::InternalServerError)?;
+        .ok_or(Status::InternalServerError)?;
 
     // Decode base64 to binary data
     let embedding_bytes = base64::engine::general_purpose::STANDARD
         .decode(embedding_b64)
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     println!(
         "DEBUG: Embedding binary length: {} bytes",
@@ -1950,7 +1964,7 @@ async fn register_voice(
         .bind(&firebase_uid)
         .execute(&**db_pool)
         .await
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     Ok(())
 }
@@ -1963,7 +1977,7 @@ async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Statu
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let firebase_uid = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -1976,14 +1990,9 @@ async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Statu
         .bind(&firebase_uid)
         .execute(&**db_pool)
         .await
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     Ok(())
-}
-
-#[derive(Deserialize)]
-struct VoiceVerifyRequest {
-    device_id: String,
 }
 
 #[post("/verify_voice/<device_id>", data = "<audio_data>")]
@@ -1991,7 +2000,6 @@ async fn verify_voice(
     device_id: &str,
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
-    mqtt_client: &State<AsyncClient>,
     speechbrain_url: &State<SpeechbrainUrl>,
 ) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
     let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
@@ -2003,7 +2011,7 @@ async fn verify_voice(
     .bind(device_uuid)
     .fetch_optional(&**db_pool)
     .await
-    .map_err(|e| Status::InternalServerError)?;
+    .map_err(|_| Status::InternalServerError)?;
 
     let (user_id, voice_invite_enable, voice_threshold) = match device_row {
         Some((Some(uid), Some(vie), Some(vt))) => {
@@ -2028,7 +2036,7 @@ async fn verify_voice(
             .bind(&user_id)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
 
     if let Some((Some(emb),)) = owner_row {
         println!(
@@ -2052,7 +2060,7 @@ async fn verify_voice(
         .bind(now)
         .fetch_all(&**db_pool)
         .await
-        .map_err(|e| {
+        .map_err(|_| {
             Status::InternalServerError
         })?;
 
@@ -2083,7 +2091,7 @@ async fn verify_voice(
         .open(rocket::data::ByteUnit::max_value())
         .read_to_end(&mut data)
         .await
-        .map_err(|e| Status::BadRequest)?;
+        .map_err(|_| Status::BadRequest)?;
 
     if data.is_empty() {
         return Err(Status::BadRequest);
@@ -2106,7 +2114,7 @@ async fn verify_voice(
         }))
         .send()
         .await
-        .map_err(|e| Status::InternalServerError)?;
+        .map_err(|_| Status::InternalServerError)?;
 
     println!(
         "DEBUG: Speechbrain verify response status: {}",
@@ -2114,10 +2122,6 @@ async fn verify_voice(
     );
 
     if !response.status().is_success() {
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(Status::InternalServerError);
     }
 
@@ -2131,11 +2135,11 @@ async fn verify_voice(
 
     let best_index = verify_response["best_index"]
         .as_u64()
-        .ok_or_else(|| Status::InternalServerError)? as usize;
+        .ok_or(Status::InternalServerError)? as usize;
 
     let score = verify_response["score"]
         .as_f64()
-        .ok_or_else(|| Status::InternalServerError)?;
+        .ok_or(Status::InternalServerError)?;
 
     println!(
         "DEBUG: Verification best_index: {}, score: {}",
@@ -2206,7 +2210,7 @@ async fn create_invite(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let sender_id = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -2220,7 +2224,7 @@ async fn create_invite(
             .bind(device_uuid)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let owner_id = if let Some((Some(owner),)) = device_row {
         owner
     } else {
@@ -2240,7 +2244,7 @@ async fn create_invite(
             .bind(&request.receiver_email)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let receiver_id = if let Some((uid,)) = receiver_row {
         uid
     } else {
@@ -2259,7 +2263,7 @@ async fn create_invite(
     .bind(&receiver_id)
     .fetch_optional(&**db_pool)
     .await
-    .map_err(|e| Status::InternalServerError)?;
+    .map_err(|_| Status::InternalServerError)?;
     if existing_invite.is_some() {
         return Err(Status::Conflict);
     }
@@ -2278,7 +2282,7 @@ async fn create_invite(
     .bind(expiry_timestamp)
     .fetch_one(&**db_pool)
     .await
-    .map_err(|e| {
+    .map_err(|_| {
         Status::InternalServerError
     })?;
 
@@ -2297,7 +2301,7 @@ async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, St
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let user_id = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -2306,81 +2310,33 @@ async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, St
     };
 
     // Get sent invites with receiver info
-    let sent_invites: Vec<(i32, uuid::Uuid, String, String, String, String, i32, i64, chrono::DateTime<chrono::Utc>)> =
+    let sent_invites: Vec<SentInviteInfo> =
         sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, ru.name as receiver_name, ru.email as receiver_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users ru ON i.receiver_id = ru.firebase_uid WHERE i.sender_id = $1")
             .bind(&user_id)
             .fetch_all(&**db_pool)
             .await
-            .map_err(|e| {
+            .map_err(|_| {
                 Status::InternalServerError
             })?;
 
     // Get received invites with sender info
-    let received_invites: Vec<(i32, uuid::Uuid, String, String, String, String, i32, i64, chrono::DateTime<chrono::Utc>)> =
+    let received_invites: Vec<ReceivedInviteInfo> =
         sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, su.name as sender_name, su.email as sender_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users su ON i.sender_id = su.firebase_uid WHERE i.receiver_id = $1")
             .bind(&user_id)
             .fetch_all(&**db_pool)
             .await
-            .map_err(|e| {
+            .map_err(|_| {
                 Status::InternalServerError
             })?;
 
     let sent: Vec<serde_json::Value> = sent_invites
         .into_iter()
-        .map(
-            |(
-                id,
-                device_id,
-                sender_id,
-                receiver_id,
-                receiver_name,
-                receiver_email,
-                status,
-                expiry,
-                created_at,
-            )| {
-                serde_json::json!({
-                    "id": id,
-                    "device_id": device_id.to_string(),
-                    "sender_id": sender_id,
-                    "receiver_id": receiver_id,
-                    "receiver_name": receiver_name,
-                    "receiver_email": receiver_email,
-                    "status": status,
-                    "expiry_timestamp": expiry,
-                    "created_at": created_at.timestamp_millis()
-                })
-            },
-        )
+        .map(|invite| serde_json::to_value(invite).unwrap())
         .collect();
 
     let received: Vec<serde_json::Value> = received_invites
         .into_iter()
-        .map(
-            |(
-                id,
-                device_id,
-                sender_id,
-                receiver_id,
-                sender_name,
-                sender_email,
-                status,
-                expiry,
-                created_at,
-            )| {
-                serde_json::json!({
-                    "id": id,
-                    "device_id": device_id.to_string(),
-                    "sender_id": sender_id,
-                    "receiver_id": receiver_id,
-                    "sender_name": sender_name,
-                    "sender_email": sender_email,
-                    "status": status,
-                    "expiry_timestamp": expiry,
-                    "created_at": created_at.timestamp_millis()
-                })
-            },
-        )
+        .map(|invite| serde_json::to_value(invite).unwrap())
         .collect();
 
     Ok(serde_json::json!({
@@ -2438,7 +2394,7 @@ async fn reject_invite(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let user_id = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -2456,7 +2412,7 @@ async fn reject_invite(
         .bind(&user_id)
         .execute(&**db_pool)
         .await
-        .map_err(|e| Status::InternalServerError)?
+        .map_err(|_| Status::InternalServerError)?
         .rows_affected();
 
     if rows_affected == 0 {
@@ -2594,7 +2550,7 @@ async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, S
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
     let firebase_uid = match user_row {
         Some((uid,)) => uid,
         None => {
@@ -2608,7 +2564,7 @@ async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, S
             .bind(&firebase_uid)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| Status::InternalServerError)?;
+            .map_err(|_| Status::InternalServerError)?;
 
     let has_voice = match voice_row {
         Some((Some(_),)) => true,
