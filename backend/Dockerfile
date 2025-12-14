@@ -12,13 +12,13 @@ FROM python:3.10-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libpq-dev \
-    libsndfile1 \
-    libsox-fmt-all \
-    pkg-config \
-    sox \
-    && rm -rf /var/lib/apt/lists/*
+	ffmpeg \
+	libpq-dev \
+	libsndfile1 \
+	libsox-fmt-all \
+	pkg-config \
+	sox \
+	&& rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -27,9 +27,9 @@ WORKDIR /app
 COPY requirements.txt constraints.txt .
 
 RUN pip install --no-cache-dir \
-    -r requirements.txt \
-    -c constraints.txt \
-    --extra-index-url https://download.pytorch.org/whl/cpu
+	-r requirements.txt \
+	-c constraints.txt \
+	--extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy built Rust binary
 COPY --from=rust-builder /app/target/release/backend ./backend
@@ -48,7 +48,7 @@ EXPOSE 12223
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:12223/health || exit 1
+	CMD curl -f http://localhost:12223/health || exit 1
 
 # Start both services
 CMD ["sh", "-c", "uvicorn speechbrain_service:app --host 0.0.0.0 --port 5008 --workers 1 & ./backend"]
