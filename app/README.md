@@ -17,6 +17,7 @@ Android.
 - **Gerenciamento de Fechaduras**: Adicione, remova e controle suas fechaduras
   inteligentes
 - **Controle Remoto**: Tranque e destranque portas remotamente via MQTT
+- **Autenticação por Voz**: Desbloqueie suas fechaduras usando reconhecimento de voz
 - **Compartilhamento de Acesso**: Convide familiares e amigos para acessar suas
   fechaduras
 - **Notificações em Tempo Real**: Receba alerta sobre acessos e estado das
