@@ -152,6 +152,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or("8000".to_string())
         .parse()
         .unwrap();
+    let speechbrain_url =
+        env::var("SPEECHBRAIN_URL").unwrap_or("http://localhost:5008".to_string());
     let _ = RECENT_COMMANDS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_PINGS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_CONFIG_UPDATES.set(Mutex::new(HashMap::new()));
@@ -288,6 +290,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .manage(db_pool)
             .manage(mqtt_client)
+            .manage(speechbrain_url)
             .mount(
                 "/",
                 routes![
@@ -665,7 +668,10 @@ async fn update_config(
 
     // Update backend-only configs directly in database
     for config in backend_configs {
-        println!("DEBUG: Updating backend config: key={}, value={}", config.key, config.value);
+        println!(
+            "DEBUG: Updating backend config: key={}, value={}",
+            config.key, config.value
+        );
         match config.key.as_str() {
             "voice_threshold" => {
                 let threshold: f64 = config.value.parse().map_err(|_| Status::BadRequest)?;
@@ -675,7 +681,10 @@ async fn update_config(
                     .execute(&**db_pool)
                     .await
                     .map_err(|_| Status::InternalServerError)?;
-                println!("DEBUG: Updated voice_threshold to {} for device {}", threshold, uuid);
+                println!(
+                    "DEBUG: Updated voice_threshold to {} for device {}",
+                    threshold, uuid
+                );
             }
             "voice_invite_enable" => {
                 let enable: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
@@ -686,7 +695,10 @@ async fn update_config(
                     .execute(&**db_pool)
                     .await
                     .map_err(|_| Status::InternalServerError)?;
-                println!("DEBUG: Updated voice_invite_enable to {} for device {}", enable_bool, uuid);
+                println!(
+                    "DEBUG: Updated voice_invite_enable to {} for device {}",
+                    enable_bool, uuid
+                );
             }
             _ => {} // Should not happen
         }
@@ -1989,6 +2001,7 @@ async fn register_voice(
     token: Token,
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
+    speechbrain_url: &State<String>,
 ) -> Result<(), Status> {
     println!("DEBUG: register_voice called");
 
@@ -2032,13 +2045,16 @@ async fn register_voice(
     }
 
     // Call speechbrain service
-    println!("DEBUG: Calling speechbrain service at http://localhost:5008/embed");
+    println!(
+        "DEBUG: Calling speechbrain service at {}/embed",
+        speechbrain_url.as_str()
+    );
     let client = Client::new();
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
     println!("DEBUG: Base64 encoded data length: {}", base64_data.len());
 
     let response = client
-        .post("http://localhost:5008/embed")
+        .post(format!("{}/embed", speechbrain_url.as_str()))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "pcm_base64": base64_data
@@ -2158,6 +2174,7 @@ async fn verify_voice(
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
+    speechbrain_url: &State<String>,
 ) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
     println!("DEBUG: verify_voice called for device {}", device_id);
 
@@ -2273,12 +2290,15 @@ async fn verify_voice(
     }
 
     // Call speechbrain service
-    println!("DEBUG: Calling speechbrain verify service at http://localhost:5008/verify");
+    println!(
+        "DEBUG: Calling speechbrain verify service at {}/verify",
+        speechbrain_url.as_str()
+    );
     let client = Client::new();
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
 
     let response = client
-        .post("http://localhost:5008/verify")
+        .post(format!("{}/verify", speechbrain_url.as_str()))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "pcm_base64": base64_data,
