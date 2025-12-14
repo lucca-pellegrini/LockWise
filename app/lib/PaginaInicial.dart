@@ -14,8 +14,6 @@ import 'package:wifi_scan/wifi_scan.dart';
 import 'dart:convert';
 import 'dart:async';
 
-const String backendUrl = 'http://192.168.0.75:12223';
-
 class Inicial extends StatefulWidget {
   final String usuarioId;
 
@@ -117,7 +115,7 @@ class _InicialState extends State<Inicial> {
     if (backendToken == null) return;
     try {
       final response = await http.get(
-        Uri.parse('$backendUrl/devices'),
+        Uri.parse('${LocalService.backendUrl}/devices'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       if (response.statusCode == 200) {
@@ -456,7 +454,7 @@ class _InicialState extends State<Inicial> {
                                       if (backendToken != null) {
                                         final response = await http.post(
                                           Uri.parse(
-                                            '$backendUrl/unpair/${cartao['id']}',
+                                            '${LocalService.backendUrl}/unpair/${cartao['id']}',
                                           ),
                                           headers: {
                                             'Authorization':
@@ -1033,7 +1031,7 @@ class _InicialState extends State<Inicial> {
       if (backendToken != null && cartoes.isNotEmpty) {
         try {
           final response = await http.get(
-            Uri.parse('$backendUrl/devices'),
+            Uri.parse('${LocalService.backendUrl}/devices'),
             headers: {'Authorization': 'Bearer $backendToken'},
           );
           if (response.statusCode == 200) {

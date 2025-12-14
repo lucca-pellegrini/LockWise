@@ -50,6 +50,7 @@ dependencies:
   wifi_scan: ^0.4.1+2
   flutter_launcher_icons: ^0.14.4
   record: ^6.1.2
+  flutter_dotenv: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +78,7 @@ flutter:
   assets:
     - images/
     - assets/
+    - .env
 
   fonts:
     - family: Montserrat

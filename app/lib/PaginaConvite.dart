@@ -5,8 +5,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-const String backendUrl = 'http://192.168.0.75:12223';
-
 class PaginaConvites extends StatefulWidget {
   const PaginaConvites({super.key});
 
@@ -47,7 +45,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
         final backendToken = await LocalService.getBackendToken();
         if (backendToken != null) {
           final response = await http.get(
-            Uri.parse('$backendUrl/invites'),
+            Uri.parse('${LocalService.backendUrl}/invites'),
             headers: {'Authorization': 'Bearer $backendToken'},
           );
 
@@ -604,7 +602,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('$backendUrl/cancel_invite/${convite['id']}'),
+          Uri.parse('${LocalService.backendUrl}/cancel_invite/${convite['id']}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
 
@@ -776,7 +774,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('$backendUrl/update_invite/${convite['id']}'),
+          Uri.parse('${LocalService.backendUrl}/update_invite/${convite['id']}'),
           headers: {
             'Authorization': 'Bearer $backendToken',
             'Content-Type': 'application/json',
@@ -805,7 +803,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/accept_invite/${convite['id']}'),
+        Uri.parse('${LocalService.backendUrl}/accept_invite/${convite['id']}'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
 
@@ -838,7 +836,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/reject_invite/${convite['id']}'),
+        Uri.parse('${LocalService.backendUrl}/reject_invite/${convite['id']}'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
 
@@ -945,7 +943,7 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('$backendUrl/reject_invite/${convite['id']}'),
+          Uri.parse('${LocalService.backendUrl}/reject_invite/${convite['id']}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
 

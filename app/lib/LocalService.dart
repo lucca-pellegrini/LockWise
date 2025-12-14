@@ -3,10 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
-const String backendUrl = 'http://192.168.0.75:12223';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LocalService {
+  static String get backendUrl {
+    final url = dotenv.env['BACKEND_URL'];
+    if (url == null) throw Exception('BACKEND_URL not set in .env file');
+    return url;
+  }
+
   static const String _keyBackendToken = 'backend_token';
   static const String _keyUserId = 'user_id';
   static const String _keyManterConectado = 'manter_conectado';

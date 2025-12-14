@@ -7,8 +7,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 
-const String backendUrl = 'http://192.168.0.75:12223';
-
 class Notificacao extends StatefulWidget {
   const Notificacao({super.key});
 
@@ -116,7 +114,7 @@ class _NotificacaoState extends State<Notificacao>
       // Fetch notifications from backend, filtered by enabled devices
       final queryParams = '?devices=${enabledDeviceIds.join(',')}';
       final notificationsResponse = await http.get(
-        Uri.parse('$backendUrl/notifications$queryParams'),
+        Uri.parse('${LocalService.backendUrl}/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       List<Map<String, dynamic>> allLogs = [];
@@ -241,7 +239,7 @@ class _NotificacaoState extends State<Notificacao>
       // Fetch notifications from backend, filtered by enabled devices
       final queryParams = '?devices=${enabledDeviceIds.join(',')}';
       final notificationsResponse = await http.get(
-        Uri.parse('$backendUrl/notifications$queryParams'),
+        Uri.parse('${LocalService.backendUrl}/notifications$queryParams'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       List<Map<String, dynamic>> allLogs = [];

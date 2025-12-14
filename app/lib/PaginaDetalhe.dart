@@ -8,8 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 
-const String backendUrl = 'http://192.168.0.75:12223';
-
 class LockDetails extends StatefulWidget {
   final String fechaduraId;
 
@@ -120,7 +118,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final deviceResponse = await http.get(
-          Uri.parse('$backendUrl/device/${widget.fechaduraId}'),
+          Uri.parse('${LocalService.backendUrl}/device/${widget.fechaduraId}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
@@ -162,7 +160,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     if (isConnected) {
       final start = DateTime.now().millisecondsSinceEpoch;
       final pingResponse = await http.post(
-        Uri.parse('$backendUrl/ping/${widget.fechaduraId}'),
+        Uri.parse('${LocalService.backendUrl}/ping/${widget.fechaduraId}'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       if (pingResponse.statusCode == 200) {
@@ -179,7 +177,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     // Poll logs
     try {
       final logsResponse = await http.get(
-        Uri.parse('$backendUrl/logs/${widget.fechaduraId}'),
+        Uri.parse('${LocalService.backendUrl}/logs/${widget.fechaduraId}'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       if (logsResponse.statusCode == 200) {
@@ -241,7 +239,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       if (backendToken != null) {
         // Fetch device state
         final deviceResponse = await http.get(
-          Uri.parse('$backendUrl/device/${widget.fechaduraId}'),
+          Uri.parse('${LocalService.backendUrl}/device/${widget.fechaduraId}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
@@ -280,7 +278,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         }
 
         final logsResponse = await http.get(
-          Uri.parse('$backendUrl/logs/${widget.fechaduraId}'),
+          Uri.parse('${LocalService.backendUrl}/logs/${widget.fechaduraId}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (logsResponse.statusCode == 200) {
@@ -341,7 +339,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
       // Call backend for control
       final command = acao == 'Abrir' ? 'UNLOCK' : 'LOCK';
-      final url = '$backendUrl/control/${widget.fechaduraId}';
+      final url = '${LocalService.backendUrl}/control/${widget.fechaduraId}';
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -1435,7 +1433,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/lockdown/${widget.fechaduraId}'),
+        Uri.parse('${LocalService.backendUrl}/lockdown/${widget.fechaduraId}'),
         headers: {
           'Authorization': 'Bearer $backendToken',
           'Content-Type': 'application/json',
@@ -1640,7 +1638,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/create_invite'),
+        Uri.parse('${LocalService.backendUrl}/create_invite'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $backendToken',
@@ -1777,7 +1775,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/update_config/${widget.fechaduraId}'),
+        Uri.parse(
+          '${LocalService.backendUrl}/update_config/${widget.fechaduraId}',
+        ),
         headers: {
           'Authorization': 'Bearer $backendToken',
           'Content-Type': 'application/json',
@@ -1826,7 +1826,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       }
 
       final response = await http.post(
-        Uri.parse('$backendUrl/reboot/${widget.fechaduraId}'),
+        Uri.parse('${LocalService.backendUrl}/reboot/${widget.fechaduraId}'),
         headers: {
           'Authorization': 'Bearer $backendToken',
           'Content-Type': 'application/json',

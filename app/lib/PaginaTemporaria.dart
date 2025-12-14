@@ -3,11 +3,9 @@ import 'LocalService.dart';
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:async';
-import 'PaginaDetalhe.dart' hide backendUrl;
+import 'PaginaDetalhe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
-
-const String backendUrl = 'http://192.168.0.75:12223';
 
 class Temporaria extends StatefulWidget {
   const Temporaria({super.key});
@@ -54,7 +52,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
         final backendToken = await LocalService.getBackendToken();
         if (backendToken != null) {
           final response = await http.get(
-            Uri.parse('$backendUrl/accessible_devices'),
+            Uri.parse('${LocalService.backendUrl}/accessible_devices'),
             headers: {'Authorization': 'Bearer $backendToken'},
           );
 
@@ -138,7 +136,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
     if (backendToken == null) return;
     try {
       final response = await http.get(
-        Uri.parse('$backendUrl/temp_devices_status'),
+        Uri.parse('${LocalService.backendUrl}/temp_devices_status'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       if (response.statusCode == 200) {
@@ -195,7 +193,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
         final backendToken = await LocalService.getBackendToken();
         if (backendToken != null) {
           final response = await http.get(
-            Uri.parse('$backendUrl/accessible_devices'),
+            Uri.parse('${LocalService.backendUrl}/accessible_devices'),
             headers: {'Authorization': 'Bearer $backendToken'},
           );
 
@@ -841,7 +839,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final deviceResponse = await http.get(
-          Uri.parse('$backendUrl/temp_device/${widget.deviceId}'),
+          Uri.parse('${LocalService.backendUrl}/temp_device/${widget.deviceId}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
@@ -876,7 +874,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     if (isConnected) {
       final start = DateTime.now().millisecondsSinceEpoch;
       final pingResponse = await http.post(
-        Uri.parse('$backendUrl/temp_ping/${widget.deviceId}'),
+        Uri.parse('${LocalService.backendUrl}/temp_ping/${widget.deviceId}'),
         headers: {'Authorization': 'Bearer $backendToken'},
       );
       if (pingResponse.statusCode == 200) {
@@ -896,7 +894,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
       final backendToken = await LocalService.getBackendToken();
       if (backendToken != null) {
         final deviceResponse = await http.get(
-          Uri.parse('$backendUrl/temp_device/${widget.deviceId}'),
+          Uri.parse('${LocalService.backendUrl}/temp_device/${widget.deviceId}'),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
@@ -924,7 +922,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
       }
 
       final command = acao == 'Abrir' ? 'UNLOCK' : 'LOCK';
-      final url = '$backendUrl/temp_control/${widget.deviceId}';
+      final url = '${LocalService.backendUrl}/temp_control/${widget.deviceId}';
       final response = await http.post(
         Uri.parse(url),
         headers: {

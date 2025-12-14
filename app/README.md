@@ -99,11 +99,19 @@ app/
 3. Configure as regras do Firestore para permitir acesso autenticado
 
 ### 2. Configuração do Back-end
-Atualize a URL do back-end em `lib/LocalService.dart`:
+Copie `.env.example` para `.env` e atualize a URL do back-end:
 
-```dart
-const String backendUrl = 'http://SEU_BACKEND_URL:12223';
+```bash
+cp .env.example .env
 ```
+
+Edite `.env` para definir a URL correta:
+
+```
+BACKEND_URL=https://seu-backend-url
+```
+
+**Nota:** A aplicação falhará ao iniciar sem o arquivo `.env` configurado.
 
 ### 3. Configuração de Assets
 Certifique-se de que as imagens estão em `assets/images/` e referenciadas no
