@@ -401,6 +401,7 @@ dependencies = [
  "dotenv",
  "firebase-auth",
  "jsonwebtoken 10.2.0",
+ "num_cpus",
  "reqwest 0.12.25",
  "rocket",
  "rumqttc",
