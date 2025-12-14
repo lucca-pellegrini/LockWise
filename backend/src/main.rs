@@ -8,7 +8,6 @@ use rocket::request::{self, FromRequest, Outcome};
 use rocket::{Request, State, get, post, routes};
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS, Transport};
 use serde::{Deserialize, Serialize};
-
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{ConnectOptions, PgPool, Row};
 use std::collections::HashMap;
@@ -2311,7 +2310,7 @@ async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, St
 
     // Get sent invites with receiver info
     let sent_invites: Vec<SentInviteInfo> =
-        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, ru.name as receiver_name, ru.email as receiver_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users ru ON i.receiver_id = ru.firebase_uid WHERE i.sender_id = $1")
+        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, ru.name as receiver_name, ru.email as receiver_email, i.status, i.expiry_timestamp, i.created_at FROM invites i LEFT JOIN users ru ON i.receiver_id = ru.firebase_uid WHERE i.sender_id = $1")
             .bind(&user_id)
             .fetch_all(&**db_pool)
             .await
@@ -2321,7 +2320,7 @@ async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, St
 
     // Get received invites with sender info
     let received_invites: Vec<ReceivedInviteInfo> =
-        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, su.name as sender_name, su.email as sender_email, i.status, i.expiry_timestamp, i.created_at FROM invites i JOIN users su ON i.sender_id = su.firebase_uid WHERE i.receiver_id = $1")
+        sqlx::query_as("SELECT i.id, i.device_id, i.sender_id, i.receiver_id, su.name as sender_name, su.email as sender_email, i.status, i.expiry_timestamp, i.created_at FROM invites i LEFT JOIN users su ON i.sender_id = su.firebase_uid WHERE i.receiver_id = $1")
             .bind(&user_id)
             .fetch_all(&**db_pool)
             .await

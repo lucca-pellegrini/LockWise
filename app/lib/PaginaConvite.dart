@@ -57,11 +57,9 @@ class _PaginaConvitesState extends State<PaginaConvites>
             // Transform to the expected format
             final enviados = sentInvites.map((invite) {
               final expiry = DateTime.fromMillisecondsSinceEpoch(
-                invite['expiry_timestamp'],
+                invite['expiry_timestamp'] as int,
               );
-              final created = DateTime.fromMillisecondsSinceEpoch(
-                invite['created_at'],
-              );
+              final created = DateTime.parse(invite['created_at'] as String);
               return {
                 'id': invite['id'].toString(),
                 'fechadura_id': invite['device_id'],
@@ -602,7 +600,9 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('${LocalService.backendUrl}/cancel_invite/${convite['id']}'),
+          Uri.parse(
+            '${LocalService.backendUrl}/cancel_invite/${convite['id']}',
+          ),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
 
@@ -774,7 +774,9 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('${LocalService.backendUrl}/update_invite/${convite['id']}'),
+          Uri.parse(
+            '${LocalService.backendUrl}/update_invite/${convite['id']}',
+          ),
           headers: {
             'Authorization': 'Bearer $backendToken',
             'Content-Type': 'application/json',
@@ -943,7 +945,9 @@ class _PaginaConvitesState extends State<PaginaConvites>
         }
 
         final response = await http.post(
-          Uri.parse('${LocalService.backendUrl}/reject_invite/${convite['id']}'),
+          Uri.parse(
+            '${LocalService.backendUrl}/reject_invite/${convite['id']}',
+          ),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
 
