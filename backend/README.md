@@ -153,7 +153,7 @@ dispositivo e definir a senha. Consulte
 [../embedded/README.md](../embedded/README.md) para detalhes sobre o processo
 de pareamento de dispositivos.
 
-### Execução com Docker
+### Execução com [Docker](https://www.docker.com/)
 
 Como alternativa à instalação manual de Rust e Python, é possível executar o
 back-end usando Docker.
@@ -165,7 +165,7 @@ back-end usando Docker.
   seção PostgreSQL acima). **Importante**: Em produção, use TLS ou outra forma
   segura para conectar-se ao banco de dados PostgreSQL em outra máquina.
 
-#### Usando Docker Compose (Recomendado)
+#### Usando [Docker Compose](https://docs.docker.com/compose/) (Recomendado)
 
 Um exemplo de `docker-compose.yml` está incluído no repositório. Copie-o e
 configure as variáveis de ambiente conforme necessário:
