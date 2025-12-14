@@ -130,7 +130,7 @@ class _InicialState extends State<Inicial> {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               cartao['isOnline'] = isOnline;
@@ -1047,7 +1047,7 @@ class _InicialState extends State<Inicial> {
                   final isOnline =
                       lastHeard != null &&
                       (DateTime.now().millisecondsSinceEpoch - lastHeard) <
-                          15000;
+                          30000;
                   final isUnlocked = device['lock_state'] == 'UNLOCKED';
                   final lockedDownAt = device['locked_down_at'];
                   cartao['isOnline'] = isOnline;

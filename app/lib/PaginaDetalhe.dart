@@ -50,7 +50,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
   bool get isConnected =>
       lastHeard != null &&
-      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 15000;
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 30000;
   final _conviteFormKey = GlobalKey<FormState>();
   final _configFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();

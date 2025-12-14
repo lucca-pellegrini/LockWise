@@ -152,7 +152,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 15000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               item['isOnline'] = isOnline;
@@ -809,7 +809,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
 
   bool get isConnected =>
       lastHeard != null &&
-      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 15000;
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 30000;
 
   @override
   void initState() {
@@ -839,7 +839,9 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final deviceResponse = await http.get(
-          Uri.parse('${LocalService.backendUrl}/temp_device/${widget.deviceId}'),
+          Uri.parse(
+            '${LocalService.backendUrl}/temp_device/${widget.deviceId}',
+          ),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
@@ -894,7 +896,9 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
       final backendToken = await LocalService.getBackendToken();
       if (backendToken != null) {
         final deviceResponse = await http.get(
-          Uri.parse('${LocalService.backendUrl}/temp_device/${widget.deviceId}'),
+          Uri.parse(
+            '${LocalService.backendUrl}/temp_device/${widget.deviceId}',
+          ),
           headers: {'Authorization': 'Bearer $backendToken'},
         );
         if (deviceResponse.statusCode == 200) {
