@@ -33,6 +33,7 @@ utilizando PostgreSQL para armazenamento e MQTT para comunicação em tempo real
 ## Pré-requisitos
 
 ### Rust e Cargo
+
 Certifique-se de que Rust está instalado usando o gerenciador de pacotes do seu
 sistema, ou:
 
@@ -42,6 +43,7 @@ source ~/.cargo/env
 ```
 
 ### Python e Dependências
+
 Instale Python 3.10 (versões 3.11 e 3.12 têm status desconhecido; 3.13 não
 funciona) e as dependências. Recomenda-se usar um ambiente virtual:
 
@@ -54,14 +56,17 @@ pip install -r requirements.txt
 ```
 
 ### PostgreSQL
-Configure um banco de dados PostgreSQL e defina a variável de ambiente
-`DATABASE_URL`:
 
-```bash
-export DATABASE_URL="postgresql://user:password@localhost/lockwise"
-```
+Configure um banco de dados PostgreSQL e defina a variável de ambiente
+`DATABASE_URL`.
+
+**Importante**: Em produção, especialmente quando o banco de dados está em uma
+máquina diferente do back-end, use TLS para proteger a conexão. Configure o
+PostgreSQL para exigir conexões SSL e use uma `DATABASE_URL` com o protocolo
+`postgresqls://` (note o 's' para SSL).
 
 ### Broker MQTT
+
 Configure um broker MQTT e defina as variáveis de ambiente `MQTT_HOST`,
 `MQTT_PORT`, etc.
 
@@ -85,6 +90,7 @@ backend/
 ## Configuração
 
 ### 1. Variáveis de Ambiente
+
 Copie `.env.example` para `.env` e configure:
 
 ```bash
@@ -95,19 +101,24 @@ MQTT_TLS=true
 MQTT_USERNAME=back-end-do-lockwise
 MQTT_PASSWORD=senha-do-back-end-do-lockwise
 PORT=12345
+SPEECHBRAIN_URL=http://speechbrain.meu-lindo-site.com:5008
+HOMEPAGE_URL=https://example.com
 ```
 
 ### 2. Banco de Dados
+
 O back-end cria automaticamente as tabelas necessárias na inicialização.
 Certifique-se de que o usuário do banco tem permissões para criar tabelas.
 
 ### 3. Modelos de Voz
+
 Os modelos do SpeechBrain são baixados automaticamente na primeira execução.
 Para uso offline, os modelos ficam em `models/spkrec/`.
 
 ## Compilação e Execução
 
 ### Serviço Principal (Rust)
+
 Compile e execute o serviço principal:
 
 ```bash
@@ -118,6 +129,7 @@ cargo run --release
 O serviço estará disponível em `http://localhost:8000` (ou porta configurada).
 
 ### Serviço de Voz (Python)
+
 Execute o serviço de reconhecimento de voz:
 
 ```bash
@@ -127,6 +139,7 @@ uvicorn speechbrain_service:app --port 5008 --workers 1
 O serviço estará disponível em `http://localhost:5008`.
 
 ### Utilitário de Provisionamento
+
 Para provisionar um novo dispositivo durante a configuração inicial:
 
 ```bash
@@ -140,9 +153,62 @@ dispositivo e definir a senha. Consulte
 [../embedded/README.md](../embedded/README.md) para detalhes sobre o processo
 de pareamento de dispositivos.
 
+### Execução com Docker
+
+Como alternativa à instalação manual de Rust e Python, é possível executar o
+back-end usando Docker.
+
+#### Pré-requisitos para Docker
+
+- **Docker** instalado e configurado
+- **PostgreSQL** ainda deve ser instalado e configurado separadamente (veja
+  seção PostgreSQL acima). **Importante**: Em produção, use TLS ou outra forma
+  segura para conectar-se ao banco de dados PostgreSQL em outra máquina.
+
+#### Usando Docker Compose (Recomendado)
+
+Um exemplo de `docker-compose.yml` está incluído no repositório. Copie-o e
+configure as variáveis de ambiente conforme necessário:
+
+```bash
+cp docker-compose.yml docker-compose.override.yml
+# Edite docker-compose.override.yml com suas configurações
+docker-compose up -d
+```
+
+**Nota**: Quando usando Docker Compose, o arquivo `.env` não é utilizado. Todas
+as configurações devem ser definidas diretamente no `docker-compose.yml` ou
+em um arquivo de override.
+
+#### Usando Docker Diretamente
+
+Para construir e executar a imagem Docker manualmente:
+
+```bash
+# Construir a imagem
+docker build -t lockwise-backend .
+
+# Executar o container
+docker run -p 12223:12223 \
+    -e DATABASE_URL="postgresql://user:pass@host:port/db" \
+    -e MQTT_HOST="mqtt.example.com" \
+    -e MQTT_PORT=1883 \
+    -e MQTT_TLS=false \
+    -e MQTT_USERNAME="username" \
+    -e MQTT_PASSWORD="password" \
+    -e SPEECHBRAIN_URL="http://speechbrain:5008" \
+    -e HOMEPAGE_URL="https://example.com" \
+    -e PORT=12223 \
+    -v $(pwd)/models:/app/models \
+    lockwise-backend
+```
+
+O serviço estará disponível na porta especificada (padrão: 12223).
+
 ## API Endpoints
 
 ### Autenticação
+
 - `POST /register` - Registrar novo usuário
 - `POST /login` - Login de usuário
 - `POST /logout` - Logout
@@ -150,6 +216,7 @@ de pareamento de dispositivos.
 - `POST /verify_password` - Verificar senha atual
 
 ### Dispositivos
+
 - `GET /devices` - Listar dispositivos do usuário
 - `GET /device/<uuid>` - Detalhes de dispositivo
 - `POST /register_device` - Registrar dispositivo
@@ -161,12 +228,14 @@ de pareamento de dispositivos.
 - `POST /lockdown/<uuid>` - Bloquear dispositivo
 
 ### Voz
+
 - `POST /register_voice` - Registrar voz do usuário
 - `POST /verify_voice` - Verificar voz
 - `DELETE /delete_voice` - Remover registro de voz
 - `GET /voice_status` - Status do registro de voz
 
 ### Convites
+
 - `POST /create_invite` - Criar convite
 - `GET /get_invites` - Listar convites
 - `POST /accept_invite` - Aceitar convite
@@ -175,10 +244,12 @@ de pareamento de dispositivos.
 - `POST /update_invite` - Atualizar convite
 
 ### Logs e Notificações
+
 - `GET /logs/<uuid>` - Logs do dispositivo
 - `GET /notifications` - Notificações do usuário
 
 ### Acesso Temporário
+
 - `GET /temp_devices_status` - Dispositivos com acesso temporário
 - `GET /temp_device/<uuid>` - Detalhes de dispositivo temporário
 - `POST /temp_control/<uuid>` - Controlar dispositivo temporário
@@ -187,26 +258,32 @@ de pareamento de dispositivos.
 ## Solução de Problemas
 
 ### Conexão com Banco de Dados
+
 - Verifique se PostgreSQL está rodando e acessível
-- Confirme formato da `DATABASE_URL`: `postgresql://user:pass@host:port/db`
-- Certifique-se de que o banco permite conexões SSL (Require)
+- Confirme formato da `DATABASE_URL`: `postgresql://user:pass@host:port/db` (ou `postgresqls://` para SSL)
+- Certifique-se de que o banco permite conexões SSL em produção
+- Para bancos remotos, use TLS/SSL para segurança
 
 ### Problemas MQTT
+
 - Verifique conectividade com o broker: `telnet MQTT_HOST MQTT_PORT`
 - Confirme credenciais se autenticação estiver habilitada
 - Monitore logs para erros de conexão
 
 ### Serviço de Voz Não Responde
+
 - Verifique se o modelo SpeechBrain foi carregado (logs na inicialização)
 - Confirme porta 5008 não está em uso
 - Teste endpoint: `curl http://localhost:5008/embed -X POST -H "Content-Type: application/json" -d '{"pcm_base64":""}'`
 
 ### Erros de Autenticação
+
 - Verifique token JWT no header `Authorization: Bearer <token>`
 - Confirme usuário existe no banco de dados
 - Valide formato do Firebase UID
 
 ### Dispositivo Não Responde
+
 - Verifique se dispositivo está online (campo `last_heard`)
 - Confirme conectividade MQTT do dispositivo
 - Monitore logs do dispositivo embarcado

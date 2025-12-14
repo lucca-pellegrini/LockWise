@@ -13,6 +13,7 @@ services:
       - MQTT_USERNAME=your_username
       - MQTT_PASSWORD=your_password
       - SPEECHBRAIN_URL=http://localhost:5008
+      - HOMEPAGE_URL=https://example.com
       - PORT=12223
     volumes:
       - ./models:/app/models

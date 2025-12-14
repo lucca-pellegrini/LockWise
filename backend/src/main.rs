@@ -155,6 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let speechbrain_url =
         env::var("SPEECHBRAIN_URL").unwrap_or("http://localhost:5008".to_string());
+    let homepage_url =
+        env::var("HOMEPAGE_URL").unwrap_or("https://example.com".to_string());
     let _ = RECENT_COMMANDS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_PINGS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_CONFIG_UPDATES.set(Mutex::new(HashMap::new()));
@@ -292,9 +294,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .manage(db_pool)
             .manage(mqtt_client)
             .manage(speechbrain_url)
+            .manage(homepage_url)
             .mount(
                 "/",
                 routes![
+                    index,
                     health,
                     get_devices,
                     register_user,
@@ -857,6 +861,11 @@ async fn ping_device(
         .map_err(|_| Status::InternalServerError)?;
 
     Ok(())
+}
+
+#[get("/")]
+fn index(homepage_url: &State<String>) -> rocket::response::Redirect {
+    rocket::response::Redirect::found(homepage_url.as_str().to_string())
 }
 
 #[get("/health")]
