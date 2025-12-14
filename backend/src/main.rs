@@ -19,6 +19,9 @@ use tokio::io::AsyncReadExt;
 use url::Url;
 use uuid::Uuid;
 
+struct SpeechbrainUrl(String);
+struct HomepageUrl(String);
+
 static RECENT_COMMANDS: OnceLock<Mutex<HashMap<String, (String, i64)>>> = OnceLock::new();
 static PENDING_PINGS: OnceLock<Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>> =
     OnceLock::new();
@@ -153,9 +156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .unwrap();
     let speechbrain_url =
-        env::var("SPEECHBRAIN_URL").unwrap_or("http://localhost:5008".to_string());
+        SpeechbrainUrl(env::var("SPEECHBRAIN_URL").unwrap_or("http://localhost:5008".to_string()));
     let homepage_url =
-        env::var("HOMEPAGE_URL").unwrap_or("https://example.com".to_string());
+        HomepageUrl(env::var("HOMEPAGE_URL").unwrap_or("https://example.com".to_string()));
     let _ = RECENT_COMMANDS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_PINGS.set(Mutex::new(HashMap::new()));
     let _ = PENDING_CONFIG_UPDATES.set(Mutex::new(HashMap::new()));
@@ -414,7 +417,7 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                 // Handle PONG
                                 let pings_mutex = PENDING_PINGS.get().unwrap();
                                 let mut pings = pings_mutex.lock().unwrap();
-                                if let Some((start, tx)) = pings.remove(&uuid_str.to_string()) {
+                                if let Some((_, tx)) = pings.remove(&uuid_str.to_string()) {
                                     tx.send(()).ok();
                                 }
                             } else if event_msg.event == "CONFIG_UPDATED" {
@@ -424,22 +427,22 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
                                 if let Some(tx) = updates.remove(&uuid_str.to_string()) {
                                     tx.send(()).ok();
                                 }
-                             } else if event_msg.event == "LOCKING_DOWN" {
-                                 // LOCKING_DOWN event - set locked_down_at
-                                  let timestamp = Utc
-                                     .timestamp_millis_opt(event_msg.timestamp as i64 * 1000)
-                                     .unwrap();
-                                 let result = sqlx::query(
-                                     "UPDATE devices SET locked_down_at = $1 WHERE uuid = $2",
-                                 )
-                                 .bind(timestamp)
-                                 .bind(uuid)
-                                 .execute(db_pool)
-                                 .await;
-                                 match result {
-                                     Ok(_) => {},
-                                     Err(_) => {},
-                                 }
+                            } else if event_msg.event == "LOCKING_DOWN" {
+                                // LOCKING_DOWN event - set locked_down_at
+                                let timestamp = Utc
+                                    .timestamp_millis_opt(event_msg.timestamp as i64 * 1000)
+                                    .unwrap();
+                                let result = sqlx::query(
+                                    "UPDATE devices SET locked_down_at = $1 WHERE uuid = $2",
+                                )
+                                .bind(timestamp)
+                                .bind(uuid)
+                                .execute(db_pool)
+                                .await;
+                                match result {
+                                    Ok(_) => {}
+                                    Err(_) => {}
+                                }
                             }
                         } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
@@ -530,7 +533,6 @@ async fn update_config(
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
 ) -> Result<(), Status> {
-
     let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
 
     // Validate token
@@ -632,23 +634,23 @@ async fn update_config(
         match config.key.as_str() {
             "voice_threshold" => {
                 let threshold: f64 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                 sqlx::query("UPDATE devices SET voice_threshold = $1 WHERE uuid = $2")
-                     .bind(threshold)
-                     .bind(uuid_parsed)
-                     .execute(&**db_pool)
-                     .await
-                     .map_err(|_| Status::InternalServerError)?;
-             }
+                sqlx::query("UPDATE devices SET voice_threshold = $1 WHERE uuid = $2")
+                    .bind(threshold)
+                    .bind(uuid_parsed)
+                    .execute(&**db_pool)
+                    .await
+                    .map_err(|_| Status::InternalServerError)?;
+            }
             "voice_invite_enable" => {
                 let enable: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
                 let enable_bool = enable == 1;
-                 sqlx::query("UPDATE devices SET voice_invite_enable = $1 WHERE uuid = $2")
-                     .bind(enable_bool)
-                     .bind(uuid_parsed)
-                     .execute(&**db_pool)
-                     .await
-                     .map_err(|_| Status::InternalServerError)?;
-             }
+                sqlx::query("UPDATE devices SET voice_invite_enable = $1 WHERE uuid = $2")
+                    .bind(enable_bool)
+                    .bind(uuid_parsed)
+                    .execute(&**db_pool)
+                    .await
+                    .map_err(|_| Status::InternalServerError)?;
+            }
             _ => {} // Should not happen
         }
     }
@@ -677,8 +679,7 @@ async fn update_config(
 
         // Wait for CONFIG_UPDATED, timeout 10s
         match tokio::time::timeout(std::time::Duration::from_secs(10), rx).await {
-            Ok(Ok(())) => {
-            }
+            Ok(Ok(())) => {}
             Ok(Err(_)) => {
                 return Err(Status::InternalServerError);
             }
@@ -698,7 +699,6 @@ async fn reboot_device(
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
 ) -> Result<(), Status> {
-
     let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
 
     // Validate token
@@ -743,7 +743,6 @@ async fn lockdown_device(
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
 ) -> Result<(), Status> {
-
     let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
 
     // Validate token
@@ -863,8 +862,8 @@ async fn ping_device(
 }
 
 #[get("/")]
-fn index(homepage_url: &State<String>) -> rocket::response::Redirect {
-    rocket::response::Redirect::found(homepage_url.as_str().to_string())
+fn index(homepage_url: &State<HomepageUrl>) -> rocket::response::Redirect {
+    rocket::response::Redirect::found(homepage_url.0.as_str().to_string())
 }
 
 #[get("/health")]
@@ -1552,7 +1551,6 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
 
 #[get("/logs/<uuid>")]
 async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
-
     let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
 
     // Validate token: get firebase_uid from current_token
@@ -1561,13 +1559,9 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let firebase_uid = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -1579,9 +1573,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     if let Some((Some(db_user_id),)) = row {
         if firebase_uid != db_user_id {
             return Err(Status::Unauthorized);
@@ -1626,13 +1618,9 @@ async fn get_notifications(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let firebase_uid = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -1883,22 +1871,17 @@ async fn register_voice(
     token: Token,
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
-    speechbrain_url: &State<String>,
+    speechbrain_url: &State<SpeechbrainUrl>,
 ) -> Result<(), Status> {
-
     // Validate token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let firebase_uid = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -1910,10 +1893,7 @@ async fn register_voice(
         .open(rocket::data::ByteUnit::max_value())
         .read_to_end(&mut data)
         .await
-        .map_err(|e| {
-            Status::BadRequest
-        })?;
-
+        .map_err(|e| Status::BadRequest)?;
 
     if data.is_empty() {
         return Err(Status::BadRequest);
@@ -1924,17 +1904,14 @@ async fn register_voice(
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
 
     let response = client
-        .post(format!("{}/embed", speechbrain_url.as_str()))
+        .post(format!("{}/embed", speechbrain_url.0.as_str()))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "pcm_base64": base64_data
         }))
         .send()
         .await
-        .map_err(|e| {
-            Status::InternalServerError
-        })?;
-
+        .map_err(|e| Status::InternalServerError)?;
 
     if !response.status().is_success() {
         let error_text = response
@@ -1944,22 +1921,19 @@ async fn register_voice(
         return Err(Status::InternalServerError);
     }
 
-    let embed_response: serde_json::Value = response.json().await.map_err(|e| {
-        Status::InternalServerError
-    })?;
+    let embed_response: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| Status::InternalServerError)?;
 
-
-    let embedding_b64 = embed_response["embedding"].as_str().ok_or_else(|| {
-        Status::InternalServerError
-    })?;
-
+    let embedding_b64 = embed_response["embedding"]
+        .as_str()
+        .ok_or_else(|| Status::InternalServerError)?;
 
     // Decode base64 to binary data
     let embedding_bytes = base64::engine::general_purpose::STANDARD
         .decode(embedding_b64)
-        .map_err(|e| {
-            Status::InternalServerError
-        })?;
+        .map_err(|e| Status::InternalServerError)?;
 
     println!(
         "DEBUG: Embedding binary length: {} bytes",
@@ -1976,29 +1950,22 @@ async fn register_voice(
         .bind(&firebase_uid)
         .execute(&**db_pool)
         .await
-        .map_err(|e| {
-            Status::InternalServerError
-        })?;
+        .map_err(|e| Status::InternalServerError)?;
 
     Ok(())
 }
 
 #[post("/delete_voice")]
 async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
-
     // Validate token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let firebase_uid = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -2009,9 +1976,7 @@ async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Statu
         .bind(&firebase_uid)
         .execute(&**db_pool)
         .await
-        .map_err(|e| {
-            Status::InternalServerError
-        })?;
+        .map_err(|e| Status::InternalServerError)?;
 
     Ok(())
 }
@@ -2027,9 +1992,8 @@ async fn verify_voice(
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
-    speechbrain_url: &State<String>,
+    speechbrain_url: &State<SpeechbrainUrl>,
 ) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
-
     let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
 
     // Get device info including voice_invite_enable and voice_threshold
@@ -2039,9 +2003,7 @@ async fn verify_voice(
     .bind(device_uuid)
     .fetch_optional(&**db_pool)
     .await
-    .map_err(|e| {
-        Status::InternalServerError
-    })?;
+    .map_err(|e| Status::InternalServerError)?;
 
     let (user_id, voice_invite_enable, voice_threshold) = match device_row {
         Some((Some(uid), Some(vie), Some(vt))) => {
@@ -2066,9 +2028,7 @@ async fn verify_voice(
             .bind(&user_id)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
 
     if let Some((Some(emb),)) = owner_row {
         println!(
@@ -2123,10 +2083,7 @@ async fn verify_voice(
         .open(rocket::data::ByteUnit::max_value())
         .read_to_end(&mut data)
         .await
-        .map_err(|e| {
-            Status::BadRequest
-        })?;
-
+        .map_err(|e| Status::BadRequest)?;
 
     if data.is_empty() {
         return Err(Status::BadRequest);
@@ -2135,13 +2092,13 @@ async fn verify_voice(
     // Call speechbrain service
     println!(
         "DEBUG: Calling speechbrain verify service at {}/verify",
-        speechbrain_url.as_str()
+        speechbrain_url.0.as_str()
     );
     let client = Client::new();
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
 
     let response = client
-        .post(format!("{}/verify", speechbrain_url.as_str()))
+        .post(format!("{}/verify", speechbrain_url.0.as_str()))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "pcm_base64": base64_data,
@@ -2149,9 +2106,7 @@ async fn verify_voice(
         }))
         .send()
         .await
-        .map_err(|e| {
-            Status::InternalServerError
-        })?;
+        .map_err(|e| Status::InternalServerError)?;
 
     println!(
         "DEBUG: Speechbrain verify response status: {}",
@@ -2174,14 +2129,13 @@ async fn verify_voice(
         Status::InternalServerError
     })?;
 
+    let best_index = verify_response["best_index"]
+        .as_u64()
+        .ok_or_else(|| Status::InternalServerError)? as usize;
 
-    let best_index = verify_response["best_index"].as_u64().ok_or_else(|| {
-        Status::InternalServerError
-    })? as usize;
-
-    let score = verify_response["score"].as_f64().ok_or_else(|| {
-        Status::InternalServerError
-    })?;
+    let score = verify_response["score"]
+        .as_f64()
+        .ok_or_else(|| Status::InternalServerError)?;
 
     println!(
         "DEBUG: Verification best_index: {}, score: {}",
@@ -2252,13 +2206,9 @@ async fn create_invite(
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let sender_id = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -2270,9 +2220,7 @@ async fn create_invite(
             .bind(device_uuid)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let owner_id = if let Some((Some(owner),)) = device_row {
         owner
     } else {
@@ -2292,9 +2240,7 @@ async fn create_invite(
             .bind(&request.receiver_email)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let receiver_id = if let Some((uid,)) = receiver_row {
         uid
     } else {
@@ -2313,9 +2259,7 @@ async fn create_invite(
     .bind(&receiver_id)
     .fetch_optional(&**db_pool)
     .await
-    .map_err(|e| {
-        Status::InternalServerError
-    })?;
+    .map_err(|e| Status::InternalServerError)?;
     if existing_invite.is_some() {
         return Err(Status::Conflict);
     }
@@ -2347,20 +2291,15 @@ async fn create_invite(
 
 #[get("/invites")]
 async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
-
     // Validate token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let user_id = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -2493,20 +2432,15 @@ async fn reject_invite(
     invite_id: i32,
     db_pool: &State<PgPool>,
 ) -> Result<(), Status> {
-
     // Validate token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let user_id = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -2522,9 +2456,7 @@ async fn reject_invite(
         .bind(&user_id)
         .execute(&**db_pool)
         .await
-        .map_err(|e| {
-            Status::InternalServerError
-        })?
+        .map_err(|e| Status::InternalServerError)?
         .rows_affected();
 
     if rows_affected == 0 {
@@ -2656,20 +2588,15 @@ async fn get_accessible_devices(token: Token, db_pool: &State<PgPool>) -> Result
 
 #[get("/voice_status")]
 async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
-
     // Validate token
     let user_row: Option<(String,)> =
         sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
             .bind(&token.0)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
     let firebase_uid = match user_row {
-        Some((uid,)) => {
-            uid
-        }
+        Some((uid,)) => uid,
         None => {
             return Err(Status::Unauthorized);
         }
@@ -2681,14 +2608,10 @@ async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, S
             .bind(&firebase_uid)
             .fetch_optional(&**db_pool)
             .await
-            .map_err(|e| {
-                Status::InternalServerError
-            })?;
+            .map_err(|e| Status::InternalServerError)?;
 
     let has_voice = match voice_row {
-        Some((Some(_),)) => {
-            true
-        }
+        Some((Some(_),)) => true,
         _ => {
             println!(
                 "DEBUG: User {} does not have voice embeddings",
