@@ -43,6 +43,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   String _initialAudioTimeout = '';
   String _initialLockTimeout = '';
   String _initialPairingTimeout = '';
+  bool _initialVoiceDetectionEnabled = true;
+  bool _voiceDetectionEnabled = true;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -253,6 +255,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                   .toString(); // Convert ms to seconds for display
           _pairingTimeoutController.text =
               (deviceData['pairing_timeout_sec'] ?? 300).toString();
+          _voiceDetectionEnabled = deviceData['voice_detection_enable'] ?? true;
+          _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
 
           // Store initial values
           _initialWifiSsid = _wifiSsidController.text;
@@ -706,6 +710,72 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       key: _configFormKey,
                       child: Column(
                         children: [
+                          // Voice Configuration Card
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(15),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 13, sigmaY: 13),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.blueAccent.withOpacity(0.2),
+                                      Colors.blueAccent.withOpacity(0.1),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.mic,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Configuração de Voz',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    SwitchListTile(
+                                      title: Text(
+                                        'Controle por voz',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      value: _voiceDetectionEnabled,
+                                      onChanged: (bool value) {
+                                        setState(() {
+                                          _voiceDetectionEnabled = value;
+                                        });
+                                      },
+                                      activeColor: Colors.blueAccent
+                                          .withOpacity(0.5),
+                                      inactiveTrackColor: Colors.transparent,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
                           // WiFi Configuration Card
                           // WiFi Configuration Card
                           ClipRRect(
@@ -1623,6 +1693,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           'value': _pairingTimeoutController.text,
         });
       }
+      if (_voiceDetectionEnabled != _initialVoiceDetectionEnabled) {
+        configs.add({
+          'key': 'voice_detection_enable',
+          'value': _voiceDetectionEnabled ? '1' : '0',
+        });
+      }
 
       if (configs.isEmpty) {
         _mostrarSucesso('Nenhuma alteração detectada.');
@@ -1645,6 +1721,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         _initialAudioTimeout = _audioTimeoutController.text;
         _initialLockTimeout = _lockTimeoutController.text;
         _initialPairingTimeout = _pairingTimeoutController.text;
+        _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
       } else {
         _mostrarErro('Erro ao salvar configurações: ${response.statusCode}');
       }

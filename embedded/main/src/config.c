@@ -209,6 +209,19 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load voice_detection_enable
+	uint8_t voice_val = 1; // Default true
+	if (nvs_available && nvs_get_u8(nvs_handle, "voice_en", &voice_val) == ESP_OK) {
+		config.voice_detection_enable = voice_val != 0;
+		ESP_LOGI(TAG, "Loaded voice_detection_enable from NVS:\033[1m %d", config.voice_detection_enable);
+	} else {
+		config.voice_detection_enable = true;
+		if (nvs_available) {
+			nvs_set_u8(nvs_handle, "voice_en", 1);
+			ESP_LOGW(TAG, "Using default voice_detection_enable (true) and saved to NVS");
+		}
+	}
+
 	if (nvs_available) {
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
@@ -217,12 +230,13 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, pairing_timeout, user_id, pairing_mode)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, pairing_timeout, user_id, pairing_mode, voice_detection_enable)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
 	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") ||
-	    !strcasecmp(key, "pairing_timeout") || !strcasecmp(key, "user_id") || !strcasecmp(key, "pairing_mode")) {
+	    !strcasecmp(key, "pairing_timeout") || !strcasecmp(key, "user_id") || !strcasecmp(key, "pairing_mode") ||
+	    !strcasecmp(key, "voice_detection_enable")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -268,9 +282,13 @@ void update_config(const char *key, const char *value)
 			} else if (!strcasecmp(key, "user_id")) {
 				if (strcmp(config.user_id, value) != 0)
 					needs_update = true;
-			} else if (!strcasecmp(key, "pairing_mode")) {
+			} else 			if (!strcasecmp(key, "pairing_mode")) {
 				uint8_t new_val = atoi(value) ? 1 : 0;
 				if (config.pairing_mode != new_val)
+					needs_update = true;
+			} else if (!strcasecmp(key, "voice_detection_enable")) {
+				uint8_t new_val = atoi(value) ? 1 : 0;
+				if (config.voice_detection_enable != new_val)
 					needs_update = true;
 			}
 
@@ -314,6 +332,12 @@ void update_config(const char *key, const char *value)
 				} else if (!strcasecmp(key, "pairing_mode")) {
 					uint8_t pairing_val = atoi(value) ? 1 : 0;
 					set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
+				} else if (!strcasecmp(key, "voice_detection_enable")) {
+					uint8_t voice_val = atoi(value) ? 1 : 0;
+					set_err = nvs_set_u8(nvs_handle, "voice_en", voice_val);
+					if (set_err == ESP_OK) {
+						config.voice_detection_enable = voice_val;
+					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);
 					if (set_err == ESP_OK) {

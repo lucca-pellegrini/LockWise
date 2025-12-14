@@ -191,8 +191,9 @@ void app_main(void)
 	// Initialize MQTT
 	mqtt_init();
 
-	// Initialize audio stream
-	audio_stream_init();
+	// Initialize audio stream only if voice detection is enabled
+	if (config.voice_detection_enable)
+		audio_stream_init();
 
 	// Start MQTT heartbeat task
 	if (config.mqtt_heartbeat_enable)

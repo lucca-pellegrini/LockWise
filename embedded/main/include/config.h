@@ -22,6 +22,7 @@ typedef struct {
 	int pairing_timeout_sec;
 	char user_id[256]; // Paired user's ID
 	bool pairing_mode; // Whether device is in pairing mode
+	bool voice_detection_enable; // Whether voice detection is enabled
 } config_t;
 
 /* Configuration storage */
