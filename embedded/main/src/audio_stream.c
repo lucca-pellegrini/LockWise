@@ -13,6 +13,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include <sys/time.h>
+#include <time.h>
 #include "filter_resample.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -194,6 +196,16 @@ static void http_stream_task(void *arg)
 		char voice_url[512];
 		snprintf(voice_url, sizeof(voice_url), "%s/verify_voice/%s", config.backend_url, config.device_id);
 
+		// Debug: print wall clock time and CA bundle status
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		time_t now = tv.tv_sec;
+		struct tm tm;
+		localtime_r(&now, &tm);
+		ESP_LOGI(TAG, "Wall clock: %04d-%02d-%02d %02d:%02d:%02d (epoch=%lld)", tm.tm_year + 1900,
+			 tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (long long)now);
+		ESP_LOGI(TAG, "CA bundle attach ptr: %p", esp_crt_bundle_attach);
+
 		esp_http_client_config_t http_cfg = {
 			.url = voice_url,
 			.method = HTTP_METHOD_POST,
@@ -361,7 +373,7 @@ void audio_stream_init(void)
 	audio_init_pipeline();
 	xTaskCreate(audio_stream_task, "audio_stream", 4096, NULL, 5, NULL);
 	xTaskCreate(vad_task, "vad", 8192, NULL, 4, NULL);
-	xTaskCreate(http_stream_task, "http_stream", 4096, NULL, 5, NULL);
+	xTaskCreate(http_stream_task, "http_stream", 8192, NULL, 5, NULL);
 }
 
 void audio_stream_send_cmd(audio_stream_cmd_t cmd)

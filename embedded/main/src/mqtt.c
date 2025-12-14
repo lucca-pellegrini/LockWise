@@ -179,8 +179,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	}
 }
 
-
-
 void mqtt_init(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);
@@ -426,7 +424,7 @@ static void mqtt_publish_heartbeat(void)
 	uint8_t cbor_buffer[512];
 	CborEncoder encoder, map_encoder;
 	cbor_encoder_init(&encoder, cbor_buffer, sizeof(cbor_buffer), 0);
-  cbor_encoder_create_map(&encoder, &map_encoder, 14);
+	cbor_encoder_create_map(&encoder, &map_encoder, 14);
 
 	cbor_encode_text_stringz(&map_encoder, "heartbeat");
 	cbor_encode_text_stringz(&map_encoder, "HEARTBEAT");
@@ -464,13 +462,13 @@ static void mqtt_publish_heartbeat(void)
 	cbor_encode_text_stringz(&map_encoder, "user_id");
 	cbor_encode_text_stringz(&map_encoder, config.user_id);
 
-  cbor_encode_text_stringz(&map_encoder, "lock_state");
-  cbor_encode_text_stringz(&map_encoder, lock_state_str);
+	cbor_encode_text_stringz(&map_encoder, "lock_state");
+	cbor_encode_text_stringz(&map_encoder, lock_state_str);
 
-  cbor_encode_text_stringz(&map_encoder, "voice_detection_enable");
-  cbor_encode_boolean(&map_encoder, config.voice_detection_enable);
+	cbor_encode_text_stringz(&map_encoder, "voice_detection_enable");
+	cbor_encode_boolean(&map_encoder, config.voice_detection_enable);
 
-  cbor_encoder_close_container(&encoder, &map_encoder);
+	cbor_encoder_close_container(&encoder, &map_encoder);
 
 	size_t cbor_len = cbor_encoder_get_buffer_size(&encoder, cbor_buffer);
 
