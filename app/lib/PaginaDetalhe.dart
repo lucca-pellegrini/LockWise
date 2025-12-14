@@ -45,8 +45,10 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   String _initialPairingTimeout = '';
   bool _initialVoiceDetectionEnabled = true;
   bool _initialVoiceInviteEnabled = true;
+  double _initialVoiceThreshold = 0.60;
   bool _voiceDetectionEnabled = true;
   bool _voiceInviteEnabled = true;
+  double _voiceThreshold = 0.60;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -259,14 +261,17 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
               (deviceData['pairing_timeout_sec'] ?? 300).toString();
           _voiceDetectionEnabled = deviceData['voice_detection_enable'] ?? true;
           _voiceInviteEnabled = deviceData['voice_invite_enable'] ?? true;
+          _voiceThreshold = (deviceData['voice_threshold'] ?? 0.60).toDouble();
           _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
           _initialVoiceInviteEnabled = _voiceInviteEnabled;
+          _initialVoiceThreshold = _voiceThreshold;
 
           // Store initial values
           _initialWifiSsid = _wifiSsidController.text;
           _initialAudioTimeout = _audioTimeoutController.text;
           _initialLockTimeout = _lockTimeoutController.text;
           _initialPairingTimeout = _pairingTimeoutController.text;
+          _initialVoiceThreshold = _voiceThreshold;
 
           // Update fechadura with locked_down_at
           if (f != null) {
@@ -760,7 +765,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                     const SizedBox(height: 16),
                                     SwitchListTile(
                                       title: Text(
-                                        'Controle por voz',
+                                        'Permitir controle por voz',
                                         style: TextStyle(color: Colors.white),
                                       ),
                                       value: _voiceDetectionEnabled,
@@ -788,6 +793,40 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                       activeColor: Colors.blueAccent
                                           .withOpacity(0.5),
                                       inactiveTrackColor: Colors.transparent,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Limite de confiança de voz: ${(_voiceThreshold * 100).round()}%',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Slider(
+                                      value: _voiceThreshold,
+                                      min: 0.20,
+                                      max: 0.90,
+                                      divisions:
+                                          7, // 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90
+                                      label:
+                                          '${(_voiceThreshold * 100).round()}%',
+                                      activeColor: Colors.blueAccent
+                                          .withOpacity(0.5),
+                                      inactiveColor: Colors.white.withOpacity(
+                                        0.3,
+                                      ),
+                                      onChanged: (double value) {
+                                        setState(() {
+                                          _voiceThreshold = value;
+                                        });
+                                      },
+                                    ),
+                                    Text(
+                                      _getSecurityLabel(_voiceThreshold),
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1725,6 +1764,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           'value': _voiceInviteEnabled ? '1' : '0',
         });
       }
+      if (_voiceThreshold != _initialVoiceThreshold) {
+        configs.add({
+          'key': 'voice_threshold',
+          'value': _voiceThreshold.toStringAsFixed(2),
+        });
+      }
 
       if (configs.isEmpty) {
         _mostrarSucesso('Nenhuma alteração detectada.');
@@ -1749,11 +1794,26 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         _initialPairingTimeout = _pairingTimeoutController.text;
         _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
         _initialVoiceInviteEnabled = _voiceInviteEnabled;
+        _initialVoiceThreshold = _voiceThreshold;
       } else {
         _mostrarErro('Erro ao salvar configurações: ${response.statusCode}');
       }
     } catch (e) {
       _mostrarErro('Erro ao salvar configurações: $e');
+    }
+  }
+
+  String _getSecurityLabel(double threshold) {
+    if (threshold >= 0.75) {
+      return 'Muito seguro (pode causar falsos negativos frequentes)';
+    } else if (threshold >= 0.60) {
+      return 'Seguro (equilíbrio ideal)';
+    } else if (threshold >= 0.40) {
+      return 'Moderadamente seguro (fácil de enganar com gravações)';
+    } else if (threshold >= 0.30) {
+      return 'Inseguro';
+    } else {
+      return 'Muito inseguro (altamente recomendável aumentar)';
     }
   }
 
