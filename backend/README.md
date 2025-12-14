@@ -207,6 +207,11 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 
 ## API Endpoints
 
+### Geral
+
+- `GET /` - Redirecionamento para página inicial (configurável)
+- `GET /health` - Verificação de saúde do serviço
+
 ### Autenticação
 
 - `POST /register` - Registrar novo usuário
@@ -214,11 +219,14 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 - `POST /logout` - Logout
 - `POST /update_password` - Alterar senha
 - `POST /verify_password` - Verificar senha atual
+- `POST /update_phone` - Atualizar número de telefone
+- `POST /delete_account` - Deletar conta do usuário
 
 ### Dispositivos
 
 - `GET /devices` - Listar dispositivos do usuário
 - `GET /device/<uuid>` - Detalhes de dispositivo
+- `GET /get_accessible_devices` - Listar dispositivos acessíveis (incluindo convites)
 - `POST /register_device` - Registrar dispositivo
 - `POST /control/<uuid>` - Controlar dispositivo (LOCK/UNLOCK)
 - `POST /unpair/<uuid>` - Desparear dispositivo
@@ -231,7 +239,7 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 
 - `POST /register_voice` - Registrar voz do usuário
 - `POST /verify_voice` - Verificar voz
-- `DELETE /delete_voice` - Remover registro de voz
+- `POST /delete_voice` - Remover registro de voz
 - `GET /voice_status` - Status do registro de voz
 
 ### Convites
