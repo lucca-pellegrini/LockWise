@@ -2066,13 +2066,10 @@ async fn verify_voice(
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
     mqtt_client: &State<AsyncClient>,
-) -> Result<(), Status> {
+) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
     println!("DEBUG: verify_voice called for device {}", device_id);
 
-    let device_uuid = Uuid::parse_str(device_id).map_err(|e| {
-        println!("DEBUG: Invalid device UUID: {:?}", e);
-        Status::BadRequest
-    })?;
+    let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
 
     // Get user_id for device
     let device_row: Option<(Option<String>,)> =
@@ -2198,34 +2195,25 @@ async fn verify_voice(
     println!("DEBUG: Verification score: {}", score);
 
     if score > 0.60 {
-        println!("DEBUG: Score {} > 0.60, unlocking device", score);
+        println!("DEBUG: Score {} > 0.60, allowing unlock", score);
 
-        // Unlock the device
-        publish_control_message(&**mqtt_client, device_uuid, "UNLOCK".to_string())
-            .await
-            .map_err(|e| {
-                println!("DEBUG: Failed to publish unlock message: {:?}", e);
-                Status::InternalServerError
-            })?;
+        // Store recent voice verification
+        let now = chrono::Utc::now().timestamp();
+        {
+            let commands_mutex = RECENT_COMMANDS.get().unwrap();
+            let mut commands = commands_mutex.lock().unwrap();
+            commands.insert(device_id.to_string(), (user_id.clone(), now));
+        }
 
-        // Log the event
-        sqlx::query("INSERT INTO logs (device_id, event_type, reason) VALUES ($1, $2, $3)")
-            .bind(device_id)
-            .bind("UNLOCK")
-            .bind("voice activation")
-            .execute(&**db_pool)
-            .await
-            .map_err(|e| {
-                println!("DEBUG: Failed to log voice activation event: {:?}", e);
-                Status::InternalServerError
-            })?;
-
-        println!("DEBUG: Device unlocked via voice activation");
+        println!(
+            "DEBUG: Stored recent voice verification for user {}",
+            user_id
+        );
+        Ok(rocket::serde::json::Json(serde_json::json!({"index": 0})))
     } else {
-        println!("DEBUG: Score {} <= 0.75, not unlocking", score);
+        println!("DEBUG: Score {} <= 0.60, denying unlock", score);
+        Err(Status::Forbidden)
     }
-
-    Ok(())
 }
 
 #[derive(Deserialize)]

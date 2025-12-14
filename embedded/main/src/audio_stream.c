@@ -104,12 +104,15 @@ esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 
 	if (msg->event_id == HTTP_STREAM_FINISH_REQUEST) {
 		ESP_LOGI(TAG, "HTTP client HTTP_STREAM_FINISH_REQUEST");
+		int status_code = esp_http_client_get_status_code(http);
+		ESP_LOGI(TAG, "HTTP Status Code = %d", status_code);
+		if (status_code == 200)
+			toggle_door(DOOR_REASON_VOICE);
 		char *buf = calloc(1, 64);
 		if (buf) {
 			int read_len = esp_http_client_read(http, buf, 64);
-			if (read_len > 0) {
+			if (read_len > 0)
 				ESP_LOGI(TAG, "Got HTTP Response = %s", buf);
-			}
 			free(buf);
 		}
 		return ESP_OK;
