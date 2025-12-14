@@ -9,7 +9,7 @@ lang: pt-BR
 # LockWise — Sistema Embarcado
 
 Um sistema de fechadura inteligente controlado por autenticação de voz e
-comandos MQTT, construído para ESP32-LyraT v4.3 usando ESP-IDF e ESP-ADF.
+comandos [MQTT](https://mqtt.org/), construído para [ESP32-LyraT](https://docs.espressif.com/projects/esp-adf/en/latest/design-guide/dev-boards/get-started-esp32-lyrat.html) v4.3 usando [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/) e [ESP-ADF](https://docs.espressif.com/projects/esp-adf/en/latest/).
 
 ## Funcionalidades
 
@@ -36,7 +36,7 @@ comandos MQTT, construído para ESP32-LyraT v4.3 usando ESP-IDF e ESP-ADF.
 
 ## Pré-requisitos
 
-O projeto usa submódulos Git para ESP-ADF, que já inclui ESP-IDF. Certifique-se
+O projeto usa submódulos Git para [ESP-ADF](https://docs.espressif.com/projects/esp-adf/en/latest/), que já inclui [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/). Certifique-se
 de que os submódulos estão inicializados e habilitados:
 
 ```bash

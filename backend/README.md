@@ -8,9 +8,9 @@ lang: pt-BR
 
 # LockWise — Back-end
 
-Serviços de back-end para o sistema LockWise, construído com Rust (Rocket) para
-a API principal e Python (FastAPI) para o serviço de reconhecimento de voz,
-utilizando PostgreSQL para armazenamento e MQTT para comunicação em tempo real.
+Serviços de back-end para o sistema LockWise, construído com [Rust](https://www.rust-lang.org/) ([Rocket](https://rocket.rs/)) para
+a API principal e [Python](https://www.python.org/) ([FastAPI](https://fastapi.tiangolo.com/)) para o serviço de reconhecimento de voz,
+utilizando [PostgreSQL](https://www.postgresql.org/) para armazenamento e [MQTT](https://mqtt.org/) para comunicação em tempo real.
 
 ## Funcionalidades
 
@@ -32,7 +32,7 @@ utilizando PostgreSQL para armazenamento e MQTT para comunicação em tempo real
 
 ## Pré-requisitos
 
-### Rust e Cargo
+### [Rust](https://www.rust-lang.org/) e [Cargo](https://doc.rust-lang.org/cargo/)
 
 Certifique-se de que Rust está instalado usando o gerenciador de pacotes do seu
 sistema, ou:
@@ -42,7 +42,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 ```
 
-### Python e Dependências
+### [Python](https://www.python.org/) e Dependências
 
 Instale Python 3.10 (versões 3.11 e 3.12 têm status desconhecido; 3.13 não
 funciona) e as dependências. Recomenda-se usar um ambiente virtual:
@@ -55,7 +55,7 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-### PostgreSQL
+### [PostgreSQL](https://www.postgresql.org/)
 
 Configure um banco de dados PostgreSQL e defina a variável de ambiente
 `DATABASE_URL`.
@@ -65,7 +65,7 @@ máquina diferente do back-end, use TLS para proteger a conexão. Configure o
 PostgreSQL para exigir conexões SSL e use uma `DATABASE_URL` com o protocolo
 `postgresqls://` (note o 's' para SSL).
 
-### Broker MQTT
+### Broker [MQTT](https://mqtt.org/)
 
 Configure um broker MQTT e defina as variáveis de ambiente `MQTT_HOST`,
 `MQTT_PORT`, etc.

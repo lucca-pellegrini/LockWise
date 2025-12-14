@@ -8,8 +8,8 @@ lang: pt-BR
 
 # LockWise — Aplicativo Móvel
 
-Um painel de controle para seus produtos LockWise, construído com Flutter para
-Android.
+Um painel de controle para seus produtos LockWise, construído com [Flutter](https://flutter.dev/) para
+[Android](https://developer.android.com/).
 
 ## Funcionalidades
 
@@ -37,7 +37,7 @@ Para detalhes sobre o hardware das fechaduras, consulte [../embedded/README.md](
 
 ## Pré-requisitos
 
-### Flutter SDK
+### [Flutter](https://flutter.dev/) SDK
 Certifique-se de que o Flutter está instalado e configurado:
 
 ```bash
