@@ -1,8 +1,7 @@
 use argon2::password_hash::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::Engine;
-use chrono::{Duration, TimeZone, Utc};
-use jsonwebtoken::Algorithm;
+use chrono::{TimeZone, Utc};
 use num_cpus;
 use reqwest::Client;
 use rocket::http::Status;
