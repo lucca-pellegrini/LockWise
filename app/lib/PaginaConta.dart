@@ -714,10 +714,7 @@ class _PaginaContaState extends State<PaginaConta> {
                       Icon(Icons.mic, color: Colors.green),
                       SizedBox(width: 8),
                       Text(
-
-                    _hasVoiceEmbeddings ?
-                        'Gerenciar Voz' :
-                        'Cadastrar Voz',
+                        _hasVoiceEmbeddings ? 'Gerenciar Voz' : 'Cadastrar Voz',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -808,7 +805,7 @@ class _PaginaContaState extends State<PaginaConta> {
       final path = await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
-          sampleRate: 44100,
+          sampleRate: 16000,
           numChannels: 1,
         ),
         path: tempPath,

@@ -17,7 +17,7 @@ from speechbrain.inference import SpeakerRecognition
 MODEL_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"
 MODEL_DIR = "models/spkrec"
 
-EXPECTED_SR = 44100
+EXPECTED_SR = 16000
 MODEL_SR = 16000
 MIN_SECONDS = 2.0
 
@@ -54,7 +54,8 @@ def pcm16_to_waveform(pcm_bytes: bytes) -> torch.Tensor:
 
 def extract_embedding(pcm_bytes: bytes) -> np.ndarray:
     waveform = pcm16_to_waveform(pcm_bytes)
-    waveform = resampler(waveform)
+    if EXPECTED_SR != MODEL_SR:
+        waveform = resampler(waveform)
 
     min_samples = int(MIN_SECONDS * MODEL_SR)
     if waveform.shape[1] < min_samples:
@@ -147,15 +148,18 @@ def verify(req: VerifyRequest):
                 f.write(pcm)
                 temp_file = f.name
             try:
-                subprocess.run([
-                    "mpv",
-                    "--no-config",
-                    "--demuxer=rawaudio",
-                    "--demuxer-rawaudio-format=s16le",
-                    "--demuxer-rawaudio-channels=1",
-                    "--demuxer-rawaudio-rate=44100",
-                    temp_file
-                ], check=True)
+                subprocess.run(
+                    [
+                        "mpv",
+                        "--no-config",
+                        "--demuxer=rawaudio",
+                        "--demuxer-rawaudio-format=s16le",
+                        "--demuxer-rawaudio-channels=1",
+                        "--demuxer-rawaudio-rate=16000",
+                        temp_file,
+                    ],
+                    check=True,
+                )
             except subprocess.CalledProcessError as e:
                 print(f"DEBUG: Failed to play audio: {e}")
             finally:
