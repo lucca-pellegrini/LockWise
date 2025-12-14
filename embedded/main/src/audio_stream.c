@@ -8,6 +8,7 @@
 #include "board.h"
 #include "config.h"
 #include "driver/gpio.h"
+#include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -224,6 +225,11 @@ static void setup_pipeline(void)
 	pipeline = audio_pipeline_init(&pipeline_cfg);
 
 	http_stream_cfg_t http_cfg = HTTP_STREAM_CFG_DEFAULT();
+	// Configure TLS for HTTPS URLs
+	if (strncmp(config.backend_url, "https://", 8) == 0) {
+		http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
+		ESP_LOGI(TAG, "HTTP TLS enabled with certificate bundle");
+	}
 	http_cfg.type = AUDIO_STREAM_WRITER;
 	http_cfg.event_handle = _http_stream_event_handle;
 	http_stream_writer = http_stream_init(&http_cfg);

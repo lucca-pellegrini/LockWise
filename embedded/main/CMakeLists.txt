@@ -8,5 +8,4 @@ idf_component_register(SRCS
 	"src/system_utils.c"
 	"src/wifi.c"
 	INCLUDE_DIRS "include"
-	REQUIRES mqtt esp_peripherals audio_pipeline esp_http_client driver audio_stream mbedtls esp_netif
-	EMBED_TXTFILES "certs/mqtt_ca.pem")
+	REQUIRES mqtt esp_peripherals audio_pipeline esp_http_client driver audio_stream mbedtls esp_netif)

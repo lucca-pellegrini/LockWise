@@ -3,6 +3,7 @@
 #include "audio_stream.h"
 #include "config.h"
 #include "driver/gpio.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "system_utils.h"
 #include "esp_system.h"
@@ -26,10 +27,6 @@ extern TaskHandle_t idle_blink_task;
 
 /* Global MQTT client handle */
 esp_mqtt_client_handle_t mqtt_client;
-
-/* External reference to embedded certificate */
-extern const uint8_t mqtt_ca_pem_start[] asm("_binary_mqtt_ca_pem_start");
-extern const uint8_t mqtt_ca_pem_end[] asm("_binary_mqtt_ca_pem_end");
 
 /* Forward declarations */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
@@ -182,26 +179,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	}
 }
 
-static void log_embedded_cert_info(void)
-{
-	size_t len = (size_t)(mqtt_ca_pem_end - mqtt_ca_pem_start);
-	ESP_LOGE(TAG, "Embedded cert pointer:\033[1m %p len=%u", mqtt_ca_pem_start, (unsigned)len);
-	if (len > 0) {
-		// print first line (safely)
-		char first[64];
-		size_t n = len < sizeof(first) - 1 ? len : sizeof(first) - 1;
-		memcpy(first, mqtt_ca_pem_start, n);
-		first[n] = '\0';
-		ESP_LOGE(TAG, "First bytes:\033[1m '%s'", first);
-	} else {
-		ESP_LOGE(TAG, "No embedded certificate found (len == 0)");
-	}
-}
+
 
 void mqtt_init(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);
-	// log_embedded_cert_info();
 	ESP_LOGI(TAG, "Initializing MQTT, broker:\033[1m %s", config.mqtt_broker_url);
 
 	// Extract hostname from URL for DNS testing
@@ -297,12 +279,10 @@ void mqtt_init(void)
 		.session.keepalive = 60,
 	};
 
-	// If using mqtts://, configure TLS with embedded certificate
+	// If using mqtts://, configure TLS with certificate bundle
 	if (strncmp(config.mqtt_broker_url, "mqtts://", 8) == 0) {
-		mqtt_cfg.broker.verification.certificate = (const char *)mqtt_ca_pem_start;
-		mqtt_cfg.broker.verification.certificate_len = 0;
-		ESP_LOGI(TAG, "MQTT TLS enabled with embedded CA certificate (%d bytes)",
-			 (int)(mqtt_ca_pem_end - mqtt_ca_pem_start));
+		mqtt_cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+		ESP_LOGI(TAG, "MQTT TLS enabled with certificate bundle");
 	}
 
 	mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
