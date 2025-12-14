@@ -32,7 +32,9 @@ static const char *TAG = "\033[1mLOCKWISE:\033[34mWIFI\033[0m\033[34m";
 static int pairing_sock = -1;
 static bool paired = false;
 static SemaphoreHandle_t pair_mutex;
+static bool ip_handler_registered = false;
 
+static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 static void handle_pairing_client(int client_sock);
 static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id);
 static void timeout_task(void *param);
@@ -51,12 +53,18 @@ void wifi_init(void)
 	};
 
 	// Copy SSID and password to the config
-	strncpy((char *)wifi_cfg.wifi_config.sta.ssid, config.wifi_ssid, sizeof(wifi_cfg.wifi_config.sta.ssid));
-	strncpy((char *)wifi_cfg.wifi_config.sta.password, config.wifi_password,
-		sizeof(wifi_cfg.wifi_config.sta.password));
+	snprintf((char *)wifi_cfg.wifi_config.sta.ssid, sizeof(wifi_cfg.wifi_config.sta.ssid), "%s", config.wifi_ssid);
+	snprintf((char *)wifi_cfg.wifi_config.sta.password, sizeof(wifi_cfg.wifi_config.sta.password), "%s",
+		 config.wifi_password);
 
 	esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
 	esp_periph_start(set, wifi_handle);
+
+	if (!ip_handler_registered) {
+		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
+		ip_handler_registered = true;
+	}
+
 	esp_err_t wifi_result = periph_wifi_wait_for_connected(wifi_handle, 30000); // 30 second timeout
 	if (wifi_result != ESP_OK) {
 		ESP_LOGE(TAG, "WiFi connection failed within timeout, restarting");
@@ -64,28 +72,33 @@ void wifi_init(void)
 	}
 
 	ESP_LOGI(TAG, "WiFi connected successfully");
+}
 
-	// Get and log IP address
-	esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-	if (netif) {
-		esp_netif_ip_info_t ip_info;
-		esp_netif_get_ip_info(netif, &ip_info);
-		ESP_LOGI(TAG, "IP Address:\033[1m " IPSTR, IP2STR(&ip_info.ip));
-		ESP_LOGI(TAG, "Gateway:\033[1m " IPSTR, IP2STR(&ip_info.gw));
-		ESP_LOGI(TAG, "Netmask:\033[1m " IPSTR, IP2STR(&ip_info.netmask));
+static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+	if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+		esp_netif_t *netif = event->esp_netif;
 
-		// Set static DNS servers
-		esp_netif_dns_info_t dns_main = { .ip = { .u_addr = { .ip4 = { .addr = 0x01010101 } } } };
-		esp_netif_dns_info_t dns_backup = { .ip = { .u_addr = { .ip4 = { .addr = 0x08080808 } } } };
-		esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
-		esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+		esp_netif_ip_info_t *ip_info = &event->ip_info;
 
-		// Get and log DNS servers
-		esp_netif_dns_info_t dns_info;
-		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
-		ESP_LOGI(TAG, "DNS Server:\033[1m " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
-		esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_info);
-		ESP_LOGI(TAG, "DNS Backup:\033[1m " IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+		ESP_LOGI(TAG, "IP Address: " IPSTR, IP2STR(&ip_info->ip));
+		ESP_LOGI(TAG, "Gateway:    " IPSTR, IP2STR(&ip_info->gw));
+		ESP_LOGI(TAG, "Netmask:    " IPSTR, IP2STR(&ip_info->netmask));
+
+		// Set DNS safely
+		esp_netif_dns_info_t dns_main = { 0 };
+		dns_main.ip.type = ESP_IPADDR_TYPE_V4;
+		dns_main.ip.u_addr.ip4.addr = esp_ip4addr_aton("1.1.1.1");
+
+		esp_netif_dns_info_t dns_backup = { 0 };
+		dns_backup.ip.type = ESP_IPADDR_TYPE_V4;
+		dns_backup.ip.u_addr.ip4.addr = esp_ip4addr_aton("8.8.8.8");
+
+		ESP_ERROR_CHECK(esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main));
+		ESP_ERROR_CHECK(esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup));
+
+		ESP_LOGI(TAG, "DNS configured");
 	}
 }
 
@@ -100,11 +113,10 @@ static void wifi_init_ap(void)
 	ap_password[4] = '-';
 	strncpy(ap_password + 5, config.device_id + 4, 4);
 	ap_password[9] = '\0';
+
+	// Uppercase the password
 	for (int i = 0; i < 9; i++)
-		// Uppercase the password
-		for (int i = 0; i < 9; i++) {
-			ap_password[i] = toupper((unsigned char)ap_password[i]);
-		}
+		ap_password[i] = toupper((unsigned char)ap_password[i]);
 
 	// Generate SSID with MAC-derived identifier
 	uint8_t mac[6];
@@ -132,16 +144,19 @@ static void wifi_init_ap(void)
 	}
 
 	// Set static IP for AP before starting WiFi
+	// Stop DHCP server BEFORE setting static IP
+	ESP_ERROR_CHECK(esp_netif_dhcps_stop(ap_netif));
+
+	// Set static IP for AP
 	esp_netif_ip_info_t ap_ip_info = {
 		.ip = { .addr = ESP_IP4TOADDR(192, 168, 4, 1) },
 		.netmask = { .addr = ESP_IP4TOADDR(255, 255, 255, 0) },
 		.gw = { .addr = ESP_IP4TOADDR(192, 168, 4, 1) },
 	};
-	ret = esp_netif_set_ip_info(ap_netif, &ap_ip_info);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "esp_netif_set_ip_info failed: %s", esp_err_to_name(ret));
-		// not fatal for debugging, continue
-	}
+	ESP_ERROR_CHECK(esp_netif_set_ip_info(ap_netif, &ap_ip_info));
+
+	// Restart DHCP server
+	ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
 
 	// Initialize WiFi driver
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -179,14 +194,6 @@ static void wifi_init_ap(void)
 	if (ret != ESP_OK) {
 		ESP_LOGE(TAG, "esp_wifi_start failed: %s", esp_err_to_name(ret));
 		return;
-	}
-
-	// Start DHCP server for AP netif
-	ret = esp_netif_dhcps_start(ap_netif);
-	if (ret == ESP_OK) {
-		ESP_LOGI(TAG, "DHCP server started successfully");
-	} else {
-		ESP_LOGE(TAG, "Failed to start DHCP server: %s", esp_err_to_name(ret));
 	}
 
 	// Log AP IP info

@@ -44,14 +44,16 @@ static void touch_monitor_task(void *param)
 {
 	for (;;) {
 		uint16_t touch_value;
+
 		touch_pad_read_filtered(TOUCH_PAD_NUM9, &touch_value);
 		if (touch_value && touch_value < 750) { // Adjust threshold as needed
 			ESP_LOGI(TAG, "Set touch detected, toggling pairing mode");
 			update_config("pairing_mode", config.pairing_mode ? "0" : "1");
 			while (touch_value < 750)
-				touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
+				touch_pad_read_filtered(TOUCH_PAD_NUM9, &touch_value);
 			cleanup_restart();
 		}
+
 		touch_pad_read_filtered(TOUCH_PAD_NUM8, &touch_value);
 		if (touch_value && touch_value < 750) {
 			ESP_LOGI(TAG, "Play touch detected, toggling door");
@@ -79,6 +81,7 @@ void app_main(void)
 	pin_bit_mask |= (LOCK_ACTUATOR_GPIO >= 0) ? (1ULL << LOCK_ACTUATOR_GPIO) : 0;
 
 	// Apply configuration
+	ESP_LOGI(TAG, "Setting up GPIO");
 	gpio_config(&(gpio_config_t){ .pin_bit_mask = pin_bit_mask, .mode = GPIO_MODE_OUTPUT });
 
 	// Ensure LED is off initially (not streaming)
@@ -99,6 +102,7 @@ void app_main(void)
 		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
 		.source_clk = UART_SCLK_APB,
 	};
+	ESP_LOGI(TAG, "Setting up UART driver");
 	uart_param_config(UART_NUM_0, &uart_config);
 	uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
 
@@ -107,6 +111,7 @@ void app_main(void)
 	// Initialize NVS
 	esp_err_t err = nvs_flash_init();
 	if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+		ESP_LOGE(TAG, "Non-volatile memory full. Flashing.");
 		ESP_ERROR_CHECK(nvs_flash_erase());
 		err = nvs_flash_init();
 	}
@@ -126,6 +131,7 @@ void app_main(void)
 	xTaskCreate(serial_command_task, "serial_cmd", 4096, NULL, 4, NULL);
 
 	// Initialize touch pad for Set (TOUCH_PAD_NUM9, IO32) and Play (TOUCH_PAD_NUM8, IO33)
+	ESP_LOGI(TAG, "Setting up touch pads");
 	touch_pad_init();
 	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
 	touch_pad_config(TOUCH_PAD_NUM9, 0);
@@ -154,7 +160,11 @@ void app_main(void)
 		esp_deep_sleep_start();
 	}
 
-	// Initialize audio board early to set up I2C
+	// Initialize WiFi (station mode)
+	wifi_init();
+
+	// Initialize audio board after WiFi to avoid ISR conflicts
+	ESP_LOGI(TAG, "Setting up audio board");
 	g_board_handle = audio_calloc(1, sizeof(struct audio_board_handle));
 	AUDIO_MEM_CHECK(TAG, g_board_handle, return);
 	audio_hal_codec_config_t cfg = AUDIO_CODEC_DEFAULT_CONFIG();
@@ -164,9 +174,6 @@ void app_main(void)
 
 	// Get I²C handle
 	g_i2c_handle = i2c_bus_get_master_handle(I2C_NUM_0);
-
-	// Initialize WiFi (station mode)
-	wifi_init();
 
 	// Initialize system clock
 	esp_sntp_config_t ntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
