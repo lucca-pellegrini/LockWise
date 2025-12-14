@@ -2197,8 +2197,8 @@ async fn verify_voice(
 
     println!("DEBUG: Verification score: {}", score);
 
-    if score > 0.75 {
-        println!("DEBUG: Score {} > 0.75, unlocking device", score);
+    if score > 0.60 {
+        println!("DEBUG: Score {} > 0.60, unlocking device", score);
 
         // Unlock the device
         publish_control_message(&**mqtt_client, device_uuid, "UNLOCK".to_string())

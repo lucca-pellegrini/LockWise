@@ -1,4 +1,7 @@
 import base64
+import os
+import subprocess
+import tempfile
 
 import numpy as np
 import torch
@@ -23,13 +26,14 @@ MIN_SECONDS = 2.0
 # -------------------------
 
 try:
+    print("DEBUG: Loading SpeechBrain model")
     spkrec = SpeakerRecognition.from_hparams(
         source=MODEL_SOURCE, savedir=MODEL_DIR, run_opts={"device": "cpu"}  # or "cuda"
     )
     print("DEBUG: SpeechBrain model loaded successfully")
 except Exception as e:
     print(f"DEBUG: Failed to load SpeechBrain model: {e}")
-    spkrec = None
+    exit(1)
 
 resampler = torchaudio.transforms.Resample(orig_freq=EXPECTED_SR, new_freq=MODEL_SR)
 
@@ -136,6 +140,27 @@ def verify(req: VerifyRequest):
         print(f"DEBUG: Verify request with {len(req.candidates)} candidates")
         pcm = base64.b64decode(req.pcm_base64)
         print(f"DEBUG: Decoded {len(pcm)} bytes of audio data")
+
+        if os.getenv("DEBUG_PLAY_AUDIO"):
+            print("DEBUG: Playing audio sample")
+            with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as f:
+                f.write(pcm)
+                temp_file = f.name
+            try:
+                subprocess.run([
+                    "mpv",
+                    "--no-config",
+                    "--demuxer=rawaudio",
+                    "--demuxer-rawaudio-format=s16le",
+                    "--demuxer-rawaudio-channels=1",
+                    "--demuxer-rawaudio-rate=44100",
+                    temp_file
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"DEBUG: Failed to play audio: {e}")
+            finally:
+                os.unlink(temp_file)
+
         test_emb = extract_embedding(pcm)
         print(f"DEBUG: Extracted test embedding with shape {test_emb.shape}")
 

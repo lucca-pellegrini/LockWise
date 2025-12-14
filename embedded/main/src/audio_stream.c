@@ -11,13 +11,17 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "filter_resample.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "http_stream.h"
 #include "i2s_stream.h"
 #include "lock.h"
+#include "math.h"
 #include "mqtt.h"
+#include "raw_stream.h"
 #include "sdkconfig.h"
 #include <string.h>
 
@@ -29,6 +33,7 @@ static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 #define AUDIO_SAMPLE_RATE 44100
 #define AUDIO_BITS 16
 #define AUDIO_CHANNELS 1
+#define NOISE_RMS_THRESHOLD 2000.0
 
 static QueueHandle_t audio_stream_queue;
 static audio_pipeline_handle_t pipeline;
@@ -36,6 +41,14 @@ static audio_element_handle_t i2s_stream_reader;
 static audio_element_handle_t http_stream_writer;
 static bool is_streaming = false;
 static esp_timer_handle_t stop_timer = NULL;
+
+// Monitoring for noise detection
+static audio_pipeline_handle_t pipeline_mon;
+static audio_element_handle_t i2s_mon;
+static audio_element_handle_t raw_mon;
+static TaskHandle_t monitoring_task_handle;
+static bool speech_detected = false;
+static SemaphoreHandle_t vad_mutex;
 
 esp_err_t _http_stream_event_handle(http_stream_event_msg_t *msg)
 {
@@ -109,12 +122,100 @@ static void stop_timer_callback(void *arg)
 	audio_stream_send_cmd(AUDIO_STREAM_STOP);
 }
 
+static void setup_monitoring_pipeline(void)
+{
+	ESP_LOGI(TAG, "Setting up monitoring pipeline for noise detection");
+
+	audio_hal_ctrl_codec(g_board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
+
+	audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
+	pipeline_mon = audio_pipeline_init(&pipeline_cfg);
+
+	i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT_WITH_TYLE_AND_CH(CODEC_ADC_I2S_PORT, 44100, 16, AUDIO_STREAM_READER, 1);
+	i2s_mon = i2s_stream_init(&i2s_cfg);
+
+	raw_stream_cfg_t raw_cfg = {
+		.out_rb_size = 8 * 1024,
+		.type = AUDIO_STREAM_READER,
+	};
+	raw_mon = raw_stream_init(&raw_cfg);
+
+	audio_pipeline_register(pipeline_mon, i2s_mon, "i2s_mon");
+	audio_pipeline_register(pipeline_mon, raw_mon, "raw_mon");
+
+	const char *link_tag[2] = { "i2s_mon", "raw_mon" };
+	audio_pipeline_link(pipeline_mon, &link_tag[0], 2);
+
+	audio_pipeline_run(pipeline_mon);
+}
+
+static void teardown_monitoring_pipeline(void)
+{
+	if (pipeline_mon) {
+		audio_pipeline_stop(pipeline_mon);
+		audio_pipeline_wait_for_stop(pipeline_mon);
+		audio_pipeline_terminate(pipeline_mon);
+		audio_pipeline_unregister(pipeline_mon, i2s_mon);
+		audio_pipeline_unregister(pipeline_mon, raw_mon);
+		audio_pipeline_deinit(pipeline_mon);
+		audio_element_deinit(i2s_mon);
+		audio_element_deinit(raw_mon);
+		pipeline_mon = NULL;
+	}
+}
+
+
+
+static void monitoring_task(void *pvParameters)
+{
+	ESP_LOGI(TAG, "Starting noise monitoring task");
+
+	int16_t *vad_buff = (int16_t *)malloc(480 * sizeof(short)); // 30ms at 16kHz
+	if (!vad_buff) {
+		ESP_LOGE(TAG, "Failed to allocate VAD buffer");
+		vTaskDelete(NULL);
+		return;
+	}
+
+	// Wait 5 seconds after setup to ignore initialization noise
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	while (1) {
+		if (!pipeline_mon) {
+			setup_monitoring_pipeline();
+		}
+
+		int ret = raw_stream_read(raw_mon, (char *)vad_buff, 480 * sizeof(short));
+		if (ret > 0) {
+			long long sum = 0;
+			for (int i = 0; i < 480; i++) {
+				sum += (long long)vad_buff[i] * vad_buff[i];
+			}
+			double rms = sqrt(sum / 480.0);
+			xSemaphoreTake(vad_mutex, portMAX_DELAY);
+			if (!speech_detected && rms > NOISE_RMS_THRESHOLD) {
+				speech_detected = true;
+				ESP_LOGI(TAG, "Noise detected (RMS %.2f > %.2f), starting streaming", rms,
+					 NOISE_RMS_THRESHOLD);
+				audio_stream_send_cmd(AUDIO_STREAM_START);
+			}
+			xSemaphoreGive(vad_mutex);
+		} else {
+			ESP_LOGW(TAG, "Failed to read from raw stream");
+			vTaskDelay(pdMS_TO_TICKS(100));
+		}
+	}
+
+	free(vad_buff);
+	vTaskDelete(NULL);
+}
+
 static void setup_pipeline(void)
 {
 	ESP_LOGI(TAG, "Setting up audio pipeline for streaming");
 
 	// Initialize audio board
-	audio_hal_ctrl_codec(g_board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_BOTH, AUDIO_HAL_CTRL_START);
+	audio_hal_ctrl_codec(g_board_handle->audio_hal, AUDIO_HAL_CODEC_MODE_ENCODE, AUDIO_HAL_CTRL_START);
 
 	audio_pipeline_cfg_t pipeline_cfg = DEFAULT_AUDIO_PIPELINE_CONFIG();
 	pipeline = audio_pipeline_init(&pipeline_cfg);
@@ -158,6 +259,7 @@ static void start_streaming(void)
 		ESP_LOGW(TAG, "Already streaming");
 		return;
 	}
+	is_streaming = true;
 
 	mqtt_publish_status("STREAMING");
 	ESP_LOGI(TAG, "Starting audio streaming to %s", config.backend_url);
@@ -171,10 +273,13 @@ static void start_streaming(void)
 
 	audio_pipeline_run(pipeline);
 
-	is_streaming = true;
 	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 1);
 	if (idle_blink_task)
 		vTaskSuspend(idle_blink_task);
+	// Stop monitoring while streaming
+	teardown_monitoring_pipeline();
+	if (monitoring_task_handle)
+		vTaskSuspend(monitoring_task_handle);
 	ESP_LOGI(TAG, "Audio streaming started");
 
 	if (!stop_timer) {
@@ -213,6 +318,12 @@ static void stop_streaming(void)
 	if (idle_blink_task)
 		vTaskResume(idle_blink_task);
 	gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+	// Reset speech detection flag, resume monitoring task
+	xSemaphoreTake(vad_mutex, portMAX_DELAY);
+	speech_detected = false;
+	xSemaphoreGive(vad_mutex);
+	if (monitoring_task_handle)
+		vTaskResume(monitoring_task_handle);
 	ESP_LOGI(TAG, "Audio streaming stopped");
 }
 
@@ -241,7 +352,9 @@ void audio_stream_init(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);
 	audio_stream_queue = xQueueCreate(10, sizeof(audio_stream_cmd_t));
+	vad_mutex = xSemaphoreCreateMutex();
 	xTaskCreate(audio_stream_task, "audio_stream", 4096, NULL, 5, NULL);
+	xTaskCreate(monitoring_task, "audio_monitor", 4096, NULL, 4, &monitoring_task_handle);
 }
 
 void audio_stream_send_cmd(audio_stream_cmd_t cmd)
