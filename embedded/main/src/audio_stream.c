@@ -13,8 +13,6 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include <sys/time.h>
-#include <time.h>
 #include "filter_resample.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -27,6 +25,8 @@
 #include "raw_stream.h"
 #include "sdkconfig.h"
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 extern TaskHandle_t idle_blink_task;
 extern audio_board_handle_t g_board_handle;
@@ -41,9 +41,7 @@ static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 #define VAD_SAMPLES ((AUDIO_SAMPLE_RATE * VAD_FRAME_MS) / 1000)
 #define VAD_TRIGGER_FRAMES 6
 #define VAD_COOLDOWN_MS 2000
-#define MIN_SECONDS 5.0
 #define BYTES_PER_SEC (AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * (AUDIO_BITS / 8))
-#define MIN_BYTES ((size_t)(MIN_SECONDS * BYTES_PER_SEC))
 
 static QueueHandle_t audio_stream_queue;
 static audio_pipeline_handle_t pipeline;
@@ -107,7 +105,7 @@ static void vad_task(void *arg)
 	int speech_frames = 0;
 	int64_t last_trigger_us = 0;
 
-	while (1) {
+	for (;;) {
 		if (streaming_enabled) {
 			speech_frames = 0;
 			vTaskDelay(pdMS_TO_TICKS(50));
@@ -149,11 +147,6 @@ static void vad_task(void *arg)
 		}
 		rms = sqrt(rms / VAD_SAMPLES);
 
-		// debug logging occasionally
-		static int dbg_cnt = 0;
-		if ((dbg_cnt++ & 31) == 0)
-			ESP_LOGD(TAG, "VAD frame RMS=%.2f", rms);
-
 		if (rms > NOISE_RMS_THRESHOLD)
 			speech_frames++;
 		else
@@ -181,8 +174,15 @@ static void http_stream_task(void *arg)
 {
 	ESP_LOGI(TAG, "Starting HTTP stream task");
 
-	while (1) {
+	for (;;) {
 		xSemaphoreTake(stream_gate, portMAX_DELAY);
+
+		// Compute recording duration from config, cap at 10 seconds
+		int recording_seconds = config.audio_record_timeout_sec;
+		if (recording_seconds > 10)
+			recording_seconds = 10;
+		size_t min_bytes = (size_t)(recording_seconds * BYTES_PER_SEC);
+		ESP_LOGI(TAG, "Recording for %d seconds", recording_seconds);
 
 		// Reset pipeline to discard stale audio
 		audio_pipeline_stop(pipeline);
@@ -195,16 +195,6 @@ static void http_stream_task(void *arg)
 
 		char voice_url[512];
 		snprintf(voice_url, sizeof(voice_url), "%s/verify_voice/%s", config.backend_url, config.device_id);
-
-		// Debug: print wall clock time and CA bundle status
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		time_t now = tv.tv_sec;
-		struct tm tm;
-		localtime_r(&now, &tm);
-		ESP_LOGI(TAG, "Wall clock: %04d-%02d-%02d %02d:%02d:%02d (epoch=%lld)", tm.tm_year + 1900,
-			 tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (long long)now);
-		ESP_LOGI(TAG, "CA bundle attach ptr: %p", esp_crt_bundle_attach);
 
 		esp_http_client_config_t http_cfg = {
 			.url = voice_url,
@@ -237,8 +227,8 @@ static void http_stream_task(void *arg)
 			esp_http_client_set_header(http, "Authorization", auth_header);
 		}
 
-		// Buffer audio until MIN_BYTES
-		uint8_t *audio_buffer = heap_caps_malloc(MIN_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+		// Buffer audio until min_bytes
+		uint8_t *audio_buffer = heap_caps_malloc(min_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 		if (!audio_buffer) {
 			ESP_LOGE(TAG, "Failed to allocate audio buffer");
 			esp_http_client_cleanup(http);
@@ -263,11 +253,11 @@ static void http_stream_task(void *arg)
 		}
 
 		// Buffer audio
-		while (recording_active && pcm_bytes_sent < MIN_BYTES) {
+		while (recording_active && pcm_bytes_sent < min_bytes) {
 			int n = raw_stream_read(raw, (char *)buf, 4096);
 			if (n > 0) {
-				if (pcm_bytes_sent + n > MIN_BYTES) {
-					n = MIN_BYTES - pcm_bytes_sent;
+				if (pcm_bytes_sent + n > min_bytes) {
+					n = min_bytes - pcm_bytes_sent;
 				}
 				memcpy(audio_buffer + pcm_bytes_sent, buf, n);
 				pcm_bytes_sent += n;
@@ -276,7 +266,10 @@ static void http_stream_task(void *arg)
 
 		free(buf);
 
-		if (pcm_bytes_sent >= MIN_BYTES) {
+		ESP_LOGI(TAG, "Recording finished, sending HTTP request");
+		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
+
+		if (pcm_bytes_sent >= min_bytes) {
 			// Send with Content-Length
 			char length_str[16];
 			snprintf(length_str, sizeof(length_str), "%zu", pcm_bytes_sent);
@@ -296,7 +289,7 @@ static void http_stream_task(void *arg)
 				ESP_LOGE(TAG, "HTTP write failed: %d != %zu", written, pcm_bytes_sent);
 			}
 		} else {
-			ESP_LOGW(TAG, "Not enough audio buffered: %zu < %zu", pcm_bytes_sent, MIN_BYTES);
+			ESP_LOGW(TAG, "Not enough audio buffered: %zu < %zu", pcm_bytes_sent, min_bytes);
 		}
 
 		free(audio_buffer);
@@ -306,23 +299,19 @@ static void http_stream_task(void *arg)
 
 		int status_code = esp_http_client_get_status_code(http);
 		ESP_LOGI(TAG, "HTTP Status Code = %d", status_code);
-		if (status_code == 200) {
+		if (status_code == 200)
 			toggle_door(DOOR_REASON_VOICE);
-		}
+
+		// Resume blink task after response
+		if (idle_blink_task)
+			vTaskResume(idle_blink_task);
 
 		// Drain the response body fully
 		char response_buf[128];
-		int total_read = 0;
 		int read_len;
 		do {
 			read_len = esp_http_client_read(http, response_buf, sizeof(response_buf) - 1);
-			if (read_len > 0) {
-				response_buf[read_len] = 0;
-				ESP_LOGI(TAG, "HTTP response chunk: %s", response_buf);
-				total_read += read_len;
-			}
 		} while (read_len > 0);
-		ESP_LOGI(TAG, "Total response bytes read: %d", total_read);
 		esp_http_client_close(http);
 		esp_http_client_cleanup(http);
 
@@ -330,13 +319,10 @@ static void http_stream_task(void *arg)
 		streaming_enabled = false;
 
 		mqtt_publish_status("STOPPED_STREAMING");
-		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
-		if (idle_blink_task)
-			vTaskResume(idle_blink_task);
 
 		ESP_LOGI(TAG, "Sent %zu bytes", pcm_bytes_sent);
-		if (pcm_bytes_sent < MIN_BYTES) {
-			ESP_LOGW(TAG, "Sent less than minimum bytes: %zu < %zu", pcm_bytes_sent, MIN_BYTES);
+		if (pcm_bytes_sent < min_bytes) {
+			ESP_LOGW(TAG, "Sent less than minimum bytes: %zu < %zu", pcm_bytes_sent, min_bytes);
 		}
 	}
 }
