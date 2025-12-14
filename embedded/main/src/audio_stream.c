@@ -52,6 +52,7 @@ static volatile bool recording_active = false;
 static SemaphoreHandle_t stream_gate;
 static size_t pcm_bytes_sent = 0;
 static int64_t last_stream_us = 0;
+static TaskHandle_t fast_blink_task = NULL;
 
 static void audio_init_pipeline(void)
 {
@@ -256,9 +257,8 @@ static void http_stream_task(void *arg)
 		while (recording_active && pcm_bytes_sent < min_bytes) {
 			int n = raw_stream_read(raw, (char *)buf, 4096);
 			if (n > 0) {
-				if (pcm_bytes_sent + n > min_bytes) {
+				if (pcm_bytes_sent + n > min_bytes)
 					n = min_bytes - pcm_bytes_sent;
-				}
 				memcpy(audio_buffer + pcm_bytes_sent, buf, n);
 				pcm_bytes_sent += n;
 			}
@@ -266,8 +266,9 @@ static void http_stream_task(void *arg)
 
 		free(buf);
 
+		// Start fast blink task, indicating awaiting for server
+		xTaskCreate(blink, "fast_blink", 1024, &(blink_params_t){ 100, 10 }, 1, &fast_blink_task);
 		ESP_LOGI(TAG, "Recording finished, sending HTTP request");
-		gpio_set_level(LOCK_INDICATOR_LED_GPIO, 0);
 
 		if (pcm_bytes_sent >= min_bytes) {
 			// Send with Content-Length
@@ -289,10 +290,14 @@ static void http_stream_task(void *arg)
 				ESP_LOGE(TAG, "HTTP write failed: %d != %zu", written, pcm_bytes_sent);
 			}
 		} else {
-			ESP_LOGW(TAG, "Not enough audio buffered: %zu < %zu", pcm_bytes_sent, min_bytes);
+			ESP_LOGE(TAG, "Not enough audio buffered: %zu < %zu", pcm_bytes_sent, min_bytes);
 		}
 
 		free(audio_buffer);
+
+		ESP_LOGI(TAG, "Sent %zu bytes", pcm_bytes_sent);
+		if (pcm_bytes_sent < min_bytes)
+			ESP_LOGW(TAG, "Sent less than minimum bytes: %zu < %zu", pcm_bytes_sent, min_bytes);
 
 		// Fetch headers before checking status
 		esp_http_client_fetch_headers(http);
@@ -302,16 +307,20 @@ static void http_stream_task(void *arg)
 		if (status_code == 200)
 			toggle_door(DOOR_REASON_VOICE);
 
-		// Resume blink task after response
+		// Stop fast blink task and resume idle blink task after response
+		if (fast_blink_task) {
+			vTaskDelete(fast_blink_task);
+			fast_blink_task = NULL;
+		}
 		if (idle_blink_task)
 			vTaskResume(idle_blink_task);
 
 		// Drain the response body fully
 		char response_buf[128];
 		int read_len;
-		do {
+		do
 			read_len = esp_http_client_read(http, response_buf, sizeof(response_buf) - 1);
-		} while (read_len > 0);
+		while (read_len > 0);
 		esp_http_client_close(http);
 		esp_http_client_cleanup(http);
 
@@ -319,11 +328,6 @@ static void http_stream_task(void *arg)
 		streaming_enabled = false;
 
 		mqtt_publish_status("STOPPED_STREAMING");
-
-		ESP_LOGI(TAG, "Sent %zu bytes", pcm_bytes_sent);
-		if (pcm_bytes_sent < min_bytes) {
-			ESP_LOGW(TAG, "Sent less than minimum bytes: %zu < %zu", pcm_bytes_sent, min_bytes);
-		}
 	}
 }
 
