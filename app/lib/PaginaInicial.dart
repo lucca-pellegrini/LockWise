@@ -678,107 +678,47 @@ class _InicialState extends State<Inicial> {
                     ),
                     SizedBox(height: 8),
 
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 7,
-                      children: [
-                        _buildIconOption(
-                          Icons.star,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
+                    SizedBox(
+                      height: 150,
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 6,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 7,
                         ),
-                        _buildIconOption(
-                          Icons.home,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.lock,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.security,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.door_front_door,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.key,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.business,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.house,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.apartment,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.cabin,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.hotel,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.store,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.shop,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.restaurant,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.school,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                        _buildIconOption(
-                          Icons.church,
-                          iconeSelecionado,
-                          setStateDialog,
-                          (icon) => iconeSelecionado = icon,
-                        ),
-                      ],
+                        itemCount: 18,
+                        itemBuilder: (context, index) {
+                          final icons = [
+                            Icons.star,
+                            Icons.home,
+                            Icons.lock,
+                            Icons.security,
+                            Icons.door_front_door,
+                            Icons.key,
+                            Icons.science,
+                            Icons.house,
+                            Icons.dns,
+                            Icons.cabin,
+                            Icons.hotel,
+                            Icons.store,
+                            Icons.shop,
+                            Icons.restaurant,
+                            Icons.school,
+                            Icons.church,
+                            Icons.computer,
+                            Icons.warehouse,
+                          ];
+                          final icon = icons[index];
+                          return _buildIconOption(
+                            icon,
+                            iconeSelecionado,
+                            setStateDialog,
+                            (icon) => iconeSelecionado = icon,
+                          );
+                        },
+                      ),
                     ),
 
                     SizedBox(height: 20),

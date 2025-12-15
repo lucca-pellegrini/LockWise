@@ -435,9 +435,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     Icons.security,
     Icons.door_front_door,
     Icons.key,
-    Icons.business,
+    Icons.science, // lab
     Icons.house,
-    Icons.apartment,
+    Icons.dns, // server rack
     Icons.cabin,
     Icons.hotel,
     Icons.store,
@@ -445,6 +445,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     Icons.restaurant,
     Icons.school,
     Icons.church,
+    Icons.computer,
+    Icons.warehouse,
   ];
 
   Widget _buildIconOption(
@@ -543,19 +545,19 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                           style: TextStyle(color: Colors.white),
                         ),
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 7,
-                          children: availableIcons
-                              .map(
-                                (icon) => _buildIconOption(
-                                  icon,
-                                  selectedIcon,
-                                  setStateDialog,
-                                  (newIcon) => selectedIcon = newIcon,
-                                ),
-                              )
-                              .toList(),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: NeverScrollableScrollPhysics(),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 6,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 7,
+                          ),
+                          itemCount: availableIcons.length,
+                          itemBuilder: (context, index) {
+                            final icon = availableIcons[index];
+                            return _buildIconOption(icon, selectedIcon, setStateDialog, (newIcon) => selectedIcon = newIcon);
+                          },
                         ),
                         const SizedBox(height: 20),
                         Row(
