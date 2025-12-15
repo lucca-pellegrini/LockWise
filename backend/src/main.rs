@@ -1341,7 +1341,7 @@ async fn get_temp_device(
     }
 
     // Get device data
-    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold FROM devices WHERE uuid = $1")
+    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold FROM devices WHERE uuid = $1")
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
@@ -1357,6 +1357,7 @@ async fn get_temp_device(
         let mqtt_heartbeat_interval_sec: Option<i32> = row.get(8);
         let audio_record_timeout_sec: Option<i32> = row.get(9);
         let lock_timeout_ms: Option<i32> = row.get(10);
+        let pairing_timeout_sec: Option<i32> = row.get(11);
         let lock_state: Option<String> = row.get(12);
         let locked_down_at: Option<chrono::DateTime<chrono::Utc>> = row.get(13);
         let voice_detection_enable: Option<bool> = row.get(14);
@@ -1375,6 +1376,7 @@ async fn get_temp_device(
             "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
             "audio_record_timeout_sec": audio_record_timeout_sec,
             "lock_timeout_ms": lock_timeout_ms,
+            "pairing_timeout_sec": pairing_timeout_sec,
             "lock_state": lock_state,
             "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
             "voice_detection_enable": voice_detection_enable,
@@ -1516,7 +1518,7 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
     };
 
     let rows = sqlx::query(
-        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.lock_state, d.locked_down_at, d.voice_detection_enable, d.voice_invite_enable, d.voice_threshold FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
+        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.pairing_timeout_sec, d.lock_state, d.locked_down_at, d.voice_detection_enable, d.voice_invite_enable, d.voice_threshold FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
     )
     .bind(&firebase_uid)
     .bind(Utc::now().timestamp_millis())
@@ -1537,6 +1539,7 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
             let mqtt_heartbeat_interval_sec: Option<i32> = row.get(8);
             let audio_record_timeout_sec: Option<i32> = row.get(9);
             let lock_timeout_ms: Option<i32> = row.get(10);
+            let pairing_timeout_sec: Option<i32> = row.get(11);
             let lock_state: Option<String> = row.get(12);
             let locked_down_at: Option<chrono::DateTime<chrono::Utc>> = row.get(13);
             let voice_detection_enable: Option<bool> = row.get(14);
@@ -1554,6 +1557,7 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
                 "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
                 "audio_record_timeout_sec": audio_record_timeout_sec,
                 "lock_timeout_ms": lock_timeout_ms,
+                "pairing_timeout_sec": pairing_timeout_sec,
                 "lock_state": lock_state,
                 "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
                 "voice_detection_enable": voice_detection_enable,
