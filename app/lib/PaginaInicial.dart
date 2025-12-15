@@ -586,6 +586,7 @@ class _InicialState extends State<Inicial> {
             return Dialog(
               backgroundColor: Colors.transparent,
               child: _GlassDialog(
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
 
@@ -616,10 +617,10 @@ class _InicialState extends State<Inicial> {
 
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Por favor, insira o nome da fechadura';
-                          } else if (value.length > 15) {
-                            return 'O nome deve ter pelo menos 3 caracteres';
-                          }
+                              return 'Por favor, insira o nome da fechadura';
+                            } else if (value.length > 15) {
+                              return 'O nome deve ter pelo menos 3 caracteres';
+                            }
                           return null;
                         },
 
@@ -699,40 +700,40 @@ class _InicialState extends State<Inicial> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Rede WiFi',
-                          labelStyle: TextStyle(color: Colors.white),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.blueGrey.shade400,
-                              width: 1.5,
-                            ),
+                      decoration: InputDecoration(
+                        labelText: 'Rede WiFi',
+                        labelStyle: TextStyle(color: Colors.white),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Colors.blueGrey.shade400,
+                            width: 1.5,
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.white,
-                              width: 2.0,
-                            ),
-                          ),
-                          prefixIcon: Icon(Icons.wifi, color: Colors.white),
                         ),
-                        dropdownColor: Colors.blueAccent.withOpacity(0.8),
-                        style: TextStyle(color: Colors.white),
-                        value: selectedWifiNetwork,
-                        items: _wifiNetworks
-                            .where((ap) => ap.ssid.isNotEmpty)
-                            .map(
-                              (ap) => DropdownMenuItem<String>(
-                                value: ap.ssid,
-                                child: Text(ap.ssid),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          selectedWifiNetwork = value;
-                          setStateDialog(() {});
-                        },
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Colors.white,
+                            width: 2.0,
+                          ),
+                        ),
+                        prefixIcon: Icon(Icons.wifi, color: Colors.white),
                       ),
+                      dropdownColor: Colors.blueAccent.withOpacity(0.8),
+                      style: TextStyle(color: Colors.white),
+                      value: selectedWifiNetwork,
+                      items: _wifiNetworks
+                      .where((ap) => ap.ssid.isNotEmpty)
+                      .map(
+                      (ap) => DropdownMenuItem<String>(
+                          value: ap.ssid,
+                          child: Text(ap.ssid),
+                        ),
+                      )
+                      .toList(),
+                      onChanged: (value) {
+                        selectedWifiNetwork = value;
+                        setStateDialog(() {});
+                      },
+                    ),
                     ),
 
                     SizedBox(height: 10),
@@ -795,142 +796,142 @@ class _InicialState extends State<Inicial> {
 
                                 _GlassDialogButton(
                                   text: isPairing
-                                      ? 'Pareando...'
-                                      : 'Parear Dispositivo',
+                                  ? 'Pareando...'
+                                  : 'Parear Dispositivo',
                                   onPressed: isPairing
-                                      ? () {}
-                                      : () async {
-                                          if (nomeController.text.isNotEmpty &&
-                                              selectedWifiNetwork != null &&
-                                              wifiPassword.isNotEmpty) {
-                                            setStateDialog(
-                                              () => isPairing = true,
-                                            );
-                                            try {
-                                              // First, send configuration to device
-                                              String configData =
-                                                  '${widget.usuarioId}\n$selectedWifiNetwork\n$wifiPassword';
-
-                                              var response = await http.post(
-                                                Uri.parse(
-                                                  'http://192.168.4.1/configure',
-                                                ),
-                                                headers: {
-                                                  'Content-Type': 'text/plain',
-                                                },
-                                                body: configData,
+                                  ? () {}
+                                  : () async {
+                                    if (nomeController.text.isNotEmpty &&
+                                                selectedWifiNetwork != null &&
+                                                wifiPassword.isNotEmpty) {
+                                              setStateDialog(
+                                                () => isPairing = true,
                                               );
+                                              try {
+                                                // First, send configuration to device
+                                                String configData =
+                                                    '${widget.usuarioId}\n$selectedWifiNetwork\n$wifiPassword';
 
-                                              if (response.statusCode == 200) {
-                                                // Parse device UUID from response body
-                                                String deviceUuid = response
-                                                    .body
-                                                    .trim();
-
-                                                // Show message to reconnect to home WiFi
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'Configuração enviada. Reconecte-se à sua rede WiFi ou mobile.',
-                                                    ),
-                                                    duration: Duration(
-                                                      seconds: 3,
-                                                    ),
+                                                var response = await http.post(
+                                                  Uri.parse(
+                                                    'http://192.168.4.1/configure',
                                                   ),
+                                                  headers: {
+                                                    'Content-Type': 'text/plain',
+                                                  },
+                                                  body: configData,
                                                 );
 
-                                                // Wait for user to reconnect
-                                                await Future.delayed(
-                                                  Duration(seconds: 10),
-                                                );
+                                                if (response.statusCode == 200) {
+                                                  // Parse device UUID from response body
+                                                  String deviceUuid = response
+                                                      .body
+                                                      .trim();
 
-                                                // Success! Now add or update in Firestore with device UUID as document ID
-                                                int iconeCodePoint =
-                                                    iconeSelecionado.codePoint;
+                                                  // Show message to reconnect to home WiFi
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Configuração enviada. Reconecte-se à sua rede WiFi ou mobile.',
+                                                      ),
+                                                      duration: Duration(
+                                                        seconds: 3,
+                                                      ),
+                                                    ),
+                                                  );
 
-                                                final docRef = FirebaseFirestore
-                                                    .instance
-                                                    .collection('fechaduras')
-                                                    .doc(widget.usuarioId)
-                                                    .collection('devices')
-                                                    .doc(deviceUuid);
+                                                  // Wait for user to reconnect
+                                                  await Future.delayed(
+                                                    Duration(seconds: 10),
+                                                  );
 
-                                                final doc = await docRef.get();
-                                                if (doc.exists) {
-                                                  // Update existing device
-                                                  await docRef.update({
-                                                    'nome': nomeController.text,
-                                                    'icone_code_point':
-                                                        iconeCodePoint,
-                                                    'updated_at':
-                                                        FieldValue.serverTimestamp(),
-                                                  });
+                                                  // Success! Now add or update in Firestore with device UUID as document ID
+                                                  int iconeCodePoint =
+                                                      iconeSelecionado.codePoint;
+
+                                                  final docRef = FirebaseFirestore
+                                                      .instance
+                                                      .collection('fechaduras')
+                                                      .doc(widget.usuarioId)
+                                                      .collection('devices')
+                                                      .doc(deviceUuid);
+
+                                                  final doc = await docRef.get();
+                                                  if (doc.exists) {
+                                                    // Update existing device
+                                                    await docRef.update({
+                                                      'nome': nomeController.text,
+                                                      'icone_code_point':
+                                                          iconeCodePoint,
+                                                      'updated_at':
+                                                          FieldValue.serverTimestamp(),
+                                                    });
+                                                  } else {
+                                                    // Add new device
+                                                    await docRef.set({
+                                                      'nome': nomeController.text,
+                                                      'icone_code_point':
+                                                          iconeCodePoint,
+                                                      'notificacoes': 1,
+                                                      'acesso_remoto': 1,
+                                                      'aberto': 1,
+                                                      'updated_at':
+                                                          FieldValue.serverTimestamp(),
+                                                    });
+                                                  }
+
+                                                  final fechaduraId = deviceUuid;
+
+                                                  await _carregarFechaduras();
+                                                  Navigator.of(context).pop();
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Fechadura "${nomeController.text}" pareada com sucesso!',
+                                                      ),
+                                                    ),
+                                                  );
                                                 } else {
-                                                  // Add new device
-                                                  await docRef.set({
-                                                    'nome': nomeController.text,
-                                                    'icone_code_point':
-                                                        iconeCodePoint,
-                                                    'notificacoes': 1,
-                                                    'acesso_remoto': 1,
-                                                    'aberto': 1,
-                                                    'updated_at':
-                                                        FieldValue.serverTimestamp(),
-                                                  });
-                                                }
-
-                                                final fechaduraId = deviceUuid;
-
-                                                await _carregarFechaduras();
-                                                Navigator.of(context).pop();
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'Fechadura "${nomeController.text}" pareada com sucesso!',
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Erro na configuração: ${response.statusCode}. Verifique se está conectado ao LockWise AP.',
+                                                      ),
                                                     ),
-                                                  ),
+                                                  );
+                                                }
+                                              } catch (e) {
+                                                print(
+                                                  'Erro ao parear dispositivo: $e',
                                                 );
-                                              } else {
                                                 ScaffoldMessenger.of(
                                                   context,
                                                 ).showSnackBar(
                                                   SnackBar(
                                                     content: Text(
-                                                      'Erro na configuração: ${response.statusCode}. Verifique se está conectado ao LockWise AP.',
+                                                      'Erro ao parear dispositivo. Verifique se está conectado ao LockWise AP.',
                                                     ),
                                                   ),
                                                 );
                                               }
-                                            } catch (e) {
-                                              print(
-                                                'Erro ao parear dispositivo: $e',
-                                              );
+                                            } else {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
                                                 SnackBar(
                                                   content: Text(
-                                                    'Erro ao parear dispositivo. Verifique se está conectado ao LockWise AP.',
+                                                    'Preencha todos os campos obrigatórios.',
                                                   ),
                                                 ),
                                               );
                                             }
-                                          } else {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Preencha todos os campos obrigatórios.',
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        },
+                                  },
                                   color: isPairing ? Colors.white : Colors.green,
                                 ),
                               ],
@@ -941,6 +942,7 @@ class _InicialState extends State<Inicial> {
                     ),
                   ],
                 ),
+              )
               ),
             );
           },

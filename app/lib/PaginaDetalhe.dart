@@ -546,88 +546,90 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                         width: 1,
                       ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Editar Fechadura',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: nomeController,
-                          style: TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText: 'Nome da Fechadura',
-                            labelStyle: TextStyle(color: Colors.white70),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white54),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.white),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Editar Fechadura',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Selecione um ícone:',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildIconGrid(
-                          selectedIcon: selectedIcon,
-                          setStateDialog: setStateDialog,
-                          onSelected: (icon) => selectedIcon = icon,
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _GlassButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              text: 'Cancelar',
-                              color: Colors.red,
-                              width: 120,
-                              height: 50,
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: nomeController,
+                            style: TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Nome da Fechadura',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.white54),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.white),
+                              ),
                             ),
-                            _GlassButton(
-                              onPressed: () async {
-                                final nome = nomeController.text.trim();
-                                final usuario =
-                                    await LocalService.getUsuarioLogado();
-                                final userId = usuario?['id'] as String;
-                                if (userId != null) {
-                                  await FirebaseFirestore.instance
-                                      .collection('fechaduras')
-                                      .doc(userId)
-                                      .collection('devices')
-                                      .doc(widget.fechaduraId)
-                                      .update({
-                                        'nome': nome,
-                                        'icone_code_point':
-                                            selectedIcon.codePoint,
-                                      });
-                                  setState(() {
-                                    fechadura!['nome'] = nome;
-                                    fechadura!['icone_code_point'] =
-                                        selectedIcon.codePoint;
-                                  });
-                                }
-                                Navigator.of(context).pop();
-                              },
-                              text: 'Confirmar',
-                              color: Colors.green,
-                              width: 120,
-                              height: 50,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Selecione um ícone:',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildIconGrid(
+                            selectedIcon: selectedIcon,
+                            setStateDialog: setStateDialog,
+                            onSelected: (icon) => selectedIcon = icon,
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _GlassButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                text: 'Cancelar',
+                                color: Colors.red,
+                                width: 120,
+                                height: 50,
+                              ),
+                              _GlassButton(
+                                onPressed: () async {
+                                  final nome = nomeController.text.trim();
+                                  final usuario =
+                                  await LocalService.getUsuarioLogado();
+                                  final userId = usuario?['id'] as String;
+                                  if (userId != null) {
+                                    await FirebaseFirestore.instance
+                                        .collection('fechaduras')
+                                        .doc(userId)
+                                        .collection('devices')
+                                        .doc(widget.fechaduraId)
+                                        .update({
+                                          'nome': nome,
+                                          'icone_code_point':
+                                              selectedIcon.codePoint,
+                                        });
+                                    setState(() {
+                                      fechadura!['nome'] = nome;
+                                      fechadura!['icone_code_point'] =
+                                          selectedIcon.codePoint;
+                                    });
+                                  }
+                                  Navigator.of(context).pop();
+                                },
+                                text: 'Confirmar',
+                                color: Colors.green,
+                                width: 120,
+                                height: 50,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    )
                   ),
                 ),
               ),
