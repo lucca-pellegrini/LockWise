@@ -144,6 +144,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
         setState(() {
           for (var item in _fechadurasTemporarias) {
             final deviceId = item['device']['device_id'];
+            final senderId = item['device']['sender_id'];
             final device = devices.firstWhere(
               (d) => d['uuid'] == deviceId,
               orElse: () => null,
@@ -162,6 +163,23 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               item['isUnlocked'] = false;
               item['locked_down_at'] = null;
             }
+            // Update name from FireStore
+            FirebaseFirestore.instance
+                .collection('fechaduras')
+                .doc(senderId)
+                .collection('devices')
+                .doc(deviceId)
+                .get()
+                .then((doc) {
+                  if (doc.exists) {
+                    final nome = doc.data()?['nome'];
+                    if (nome != null && nome != item['fechadura']['nome']) {
+                      setState(() {
+                        item['fechadura']['nome'] = nome;
+                      });
+                    }
+                  }
+                });
           }
         });
       }

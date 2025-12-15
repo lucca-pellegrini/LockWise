@@ -29,6 +29,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   String _duracaoSelecionada = '1_semana';
 
   // Config controllers
+  final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _wifiSsidController = TextEditingController();
   final TextEditingController _wifiPasswordController = TextEditingController();
   final TextEditingController _audioTimeoutController = TextEditingController();
@@ -317,6 +318,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         // isOpen is set from backend above
         _isLoading = false;
       });
+      _nomeController.text = f?['nome'] ?? '';
     } catch (e) {
       print('Erro ao carregar fechadura: $e');
       setState(() => _isLoading = false);
@@ -444,7 +446,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: Text(
-            'Detalhes da Fechadura',
+            fechadura?['nome'] ?? 'Detalhes da Fechadura',
             style: TextStyle(color: Colors.white),
           ),
 
@@ -698,6 +700,36 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       },
                       activeColor: Colors.blueAccent.withOpacity(0.5),
                       inactiveTrackColor: Colors.transparent,
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    TextFormField(
+                      controller: _nomeController,
+                      style: TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'Nome da Fechadura',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white54),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                      ),
+                      onChanged: (value) async {
+                        final usuario = await LocalService.getUsuarioLogado();
+                        final userId = usuario?['id'] as String;
+                        await FirebaseFirestore.instance
+                            .collection('fechaduras')
+                            .doc(userId)
+                            .collection('devices')
+                            .doc(widget.fechaduraId)
+                            .update({'nome': value});
+                        setState(() {
+                          fechadura!['nome'] = value;
+                        });
+                      },
                     ),
 
                     const SizedBox(height: 20),
@@ -1851,6 +1883,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   void dispose() {
     _pollingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _nomeController.dispose();
     _idUsuarioController.dispose();
     _wifiSsidController.dispose();
     _wifiPasswordController.dispose();

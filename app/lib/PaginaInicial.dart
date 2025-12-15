@@ -120,6 +120,8 @@ class _InicialState extends State<Inicial> {
       );
       if (response.statusCode == 200) {
         final devices = jsonDecode(response.body) as List;
+        final usuario = await LocalService.getUsuarioLogado();
+        final userId = usuario?['id'] as String;
         setState(() {
           for (var cartao in cartoes) {
             final device = devices.firstWhere(
@@ -139,6 +141,25 @@ class _InicialState extends State<Inicial> {
             } else {
               cartao['isUnlocked'] = false;
               cartao['locked_down_at'] = null;
+            }
+            // Update name from FireStore
+            if (userId != null) {
+              FirebaseFirestore.instance
+                  .collection('fechaduras')
+                  .doc(userId)
+                  .collection('devices')
+                  .doc(cartao['id'])
+                  .get()
+                  .then((doc) {
+                    if (doc.exists) {
+                      final nome = doc.data()?['nome'];
+                      if (nome != null && nome != cartao['name']) {
+                        setState(() {
+                          cartao['name'] = nome;
+                        });
+                      }
+                    }
+                  });
             }
           }
         });
