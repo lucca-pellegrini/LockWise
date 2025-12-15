@@ -931,7 +931,7 @@ class _InicialState extends State<Inicial> {
                                             );
                                           }
                                         },
-                                  color: Colors.white,
+                                  color: isPairing ? Colors.white : Colors.green,
                                 ),
                               ],
                             ),

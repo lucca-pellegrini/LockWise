@@ -1822,6 +1822,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                   }
                                 },
                                 text: ('Enviar'),
+                                color: Colors.green,
                                 width: 120,
                                 height: 50,
                               ),
