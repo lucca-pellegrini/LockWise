@@ -461,20 +461,53 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           onSelected(icon);
         });
       },
-      child: Container(
-        padding: EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selectedIcon == icon ? Colors.white : Colors.grey,
-            width: 2,
+      child: SizedBox(
+        width: 46,
+        height: 46,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: selectedIcon == icon ? Colors.white : Colors.grey,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(8),
           ),
-          borderRadius: BorderRadius.circular(8),
+          child: Icon(
+            icon,
+            color: selectedIcon == icon ? Colors.white : Colors.grey,
+            size: 26,
+          ),
         ),
-        child: Icon(
-          icon,
-          color: selectedIcon == icon ? Colors.white : Colors.grey,
-          size: 30,
+      ),
+    );
+  }
+
+  Widget _buildIconGrid({
+    required IconData selectedIcon,
+    required StateSetter setStateDialog,
+    required ValueChanged<IconData> onSelected,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 6,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 7,
         ),
+        itemCount: availableIcons.length,
+        itemBuilder: (context, index) {
+          final icon = availableIcons[index];
+          return _buildIconOption(
+            icon,
+            selectedIcon,
+            setStateDialog,
+            onSelected,
+          );
+        },
       ),
     );
   }
@@ -545,19 +578,10 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                           style: TextStyle(color: Colors.white),
                         ),
                         const SizedBox(height: 8),
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: NeverScrollableScrollPhysics(),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 6,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 7,
-                          ),
-                          itemCount: availableIcons.length,
-                          itemBuilder: (context, index) {
-                            final icon = availableIcons[index];
-                            return _buildIconOption(icon, selectedIcon, setStateDialog, (newIcon) => selectedIcon = newIcon);
-                          },
+                        _buildIconGrid(
+                          selectedIcon: selectedIcon,
+                          setStateDialog: setStateDialog,
+                          onSelected: (icon) => selectedIcon = icon,
                         ),
                         const SizedBox(height: 20),
                         Row(
