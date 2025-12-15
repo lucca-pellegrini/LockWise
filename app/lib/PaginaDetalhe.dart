@@ -428,6 +428,190 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     return IconData(codePoint, fontFamily: 'MaterialIcons');
   }
 
+  static const List<IconData> availableIcons = [
+    Icons.star,
+    Icons.home,
+    Icons.lock,
+    Icons.security,
+    Icons.door_front_door,
+    Icons.key,
+    Icons.business,
+    Icons.house,
+    Icons.apartment,
+    Icons.cabin,
+    Icons.hotel,
+    Icons.store,
+    Icons.shop,
+    Icons.restaurant,
+    Icons.school,
+    Icons.church,
+  ];
+
+  Widget _buildIconOption(
+    IconData icon,
+    IconData selectedIcon,
+    StateSetter setStateDialog,
+    Function(IconData) onSelected,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        setStateDialog(() {
+          onSelected(icon);
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selectedIcon == icon ? Colors.white : Colors.grey,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          color: selectedIcon == icon ? Colors.white : Colors.grey,
+          size: 30,
+        ),
+      ),
+    );
+  }
+
+  void _showEditDialog() {
+    final TextEditingController nomeController = TextEditingController(
+      text: fechadura?['nome'] ?? '',
+    );
+    IconData selectedIcon = _getIconeFechadura();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.blueAccent.withOpacity(0.3),
+                          Colors.blueAccent.withOpacity(0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Editar Fechadura',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: nomeController,
+                          style: TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Nome da Fechadura',
+                            labelStyle: TextStyle(color: Colors.white70),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white54),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Selecione um ícone:',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 7,
+                          children: availableIcons
+                              .map(
+                                (icon) => _buildIconOption(
+                                  icon,
+                                  selectedIcon,
+                                  setStateDialog,
+                                  (newIcon) => selectedIcon = newIcon,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _GlassButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              text: 'Cancelar',
+                              color: Colors.red,
+                              width: 120,
+                              height: 50,
+                            ),
+                            _GlassButton(
+                              onPressed: () async {
+                                final nome = nomeController.text.trim();
+                                final usuario =
+                                    await LocalService.getUsuarioLogado();
+                                final userId = usuario?['id'] as String;
+                                if (userId != null) {
+                                  await FirebaseFirestore.instance
+                                      .collection('fechaduras')
+                                      .doc(userId)
+                                      .collection('devices')
+                                      .doc(widget.fechaduraId)
+                                      .update({
+                                        'nome': nome,
+                                        'icone_code_point':
+                                            selectedIcon.codePoint,
+                                      });
+                                  setState(() {
+                                    fechadura!['nome'] = nome;
+                                    fechadura!['icone_code_point'] =
+                                        selectedIcon.codePoint;
+                                  });
+                                }
+                                Navigator.of(context).pop();
+                              },
+                              text: 'Confirmar',
+                              color: Colors.green,
+                              width: 120,
+                              height: 50,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -455,6 +639,10 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           centerTitle: true,
           backgroundColor: Colors.transparent,
           actions: [
+            IconButton(
+              icon: Icon(Icons.edit, color: Colors.white, size: 30.0),
+              onPressed: administrador ? () => _showEditDialog() : null,
+            ),
             IconButton(
               icon: Icon(Icons.security, color: Colors.white, size: 30.0),
               onPressed: administrador
@@ -701,38 +889,6 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                       activeColor: Colors.blueAccent.withOpacity(0.5),
                       inactiveTrackColor: Colors.transparent,
                     ),
-
-                    const SizedBox(height: 10),
-
-                    TextFormField(
-                      controller: _nomeController,
-                      style: TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Nome da Fechadura',
-                        labelStyle: TextStyle(color: Colors.white70),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white54),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white),
-                        ),
-                      ),
-                      onChanged: (value) async {
-                        final usuario = await LocalService.getUsuarioLogado();
-                        final userId = usuario?['id'] as String;
-                        await FirebaseFirestore.instance
-                            .collection('fechaduras')
-                            .doc(userId)
-                            .collection('devices')
-                            .doc(widget.fechaduraId)
-                            .update({'nome': value});
-                        setState(() {
-                          fechadura!['nome'] = value;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
 
                     Text(
                       'Configurações do Dispositivo:',

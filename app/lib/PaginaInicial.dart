@@ -142,7 +142,7 @@ class _InicialState extends State<Inicial> {
               cartao['isUnlocked'] = false;
               cartao['locked_down_at'] = null;
             }
-            // Update name from FireStore
+            // Update name and icon from FireStore
             if (userId != null) {
               FirebaseFirestore.instance
                   .collection('fechaduras')
@@ -152,12 +152,20 @@ class _InicialState extends State<Inicial> {
                   .get()
                   .then((doc) {
                     if (doc.exists) {
-                      final nome = doc.data()?['nome'];
-                      if (nome != null && nome != cartao['name']) {
-                        setState(() {
+                      final data = doc.data();
+                      final nome = data?['nome'];
+                      final iconeCodePoint = data?['icone_code_point'];
+                      setState(() {
+                        if (nome != null && nome != cartao['name']) {
                           cartao['name'] = nome;
-                        });
-                      }
+                        }
+                        if (iconeCodePoint != null) {
+                          cartao['icon'] = IconData(
+                            iconeCodePoint,
+                            fontFamily: 'MaterialIcons',
+                          );
+                        }
+                      });
                     }
                   });
             }
@@ -706,6 +714,66 @@ class _InicialState extends State<Inicial> {
                         ),
                         _buildIconOption(
                           Icons.key,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.business,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.house,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.apartment,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.cabin,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.hotel,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.store,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.shop,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.restaurant,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.school,
+                          iconeSelecionado,
+                          setStateDialog,
+                          (icon) => iconeSelecionado = icon,
+                        ),
+                        _buildIconOption(
+                          Icons.church,
                           iconeSelecionado,
                           setStateDialog,
                           (icon) => iconeSelecionado = icon,

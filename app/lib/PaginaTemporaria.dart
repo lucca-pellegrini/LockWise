@@ -163,7 +163,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               item['isUnlocked'] = false;
               item['locked_down_at'] = null;
             }
-            // Update name from FireStore
+            // Update name and icon from FireStore
             FirebaseFirestore.instance
                 .collection('fechaduras')
                 .doc(senderId)
@@ -172,12 +172,17 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
                 .get()
                 .then((doc) {
                   if (doc.exists) {
-                    final nome = doc.data()?['nome'];
-                    if (nome != null && nome != item['fechadura']['nome']) {
-                      setState(() {
+                    final data = doc.data();
+                    final nome = data?['nome'];
+                    final iconeCodePoint = data?['icone_code_point'];
+                    setState(() {
+                      if (nome != null && nome != item['fechadura']['nome']) {
                         item['fechadura']['nome'] = nome;
-                      });
-                    }
+                      }
+                      if (iconeCodePoint != null) {
+                        item['fechadura']['icone_code_point'] = iconeCodePoint;
+                      }
+                    });
                   }
                 });
           }
