@@ -130,6 +130,12 @@ flutter run --hot
 ```
 
 ### Build de Produção
+Antes de construir o APK, gere o ícone do aplicativo:
+
+```bash
+dart run flutter_launcher_icons:generate
+```
+
 ```bash
 # Android APK
 flutter build apk --release
