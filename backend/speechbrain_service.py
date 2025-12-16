@@ -28,8 +28,12 @@ MIN_SECONDS = 2.0
 try:
     print("DEBUG: Loading SpeechBrain model")
     from speechbrain.utils.fetching import LocalStrategy
+
     spkrec = SpeakerRecognition.from_hparams(
-        source=MODEL_SOURCE, savedir=MODEL_DIR, run_opts={"device": "cpu"}, local_strategy=LocalStrategy.NO_LINK  # Disable symlinks to bundle files
+        source=MODEL_SOURCE,
+        savedir=MODEL_DIR,
+        run_opts={"device": "cpu"},
+        local_strategy=LocalStrategy.NO_LINK,
     )
     print("DEBUG: SpeechBrain model loaded successfully")
 except Exception as e:
