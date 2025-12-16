@@ -1,3 +1,9 @@
+/// API do Back-end LockWise.
+///
+/// Este é o serviço de back-end principal do sistema LockWise, construído com Rocket.
+/// Fornece endpoints de API REST para gerenciamento de usuários, controle de dispositivos, autenticação por voz
+/// e comunicação baseada em MQTT com dispositivos IoT.
+use anyhow::Result;
 use argon2::password_hash::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::Engine;
@@ -17,130 +23,210 @@ use tokio::io::AsyncReadExt;
 use url::Url;
 use uuid::Uuid;
 
+/// Invólucro para a URL do serviço SpeechBrain
 struct SpeechbrainUrl(String);
+/// Invólucro para a URL da página inicial para redirecionamentos
 struct HomepageUrl(String);
 
+/// Armazena comandos recentes enviados aos dispositivos com timestamp para desduplicação
 type RecentCommands = Mutex<HashMap<String, (String, i64)>>;
+/// Rastreia solicitações de ping pendentes com timestamp e canal de resposta
 type PendingPings = Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>)>>;
+/// Rastreia solicitações de atualização de configuração pendentes com canal de resposta
 type PendingConfigUpdates = Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>;
 
+/// Armazenamento global para comandos recentes
 static RECENT_COMMANDS: OnceLock<RecentCommands> = OnceLock::new();
+/// Armazenamento global para pings pendentes
 static PENDING_PINGS: OnceLock<PendingPings> = OnceLock::new();
+/// Armazenamento global para atualizações de configuração pendentes
 static PENDING_CONFIG_UPDATES: OnceLock<PendingConfigUpdates> = OnceLock::new();
 
+/// Estrutura de mensagem para relatórios de heartbeat de dispositivos via MQTT
 #[derive(Deserialize)]
 struct HeartbeatMessage {
+    /// Tipo de mensagem de heartbeat
     heartbeat: String,
+    /// Tempo de atividade do dispositivo em milissegundos
     uptime_ms: u64,
+    /// Timestamp da mensagem
     #[allow(dead_code)]
     timestamp: u64,
+    /// SSID WiFi ao qual o dispositivo está conectado
     wifi_ssid: String,
+    /// URL do back-end configurada no dispositivo
     backend_url: String,
+    /// URL do broker MQTT configurada no dispositivo
     mqtt_broker_url: String,
+    /// Se o heartbeat MQTT está habilitado
     mqtt_heartbeat_enable: bool,
+    /// Intervalo de heartbeat em segundos
     mqtt_heartbeat_interval_sec: i32,
+    /// Tempo limite de gravação de áudio em segundos
     audio_record_timeout_sec: i32,
+    /// Tempo limite de bloqueio em milissegundos
     lock_timeout_ms: i32,
+    /// Tempo limite de pareamento em segundos
     pairing_timeout_sec: i32,
+    /// ID do usuário associado ao dispositivo
     user_id: String,
+    /// Estado atual de bloqueio
     lock_state: Option<String>,
+    /// Se a detecção de voz está habilitada
     voice_detection_enable: bool,
 }
 
+/// Estrutura de mensagem para relatórios de eventos de dispositivos via MQTT
 #[derive(Deserialize)]
 struct EventMessage {
+    /// Tipo de evento (ex.: PONG, CONFIG_UPDATED, LOCKING_DOWN)
     event: String,
+    /// Tempo de atividade do dispositivo em milissegundos
     #[allow(dead_code)]
     uptime_ms: u64,
+    /// Timestamp do evento
     timestamp: u64,
 }
 
+/// Estrutura de mensagem para enviar comandos de controle aos dispositivos via MQTT
 #[derive(Serialize)]
 struct ControlMessage {
+    /// O comando a enviar (ex.: LOCK, UNLOCK, PING)
     command: String,
-    // Add other fields as needed
 }
 
+/// Estrutura de requisição para control API endpoints
 #[derive(Deserialize)]
 struct ControlRequest {
+    /// O comando a executar (LOCK/UNLOCK)
     command: String,
+    /// ID do usuário fazendo a requisição
     user_id: String,
 }
 
+/// Estrutura de mensagem para atualizações de status de bloqueio dos dispositivos
 #[derive(Deserialize)]
 struct LockStatusMessage {
+    /// Estado de bloqueio (LOCKED/UNLOCKED)
     lock: String,
+    /// Motivo da mudança de bloqueio
     reason: String,
+    /// Tempo de atividade do dispositivo em milissegundos
     #[allow(dead_code)]
     uptime_ms: u64,
+    /// Timestamp do evento
     timestamp: u64,
 }
 
+/// Estrutura para entradas de log retornadas pela API
 #[derive(Serialize)]
 struct LogEntry {
+    /// ID da entrada de log.
     id: i32,
+    /// UUID do dispositivo como string.
     device_id: String,
+    /// Timestamp da entrada de log.
     timestamp: chrono::DateTime<chrono::Utc>,
+    /// Tipo de evento (LOCK/UNLOCK).
     event_type: String,
+    /// Motivo do evento.
     reason: String,
+    /// ID do usuário que acionou o evento.
     user_id: Option<String>,
+    /// Nome do usuário que acionou o evento.
     user_name: Option<String>,
 }
 
+/// Informações sobre convites enviados.
 #[derive(sqlx::FromRow, Serialize)]
 struct SentInviteInfo {
+    /// ID do convite.
     id: i32,
+    /// UUID do dispositivo.
     device_id: uuid::Uuid,
+    /// ID do usuário remetente.
     sender_id: String,
+    /// ID do usuário destinatário.
     receiver_id: String,
+    /// Nome do destinatário.
     receiver_name: String,
+    /// Email do destinatário.
     receiver_email: String,
+    /// Status do convite (0: pendente, 1: aceito).
     status: i32,
+    /// Timestamp de expiração.
     expiry_timestamp: i64,
+    /// Timestamp de criação.
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Informações sobre convites recebidos.
 #[derive(sqlx::FromRow, Serialize)]
 struct ReceivedInviteInfo {
+    /// ID do convite.
     id: i32,
+    /// UUID do dispositivo.
     device_id: uuid::Uuid,
+    /// ID do usuário remetente.
     sender_id: String,
+    /// ID do usuário destinatário.
     receiver_id: String,
+    /// Nome do remetente.
     sender_name: String,
+    /// Email do remetente.
     sender_email: String,
+    /// Status do convite.
     status: i32,
+    /// Timestamp de expiração.
     expiry_timestamp: i64,
+    /// Timestamp de criação.
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Estrutura de requisição para atualizar configuração do dispositivo.
 #[derive(Deserialize)]
 struct UpdateConfigRequest {
+    /// Lista de itens de configuração a atualizar.
     configs: Vec<ConfigItem>,
 }
 
+/// Item de configuração individual.
 #[derive(Deserialize, Debug)]
 struct ConfigItem {
+    /// Chave de configuração (ex.: wifi_ssid, lock_timeout).
     key: String,
+    /// Valor de configuração.
     value: String,
 }
 
+/// Estrutura de requisição para registro de usuário.
 #[derive(Deserialize)]
 struct RegisterRequest {
+    /// UID do Firebase para autenticação.
     firebase_uid: String,
+    /// Senha do usuário.
     password: String,
+    /// Email do usuário.
     email: String,
+    /// Número de telefone do usuário.
     phone_number: String,
+    /// Nome do usuário.
     name: String,
 }
 
+/// Estrutura de requisição para login de usuário.
 #[derive(Deserialize)]
 struct LoginRequest {
+    /// UID do Firebase.
     firebase_uid: String,
+    /// Senha do usuário.
     password: String,
 }
 
+/// Invólucro para token JWT dos cabeçalhos da requisição.
 struct Token(String);
 
+/// Implementação de FromRequest para Token para extrair token Bearer do cabeçalho Authorization.
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Token {
     type Error = &'static str;
@@ -160,8 +246,11 @@ impl<'r> FromRequest<'r> for Token {
     }
 }
 
+/// Ponto de entrada principal do serviço de back-end LockWise.
+/// Inicializa banco de dados, cliente MQTT, configura tabelas, inicia manipulador de eventos MQTT,
+/// tarefa de limpeza de logs e lança o servidor HTTP Rocket.
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
     // Load env vars
@@ -367,6 +456,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Manipula eventos MQTT recebidos dos dispositivos.
+/// Processa mensagens de heartbeat, eventos (PONG, CONFIG_UPDATED, LOCKING_DOWN)
+/// e atualizações de status de bloqueio, atualizando o banco de dados conforme necessário.
 async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop) {
     loop {
         match eventloop.poll().await {
@@ -528,11 +620,9 @@ async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop
     }
 }
 
-async fn publish_control_message(
-    client: &AsyncClient,
-    uuid: Uuid,
-    command: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Publica uma mensagem de controle para um dispositivo via MQTT.
+/// Envia um comando para o UUID do dispositivo especificado.
+async fn publish_control_message(client: &AsyncClient, uuid: Uuid, command: String) -> Result<()> {
     let topic = format!("lockwise/{}/control", uuid);
     let msg = ControlMessage { command };
     let payload = serde_cbor::to_vec(&msg)?;
@@ -542,6 +632,8 @@ async fn publish_control_message(
     Ok(())
 }
 
+/// Atualiza configuração do dispositivo via MQTT.
+/// Valida a requisição, envia configuração ao dispositivo e aguarda confirmação.
 #[post("/update_config/<uuid>", data = "<request>")]
 async fn update_config(
     token: Token,
@@ -709,6 +801,7 @@ async fn update_config(
     Ok(())
 }
 
+/// Reinicializa um dispositivo remotamente.
 #[post("/reboot/<uuid>")]
 async fn reboot_device(
     token: Token,
@@ -753,6 +846,7 @@ async fn reboot_device(
     Ok(())
 }
 
+/// Bloqueia um dispositivo, impedindo controle adicional.
 #[post("/lockdown/<uuid>")]
 async fn lockdown_device(
     token: Token,
@@ -797,6 +891,7 @@ async fn lockdown_device(
     Ok(())
 }
 
+/// Faz ping em um dispositivo para verificar conectividade.
 #[post("/ping/<uuid>")]
 async fn ping_device(
     token: Token,
@@ -878,18 +973,20 @@ async fn ping_device(
     Ok(())
 }
 
+/// Endpoint raiz que redireciona para a página inicial configurada.
 #[get("/")]
 fn index(homepage_url: &State<HomepageUrl>) -> rocket::response::Redirect {
     rocket::response::Redirect::found(homepage_url.0.as_str().to_string())
 }
 
+/// Endpoint de verificação de saúde retornando "OK".
 #[get("/health")]
 fn health() -> &'static str {
     "OK"
 }
 
+/// Recupera lista de dispositivos pertencentes ao usuário autenticado.
 #[get("/devices")]
-// Updated get_devices to include pairing_timeout_sec
 async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token: get firebase_uid from current_token
     let user_row: Option<(String,)> =
@@ -955,13 +1052,18 @@ async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, St
     Ok(serde_json::to_string(&devices).unwrap())
 }
 
+/// Estrutura de requisição para registrar um dispositivo com uma senha.
 #[derive(Deserialize)]
 struct RegisterDeviceRequest {
+    /// UUID do dispositivo.
     device_id: String,
+    /// Senha para o dispositivo.
     user_key: String,
+    /// ID do usuário proprietário do dispositivo.
     user_id: String,
 }
 
+/// Registra um novo usuário com senha hashada.
 #[post("/register", data = "<request>")]
 async fn register_user(
     request: rocket::serde::json::Json<RegisterRequest>,
@@ -992,6 +1094,7 @@ async fn register_user(
     Ok(())
 }
 
+/// Autentica usuário e retorna token JWT.
 #[post("/login", data = "<request>")]
 async fn login_user(
     request: rocket::serde::json::Json<LoginRequest>,
@@ -1029,6 +1132,7 @@ async fn login_user(
     Err(Status::Unauthorized)
 }
 
+/// Faz logout do usuário invalidando o token.
 #[post("/logout")]
 async fn logout_user(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
     sqlx::query("UPDATE users SET current_token = NULL WHERE firebase_uid = $1")
@@ -1039,6 +1143,7 @@ async fn logout_user(token: Token, db_pool: &State<PgPool>) -> Result<(), Status
     Ok(())
 }
 
+/// Registra um dispositivo com uma senha.
 #[post("/register_device", data = "<request>")]
 async fn register_device(
     request: rocket::serde::json::Json<RegisterDeviceRequest>,
@@ -1084,6 +1189,7 @@ async fn register_device(
     Ok(())
 }
 
+/// Envia um comando de controle a um dispositivo (LOCK/UNLOCK).
 #[post("/control/<uuid>", data = "<request>")]
 async fn control_device(
     token: Token,
@@ -1159,6 +1265,7 @@ async fn control_device(
     Ok(())
 }
 
+/// Despareia um dispositivo do usuário.
 #[post("/unpair/<uuid>")]
 async fn unpair_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<(), Status> {
     let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
@@ -1214,6 +1321,7 @@ async fn unpair_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Res
     Ok(())
 }
 
+/// Recupera detalhes de um dispositivo específico.
 #[get("/device/<uuid>")]
 async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
     let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
@@ -1305,6 +1413,7 @@ async fn get_device(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result
     }
 }
 
+/// Recupera detalhes de um dispositivo acessível temporariamente.
 #[get("/temp_device/<uuid>")]
 async fn get_temp_device(
     token: Token,
@@ -1389,6 +1498,7 @@ async fn get_temp_device(
     }
 }
 
+/// Envia comando de controle a um dispositivo acessível temporariamente.
 #[post("/temp_control/<uuid>", data = "<request>")]
 async fn control_temp_device(
     token: Token,
@@ -1445,6 +1555,7 @@ async fn control_temp_device(
     Ok(())
 }
 
+/// Faz ping em um dispositivo acessível temporariamente.
 #[post("/temp_ping/<uuid>")]
 async fn ping_temp_device(
     token: Token,
@@ -1503,6 +1614,7 @@ async fn ping_temp_device(
     Ok(())
 }
 
+/// Lista dispositivos com acesso temporário.
 #[get("/temp_devices_status")]
 async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token
@@ -1570,6 +1682,7 @@ async fn get_temp_devices_status(token: Token, db_pool: &State<PgPool>) -> Resul
     Ok(serde_json::to_string(&devices).unwrap())
 }
 
+/// Recupera logs de acesso de um dispositivo.
 #[get("/logs/<uuid>")]
 async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
     let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
@@ -1627,6 +1740,7 @@ async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<S
     Ok(serde_json::to_string(&logs).unwrap())
 }
 
+/// Recupera notificações de dispositivos próprios.
 #[get("/notifications?<devices>")]
 async fn get_notifications(
     token: Token,
@@ -1718,11 +1832,14 @@ async fn get_notifications(
     Ok(serde_json::to_string(&logs).unwrap())
 }
 
+/// Estrutura de requisição para atualizar número de telefone do usuário.
 #[derive(Deserialize)]
 struct UpdatePhoneRequest {
+    /// Novo número de telefone.
     phone_number: String,
 }
 
+/// Atualiza número de telefone do usuário.
 #[post("/update_phone", data = "<request>")]
 async fn update_phone(
     token: Token,
@@ -1752,11 +1869,14 @@ async fn update_phone(
     Ok(())
 }
 
+/// Estrutura de requisição para atualizar senha do usuário.
 #[derive(Deserialize)]
 struct UpdatePasswordRequest {
+    /// Nova senha.
     password: String,
 }
 
+/// Atualiza senha do usuário.
 #[post("/update_password", data = "<request>")]
 async fn update_password(
     token: Token,
@@ -1795,6 +1915,7 @@ async fn update_password(
     Ok(())
 }
 
+/// Exclui conta do usuário e dados associados.
 #[post("/delete_account")]
 async fn delete_account(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
     // Validate token
@@ -1840,11 +1961,14 @@ async fn delete_account(token: Token, db_pool: &State<PgPool>) -> Result<(), Sta
     Ok(())
 }
 
+/// Estrutura de requisição para verificar senha do usuário.
 #[derive(Deserialize)]
 struct VerifyPasswordRequest {
+    /// Senha a verificar.
     password: String,
 }
 
+/// Verifica senha atual do usuário.
 #[post("/verify_password", data = "<request>")]
 async fn verify_password(
     token: Token,
@@ -1887,6 +2011,7 @@ async fn verify_password(
     Err(Status::Unauthorized)
 }
 
+/// Registra embedding de voz do usuário a partir de dados de áudio.
 #[post("/register_voice", data = "<audio_data>")]
 async fn register_voice(
     token: Token,
@@ -1972,6 +2097,7 @@ async fn register_voice(
     Ok(())
 }
 
+/// Exclui embedding de voz do usuário.
 #[post("/delete_voice")]
 async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Status> {
     // Validate token
@@ -1998,6 +2124,7 @@ async fn delete_voice(token: Token, db_pool: &State<PgPool>) -> Result<(), Statu
     Ok(())
 }
 
+/// Verifica voz contra embedding registrado para acesso ao dispositivo.
 #[post("/verify_voice/<device_id>", data = "<audio_data>")]
 async fn verify_voice(
     device_id: &str,
@@ -2181,13 +2308,18 @@ async fn verify_voice(
     }
 }
 
+/// Estrutura de requisição para criar um convite.
 #[derive(Deserialize)]
 struct CreateInviteRequest {
+    /// Email do destinatário do convite.
     receiver_email: String,
+    /// UUID do dispositivo a convidar.
     device_id: String,
-    expiry_duration: String, // "2_dias", "1_semana", etc.
+    /// String de duração de expiração (ex.: "2_dias", "1_semana").
+    expiry_duration: String,
 }
 
+/// Cria convite para acesso temporário ao dispositivo.
 #[post("/create_invite", data = "<request>")]
 async fn create_invite(
     token: Token,
@@ -2296,6 +2428,7 @@ async fn create_invite(
     .to_string())
 }
 
+/// Recupera convites enviados e recebidos do usuário.
 #[get("/invites")]
 async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token
@@ -2349,6 +2482,7 @@ async fn get_invites(token: Token, db_pool: &State<PgPool>) -> Result<String, St
     .to_string())
 }
 
+/// Aceita convite para acesso ao dispositivo.
 #[post("/accept_invite/<invite_id>")]
 async fn accept_invite(
     token: Token,
@@ -2385,6 +2519,7 @@ async fn accept_invite(
     Ok(())
 }
 
+/// Rejeita convite.
 #[post("/reject_invite/<invite_id>")]
 async fn reject_invite(
     token: Token,
@@ -2429,6 +2564,7 @@ async fn reject_invite(
     Ok(())
 }
 
+/// Cancela convite enviado.
 #[post("/cancel_invite/<invite_id>")]
 async fn cancel_invite(
     token: Token,
@@ -2462,11 +2598,14 @@ async fn cancel_invite(
     Ok(())
 }
 
+/// Estrutura de requisição para atualizar um convite.
 #[derive(Deserialize)]
 struct UpdateInviteRequest {
+    /// Nova string de duração de expiração.
     expiry_duration: String,
 }
 
+/// Atualiza um convite (ex.: estender expiração).
 #[post("/update_invite/<invite_id>", data = "<request>")]
 async fn update_invite(
     token: Token,
@@ -2507,6 +2646,7 @@ async fn update_invite(
     Ok(())
 }
 
+/// Lista dispositivos acessíveis ao usuário (próprios ou convidados).
 #[get("/accessible_devices")]
 async fn get_accessible_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token
@@ -2545,6 +2685,7 @@ async fn get_accessible_devices(token: Token, db_pool: &State<PgPool>) -> Result
     Ok(serde_json::to_string(&devices).unwrap())
 }
 
+/// Verifica se o usuário tem voz registrada.
 #[get("/voice_status")]
 async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
     // Validate token
@@ -2583,6 +2724,7 @@ async fn voice_status(token: Token, db_pool: &State<PgPool>) -> Result<String, S
     Ok(has_voice.to_string())
 }
 
+/// Calcula timestamp de expiração a partir de string de duração (ex.: "1h", "30m").
 fn calculate_expiry_timestamp(base_time: chrono::DateTime<chrono::Utc>, duration: &str) -> i64 {
     let duration = match duration {
         "2_dias" => chrono::Duration::days(2),

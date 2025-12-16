@@ -259,6 +259,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.100"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
+
+[[package]]
 name = "argon2"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -389,29 +395,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "backend"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "base64 0.22.1",
- "chrono",
- "dotenv",
- "firebase-auth",
- "jsonwebtoken 10.2.0",
- "num_cpus",
- "reqwest 0.12.25",
- "rocket",
- "rumqttc",
- "serde",
- "serde_cbor",
- "serde_json",
- "sqlx",
- "tokio",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -1846,6 +1829,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
 dependencies = [
  "scopeguard",
+]
+
+[[package]]
+name = "lockwise-backend"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "base64 0.22.1",
+ "chrono",
+ "dotenv",
+ "firebase-auth",
+ "jsonwebtoken 10.2.0",
+ "num_cpus",
+ "reqwest 0.12.25",
+ "rocket",
+ "rumqttc",
+ "serde",
+ "serde_cbor",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "url",
+ "uuid",
 ]
 
 [[package]]

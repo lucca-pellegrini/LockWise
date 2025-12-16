@@ -1,3 +1,6 @@
+/// Ferramenta para adicionar uma senha a dispositivos que não possuem uma definida.
+/// Esta ferramenta conecta ao banco de dados, lista dispositivos não pareados e permite definir uma senha para eles.
+use anyhow::Result;
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher};
 use sqlx::ConnectOptions;
@@ -7,8 +10,11 @@ use std::io::{self, Write};
 use url::Url;
 use uuid::Uuid;
 
+/// Função principal do utilitário add_passphrase.
+/// Carrega variáveis de ambiente, conecta ao banco de dados, busca dispositivos sem senhas.
+/// Solicita ao usuário selecionar um dispositivo e inserir uma senha, então faz hash e armazena.
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
     // Load DB URL
@@ -50,9 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    let index: usize = input.trim().parse().map_err(|_| "Invalid number")?;
+    let index: usize = input
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid number"))?;
     if index == 0 || index > devices.len() {
-        return Err("Invalid selection".into());
+        return Err(anyhow::anyhow!("Invalid selection"));
     }
     let selected_uuid = devices[index - 1].0;
 

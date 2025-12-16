@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir \
 	--extra-index-url https://download.pytorch.org/whl/cpu
 
 # Copy built Rust binary
-COPY --from=rust-builder /app/target/release/backend ./backend
+COPY --from=rust-builder /app/target/release/lockwise-backend ./lockwise-backend
 
 # Copy Python service
 COPY speechbrain_service.py .
@@ -69,4 +69,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 	CMD curl -f http://localhost:12223/health || exit 1
 
 # Start both services
-CMD ["sh", "-c", "uvicorn speechbrain_service:app --host 0.0.0.0 --port 5008 --workers 1 & ./backend"]
+CMD ["sh", "-c", "uvicorn speechbrain_service:app --host 0.0.0.0 --port 5008 --workers 1 & ./lockwise-backend"]
