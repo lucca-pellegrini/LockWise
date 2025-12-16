@@ -125,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            alignment: Alignment(-0.15, 0),
+                            alignment: Alignment(0.1625, 0),
                             child: _buildImage('Logo.png', 300),
                           ),
 
