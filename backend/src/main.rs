@@ -1,8 +1,32 @@
-/// API do Back-end LockWise.
+/// # LockWise Back-end
 ///
-/// Este é o serviço de back-end principal do sistema LockWise, construído com Rocket.
-/// Fornece endpoints de API REST para gerenciamento de usuários, controle de dispositivos, autenticação por voz
-/// e comunicação baseada em MQTT com dispositivos IoT.
+/// Serviços de back-end para o sistema LockWise, construído com Rust (Rocket) para
+/// a API principal e Python (FastAPI) para o serviço de reconhecimento de voz,
+/// utilizando PostgreSQL para armazenamento e MQTT para comunicação em tempo real.
+///
+/// ## Funcionalidades
+///
+/// - **API REST**: Endpoints para gerenciamento de usuários, dispositivos e convites
+/// - **Autenticação de Usuário**: Integração com Firebase Authentication e senhas locais
+/// - **Gerenciamento de Dispositivos**: Registro, controle remoto e monitoramento via MQTT
+/// - **Autenticação por Voz**: Registro e verificação de embeddings de voz usando SpeechBrain
+/// - **Logs de Acesso**: Histórico detalhado de operações em dispositivos
+/// - **Convites Temporários**: Compartilhamento de acesso a dispositivos com expiração
+/// - **Heartbeat MQTT**: Monitoramento contínuo do estado dos dispositivos
+/// - **Configuração Remota**: Atualização de parâmetros de dispositivos via MQTT
+///
+/// ## Arquitetura
+///
+/// O back-end utiliza uma arquitetura baseada em microserviços leves:
+///
+/// - **Serviço Principal (Rust)**: API REST com Rocket, gerenciamento de usuários e dispositivos
+/// - **Serviço de Voz (Python)**: Reconhecimento de voz com SpeechBrain e FastAPI
+/// - **Banco de Dados**: PostgreSQL para persistência de dados
+/// - **Comunicação**: MQTT para controle em tempo real dos dispositivos
+///
+/// ## Configuração
+///
+/// Consulte o README.md para instruções detalhadas de configuração e execução.
 use anyhow::Result;
 use chrono::Utc;
 use rocket::http::Status;
@@ -19,7 +43,6 @@ use url::Url;
 mod device;
 mod invite;
 mod mqtt;
-mod request;
 mod user;
 
 /// Invólucro para a URL do serviço SpeechBrain

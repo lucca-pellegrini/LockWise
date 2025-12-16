@@ -300,10 +300,11 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 
 1. **Logs Detalhados**: Use `RUST_LOG=debug` para logs verbosos do serviço Rust
 2. **Teste Local**: Use `cargo test` para executar testes unitários
-3. **Monitoramento**: Implemente health checks em `/health`
-4. **Segurança**: Sempre use HTTPS em produção e valide inputs
-5. **Desempenho**: Monitore uso de memória e conexões de banco
-6. **Backup**: Faça backup regular do banco de dados PostgreSQL
+3. **Documentação**: Gere documentação das APIs Rust com `cargo doc --bin lockwise-backend --open`
+4. **Monitoramento**: Implemente health checks em `/health`
+5. **Segurança**: Sempre use HTTPS em produção e valide inputs
+6. **Desempenho**: Monitore uso de memória e conexões de banco
+7. **Backup**: Faça backup regular do banco de dados PostgreSQL
 
 ## Licença
 

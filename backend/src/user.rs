@@ -1,3 +1,7 @@
+/// Módulo para gerenciamento de usuários.
+///
+/// Este módulo contém funcionalidades para autenticação, registro de usuários,
+/// gerenciamento de contas e integração com Firebase Authentication.
 use anyhow::Result;
 use argon2::password_hash::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};

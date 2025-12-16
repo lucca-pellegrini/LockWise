@@ -1,3 +1,7 @@
+/// Módulo para gerenciamento de convites.
+///
+/// Este módulo implementa a funcionalidade de convites temporários para compartilhamento
+/// de acesso a dispositivos LockWise entre usuários.
 use anyhow::Result;
 use chrono::Utc;
 use rocket::http::Status;

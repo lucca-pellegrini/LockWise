@@ -1,3 +1,7 @@
+/// Módulo para gerenciamento de dispositivos.
+///
+/// Este módulo contém funções e estruturas para registro, controle e monitoramento
+/// de dispositivos LockWise via API REST e comunicação MQTT.
 use anyhow::Result;
 use argon2::{Argon2, PasswordHasher};
 use base64::Engine;
