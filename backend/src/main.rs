@@ -1,8 +1,8 @@
 //! # LockWise Back-end
 //!
-//! Serviços de back-end para o sistema LockWise, construído com Rust (Rocket) para
-//! a API principal e Python (FastAPI) para o serviço de reconhecimento de voz,
-//! utilizando PostgreSQL para armazenamento e MQTT para comunicação em tempo real.
+//! Serviços de back-end para o sistema LockWise, construído com Rust ([Rocket](https://rocket.rs/)) para
+//! a API principal e Python ([FastAPI](https://fastapi.tiangolo.com/)) para o serviço de reconhecimento de voz,
+//! utilizando [PostgreSQL](https://www.postgresql.org/) para armazenamento e [MQTT](https://mqtt.org/) para comunicação em tempo real.
 //!
 //! ## Funcionalidades
 //!
@@ -18,10 +18,10 @@
 //!
 //! O back-end utiliza uma arquitetura baseada em microserviços leves:
 //!
-//! - **Serviço Principal (Rust)**: API REST com Rocket, gerenciamento de usuários e dispositivos
-//! - **Serviço de Voz (Python)**: Reconhecimento de voz com SpeechBrain e FastAPI
-//! - **Banco de Dados**: PostgreSQL para persistência de dados
-//! - **Comunicação**: MQTT para controle em tempo real dos dispositivos
+//! - **Serviço Principal (Rust)**: API REST com [Rocket](https://rocket.rs/), gerenciamento de usuários e dispositivos
+//! - **Serviço de Voz (Python)**: Reconhecimento de voz com [SpeechBrain](https://speechbrain.github.io/) e [FastAPI](https://fastapi.tiangolo.com/)
+//! - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) para persistência de dados
+//! - **Comunicação**: [MQTT](https://mqtt.org/) para controle em tempo real dos dispositivos
 //!
 //! ## Configuração
 //!

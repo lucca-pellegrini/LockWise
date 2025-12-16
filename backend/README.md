@@ -2,7 +2,7 @@
 title: LockWise — Back-end
 subtitle: "Serviços de back-end para o sistema LockWise, incluindo API REST, gerenciamento de dispositivos via MQTT e autenticação por voz"
 author: "Lucca M. A. Pellegrini, Felipe Castelo Branco de Mello"
-date: 2025-12-13
+date: 2025-12-16
 lang: pt-BR
 ---
 
