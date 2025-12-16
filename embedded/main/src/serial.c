@@ -16,6 +16,13 @@
 
 static const char *TAG = "\033[1mLOCKWISE:\033[36mSERIAL\033[0m\033[36m";
 
+/**
+ * @brief Executa comando recebido via serial.
+ *
+ * @param buffer Buffer contendo o comando a executar.
+ *
+ * Interpreta comandos como update_config, unlock, lock, record, etc.
+ */
 static void run_command(char buffer[256]);
 
 void serial_command_task(void *pvParameters)

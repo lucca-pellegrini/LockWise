@@ -12,13 +12,18 @@
 
 static const char *TAG = "\033[1mLOCKWISE:\033[93mLOCK";
 
-/* Lock context singleton */
+/**
+ * @brief Estrutura de contexto para gerenciamento da fechadura.
+ *
+ * Mantém o estado da fechadura, mutex para sincronização e timer de auto-trancamento.
+ */
 typedef struct {
-	lock_state_t state;
-	SemaphoreHandle_t mutex;
-	TimerHandle_t timer;
+	lock_state_t state; /**< Estado atual da fechadura */
+	SemaphoreHandle_t mutex; /**< Mutex para proteger acesso ao contexto */
+	TimerHandle_t timer; /**< Timer para trancamento automático */
 } lock_context_t;
 
+/** @brief Instância singleton do contexto da fechadura */
 static lock_context_t lock_ctx;
 
 void lock_init(void)
@@ -33,7 +38,13 @@ void lock_init(void)
 	};
 }
 
-/* Lock Timer Callback */
+/**
+ * @brief Callback do timer de trancamento automático.
+ *
+ * @param xTimer Handle do timer que expirou.
+ *
+ * Chamado quando o timer de auto-trancamento expira, trancando a fechadura automaticamente.
+ */
 static void lock_timeout_callback(TimerHandle_t xTimer)
 {
 	ESP_LOGI(TAG, "Lock timeout reached, auto-locking door");

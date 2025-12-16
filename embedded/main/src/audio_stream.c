@@ -33,27 +33,51 @@ extern audio_board_handle_t g_board_handle;
 
 static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 
+/** @brief Taxa de amostragem do áudio em Hz */
 #define AUDIO_SAMPLE_RATE 16000
+/** @brief Número de bits por amostra de áudio */
 #define AUDIO_BITS 16
+/** @brief Número de canais de áudio (mono) */
 #define AUDIO_CHANNELS 1
+/** @brief Limiar RMS para detecção de ruído */
 #define NOISE_RMS_THRESHOLD 1000.0
+/** @brief Duração do frame VAD em ms */
 #define VAD_FRAME_MS 30
+/** @brief Número de amostras por frame VAD */
 #define VAD_SAMPLES ((AUDIO_SAMPLE_RATE * VAD_FRAME_MS) / 1000)
+/** @brief Número de frames consecutivos para acionar VAD */
 #define VAD_TRIGGER_FRAMES 6
+/** @brief Tempo de cooldown após acionamento VAD em ms */
 #define VAD_COOLDOWN_MS 2000
+/** @brief Bytes por segundo de áudio */
 #define BYTES_PER_SEC (AUDIO_SAMPLE_RATE * AUDIO_CHANNELS * (AUDIO_BITS / 8))
 
+/** @brief Fila para comandos de streaming de áudio */
 static QueueHandle_t audio_stream_queue;
+/** @brief Handle do pipeline de áudio ESP-ADF */
 static audio_pipeline_handle_t pipeline;
+/** @brief Elemento I2S do pipeline de áudio */
 static audio_element_handle_t i2s;
+/** @brief Elemento raw do pipeline de áudio */
 static audio_element_handle_t raw;
+/** @brief Flag indicando se o streaming está habilitado */
 static volatile bool streaming_enabled = false;
+/** @brief Flag indicando se a gravação está ativa */
 static volatile bool recording_active = false;
+/** @brief Semáforo para controle de gate do streaming */
 static SemaphoreHandle_t stream_gate;
+/** @brief Contador de bytes PCM enviados */
 static size_t pcm_bytes_sent = 0;
+/** @brief Timestamp do último streaming em microssegundos (não usado) */
 static int64_t last_stream_us = 0;
+/** @brief Handle da tarefa de piscar rápido do LED */
 static TaskHandle_t fast_blink_task = NULL;
 
+/**
+ * @brief Inicializa o pipeline de áudio ESP-ADF.
+ *
+ * Configura os elementos I2S e raw, registra-os no pipeline e inicia o pipeline.
+ */
 static void audio_init_pipeline(void)
 {
 	ESP_LOGI(TAG, "Initializing single audio pipeline");
@@ -83,6 +107,13 @@ static void audio_init_pipeline(void)
 	audio_pipeline_run(pipeline);
 }
 
+/**
+ * @brief Tarefa de detecção de atividade de voz (VAD).
+ *
+ * @param arg Parâmetros da tarefa (não usado).
+ *
+ * Executa detecção contínua de voz baseada em RMS, acionando streaming quando voz é detectada.
+ */
 static void vad_task(void *arg)
 {
 	ESP_LOGI(TAG, "Starting VAD task");
@@ -171,6 +202,13 @@ static void vad_task(void *arg)
 	vTaskDelete(NULL);
 }
 
+/**
+ * @brief Tarefa de streaming HTTP de áudio.
+ *
+ * @param arg Parâmetros da tarefa (não usado).
+ *
+ * Grava áudio por um tempo configurado, envia via HTTP POST para o back-end e processa a resposta.
+ */
 static void http_stream_task(void *arg)
 {
 	ESP_LOGI(TAG, "Starting HTTP stream task");
@@ -331,6 +369,13 @@ static void http_stream_task(void *arg)
 	}
 }
 
+/**
+ * @brief Tarefa principal de controle do streaming de áudio.
+ *
+ * @param pvParameters Parâmetros da tarefa (não usado).
+ *
+ * Processa comandos da fila para iniciar ou parar streaming de áudio.
+ */
 void audio_stream_task(void *pvParameters)
 {
 	audio_stream_cmd_t cmd;

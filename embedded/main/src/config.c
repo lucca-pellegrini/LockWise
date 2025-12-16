@@ -282,7 +282,7 @@ void update_config(const char *key, const char *value)
 			} else if (!strcasecmp(key, "user_id")) {
 				if (strcmp(config.user_id, value) != 0)
 					needs_update = true;
-			} else 			if (!strcasecmp(key, "pairing_mode")) {
+			} else if (!strcasecmp(key, "pairing_mode")) {
 				uint8_t new_val = atoi(value) ? 1 : 0;
 				if (config.pairing_mode != new_val)
 					needs_update = true;

@@ -15,6 +15,11 @@ static const char *TAG = "\033[1mLOCKWISE:\033[91mSYSTEM\033[1m\033[91m";
 
 extern TaskHandle_t heartbeat_task;
 
+/**
+ * @brief Limpa recursos do sistema antes de reinicialização ou halt.
+ *
+ * Desconecta MQTT, Wi-Fi e deleta tarefas em execução.
+ */
 static void cleanup(void)
 {
 	if (heartbeat_task) {

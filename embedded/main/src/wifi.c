@@ -29,14 +29,52 @@
 
 static const char *TAG = "\033[1mLOCKWISE:\033[34mWIFI\033[0m\033[34m";
 
+/** @brief Socket para servidor de pareamento */
 static int pairing_sock = -1;
+/** @brief Flag indicando se o pareamento foi concluído */
 static bool paired = false;
+/** @brief Mutex para sincronização do processo de pareamento */
 static SemaphoreHandle_t pair_mutex;
+/** @brief Flag indicando se o handler de eventos IP está registrado */
 static bool ip_handler_registered = false;
 
+/**
+ * @brief Handler de eventos IP.
+ *
+ * @param arg Argumentos do handler.
+ * @param event_base Base do evento.
+ * @param event_id ID do evento.
+ * @param event_data Dados do evento.
+ *
+ * Processa eventos de obtenção de IP, configurando DNS.
+ */
 static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+/**
+ * @brief Trata cliente conectado ao servidor de pareamento.
+ *
+ * @param client_sock Socket do cliente.
+ *
+ * Processa requisições HTTP POST /configure para configuração inicial.
+ */
 static void handle_pairing_client(int client_sock);
+/**
+ * @brief Analisa requisição de configuração HTTP.
+ *
+ * @param request Requisição HTTP completa.
+ * @param wifi_ssid Buffer para SSID Wi-Fi.
+ * @param wifi_pass Buffer para senha Wi-Fi.
+ * @param user_id Buffer para ID do usuário.
+ *
+ * Extrai parâmetros da requisição POST para configuração inicial.
+ */
 static void parse_configure_request(const char *request, char *wifi_ssid, char *wifi_pass, char *user_id);
+/**
+ * @brief Tarefa de timeout para o modo de pareamento.
+ *
+ * @param param Parâmetros da tarefa (não usado).
+ *
+ * Aguarda o tempo limite de pareamento e reinicializa se não pareado.
+ */
 static void timeout_task(void *param);
 
 void wifi_init(void)
@@ -102,6 +140,14 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
 	}
 }
 
+/**
+ * @brief Inicializa Wi-Fi em modo Access Point para pareamento.
+ *
+ * @warning Não chame wifi_init_ap() e wifi_init() dentro do mesmo boot, pois cada uma
+ * usa uma abstração diferente e isso pode deixar o módulo Wi-Fi em um estado inválido.
+ *
+ * Configura o dispositivo como AP com SSID e senha derivados do device_id.
+ */
 static void wifi_init_ap(void)
 {
 	esp_log_level_set(TAG, ESP_LOG_INFO);

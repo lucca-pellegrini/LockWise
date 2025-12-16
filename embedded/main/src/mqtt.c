@@ -29,8 +29,34 @@ extern TaskHandle_t idle_blink_task;
 esp_mqtt_client_handle_t mqtt_client;
 
 /* Forward declarations */
+/**
+ * @brief Handler de eventos MQTT.
+ *
+ * @param handler_args Argumentos do handler.
+ * @param base Base do evento.
+ * @param event_id ID do evento.
+ * @param event_data Dados do evento.
+ *
+ * Processa eventos de conexão, desconexão e dados recebidos via MQTT.
+ */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
+
+/**
+ * @brief Processa comandos recebidos via CBOR MQTT.
+ *
+ * @param value Valor CBOR contendo o comando.
+ *
+ * Interpreta comandos como UNLOCK, LOCK, PING, etc., e executa ações correspondentes.
+ */
 static void process_cbor_command(CborValue *value);
+
+/**
+ * @brief Trata comando UPDATE_CONFIG recebido via MQTT.
+ *
+ * @param map_value Valor CBOR do mapa contendo chave e valor para atualização.
+ *
+ * Atualiza configuração específica baseada na chave e valor fornecidos.
+ */
 static void handle_update_config_command(CborValue *map_value);
 
 static void process_cbor_command(CborValue *value)
@@ -395,6 +421,12 @@ void mqtt_publish_lock_event(lock_state_t state, door_reason_t reason)
 		ESP_LOGE(TAG, "Failed to publish lock event");
 }
 
+/**
+ * @brief Publica heartbeat detalhado via MQTT.
+ *
+ * Publica mensagem CBOR com informações completas do estado do dispositivo,
+ * incluindo configurações atuais e estado da fechadura.
+ */
 static void mqtt_publish_heartbeat(void)
 {
 	if (!mqtt_client) {

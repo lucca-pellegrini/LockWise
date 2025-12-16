@@ -33,13 +33,26 @@
 
 static const char *TAG = "\033[1mLOCKWISE:\033[0m\033[1mMAIN";
 
+/** @brief Handle global do barramento I2C mestre */
 static i2c_master_bus_handle_t g_i2c_handle;
+/** @brief Handle da tarefa de piscar durante setup */
 static TaskHandle_t setup_blink_task = NULL;
-TaskHandle_t idle_blink_task = NULL; // Not static because `audio_stream.c` needs it
+/** @brief Handle da tarefa de piscar idle (acessível de audio_stream.c) */
+TaskHandle_t idle_blink_task = NULL;
+/** @brief Handle da tarefa de heartbeat MQTT */
 TaskHandle_t heartbeat_task = NULL;
 
+/** @brief Handle global da placa de áudio ESP-ADF */
 audio_board_handle_t g_board_handle;
 
+/**
+ * @brief Tarefa para monitoramento dos sensores de toque.
+ *
+ * @param param Parâmetros da tarefa (não usado).
+ *
+ * Monitora continuamente os sensores TOUCH_PAD_NUM8 e TOUCH_PAD_NUM9 para controle manual
+ * e modo de pareamento.
+ */
 static void touch_monitor_task(void *param)
 {
 	for (;;) {
@@ -68,6 +81,12 @@ static void touch_monitor_task(void *param)
 	}
 }
 
+/**
+ * @brief Função principal de entrada da aplicação ESP-IDF.
+ *
+ * Inicializa todos os componentes do sistema: GPIO, UART, NVS, Wi-Fi, MQTT, áudio,
+ * sensores de toque e tarefas de monitoramento. Entra em loop infinito após inicialização.
+ */
 void app_main(void)
 {
 	// Set log level

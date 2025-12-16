@@ -157,7 +157,7 @@ O dispositivo suporta modo de pareamento para configuração inicial:
 ## Solução de Problemas
 
 ### Áudio Não Está Gravando
-- Verifique se os pinos I2S não estão em conflito
+- Verifique se os pinos I²S não estão em conflito
 - Confirme inicialização do quadro de áudio: `audio_board_init()`
 - Monitore logs para erros do codec
 
