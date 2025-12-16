@@ -47,19 +47,9 @@ Widget content(BuildContext context) {
     SlideData(
       title: "O que é o LockWise?",
       description:
-          "O LockWise controla suas fechaduras de forma inteligentes segura e prática",
+          "O LockWise controla suas fechaduras de forma inteligente, segura, e prática",
       color: Colors.blue,
       icon: Icons.home_outlined,
-      gradientColors: [
-        Colors.blue.withOpacity(0.30),
-        Colors.blue.withOpacity(0.10),
-      ],
-    ),
-    SlideData(
-      title: "Controle por Senha",
-      description: "Acesse sua casa usando senha numérica personalizada",
-      color: Colors.green,
-      icon: Icons.lock_outline,
       gradientColors: [
         Colors.blue.withOpacity(0.30),
         Colors.blue.withOpacity(0.10),
@@ -76,20 +66,9 @@ Widget content(BuildContext context) {
       ],
     ),
     SlideData(
-      title: "Tecnologia NFC",
-      description:
-          "Use cartões ou dispositivos NFC para acesso rápido e seguro",
-      color: Colors.purple,
-      icon: Icons.nfc_outlined,
-      gradientColors: [
-        Colors.blue.withOpacity(0.30),
-        Colors.blue.withOpacity(0.10),
-      ],
-    ),
-    SlideData(
       title: "Monitoramento 24/7",
       description:
-          "Receba notificações em tempo real sobre acessos e status das fechaduras",
+          "Receba notificações em tempo real sobre acessos e estado das fechaduras",
       color: Colors.red,
       icon: Icons.notifications_outlined,
       gradientColors: [
