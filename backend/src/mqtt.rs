@@ -1,7 +1,7 @@
-/// Módulo para comunicação MQTT.
-///
-/// Este módulo gerencia a conexão MQTT com dispositivos, incluindo publicação de comandos,
-/// recebimento de mensagens de status e processamento de heartbeats.
+//! Módulo para comunicação MQTT.
+//!
+//! Este módulo gerencia a conexão MQTT com dispositivos, incluindo publicação de comandos,
+//! recebimento de mensagens de status e processamento de heartbeats.
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rumqttc::{AsyncClient, Event, Incoming, QoS};
