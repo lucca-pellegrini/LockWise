@@ -25,7 +25,7 @@ por três componentes principais:
 
 ### [Aplicativo Móvel](app/)
 
-Painel de controle móvel construído com Flutter para Android.
+Painel de controle móvel construído com [Flutter](https://flutter.dev/) para Android.
 
 - [Funcionalidades](app/README.md#funcionalidades)
 - [Pré-requisitos](app/README.md#pré-requisitos)
@@ -33,7 +33,7 @@ Painel de controle móvel construído com Flutter para Android.
 
 ### [Back-end](backend/)
 
-Serviços de back-end em Rust (Rocket) e Python (FastAPI) para reconhecimento de voz.
+Serviços de back-end em [Rust](https://www.rust-lang.org/) ([Rocket](https://rocket.rs/)) e [Python](https://www.python.org/) ([FastAPI](https://fastapi.tiangolo.com/)) para reconhecimento de voz.
 
 - [Funcionalidades](backend/README.md#funcionalidades)
 - [Pré-requisitos](backend/README.md#pré-requisitos)
@@ -41,7 +41,7 @@ Serviços de back-end em Rust (Rocket) e Python (FastAPI) para reconhecimento de
 
 ### [Sistema Embarcado](embedded/)
 
-Firmware para ESP32-LyraT v4.3 com autenticação por voz e controle via MQTT.
+Firmware para [ESP32-LyraT v4.3](https://docs.espressif.com/projects/esp-adf/en/latest/design-guide/dev-boards/user-guide/esp32-lyrat-v4.3.html) com autenticação por voz e controle via [MQTT](https://mqtt.org/).
 
 - [Funcionalidades](embedded/README.md#funcionalidades)
 - [Pré-requisitos](embedded/README.md#pré-requisitos)
@@ -66,9 +66,9 @@ Firmware para ESP32-LyraT v4.3 com autenticação por voz e controle via MQTT.
 
 O sistema utiliza uma arquitetura distribuída:
 
-- **Comunicação**: MQTT para controle em tempo real entre dispositivos
-- **Autenticação**: Firebase para usuários, reconhecimento de voz via SpeechBrain
-- **Armazenamento**: PostgreSQL para dados persistentes
+- **Comunicação**: [MQTT](https://mqtt.org/) para controle em tempo real entre dispositivos
+- **Autenticação**: [Firebase](https://firebase.google.com/) para usuários, reconhecimento de voz via [SpeechBrain](https://speechbrain.github.io/)
+- **Armazenamento**: [PostgreSQL](https://www.postgresql.org/) para dados persistentes
 - **Processamento de Áudio**: Captura e análise em tempo real no dispositivo embarcado
 
 ## Licença
