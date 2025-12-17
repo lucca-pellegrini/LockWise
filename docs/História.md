@@ -200,12 +200,27 @@ No último dia antes da entrega, imprimimos uma caixa para conter todos os
 componentes usando uma impressora 3D, e também imprimimos as credenciais de
 pareamento na parte interna da tampa.
 
-### Desenvolvimento do Aplicativo
-
 ### Desenvolvimento do Back-end
 
-####  Back-end principal
+Inicialmente, planejávamos não escrever um *back-end*, mas usar o
+[Firebase](https://firebase.google.com/) para toda a comunicação remota entre o
+aplicativo e o dispositivo, usando as funcionalidades integradas da plataforma
+para comunicação via MQTT. Infelizmente, com a deprecação do serviço de
+reconhecimento de voz que originalmente planejamos usar, ficou claro que
+teríamos que implementar um *back-end*, nem que mínimo, para calcular os
+[*embeddings* ECAPA-TDNN](https://arxiv.org/abs/2104.01466) que usaríamos para
+fazer a diarização da voz e, assim, identificar sem ambiguidade quem é o
+locutor. O plano inicial, então, era fazer um único componente para o
+*back-end:* um serviço simples em Python, usando
+[SpeechBrain](https://speechbrain.github.io/) e alguma framework web leve, para
+controlar tanto o reconhecimento de voz quanto as funcionalidades do aplicativo
+que exigissem mais segurança que o plano gratuito do Firebase é capaz de
+providenciar. Eventualmente, essa ideia foi descartada pela dificuldade que
+teríamos de dividir as tarefas, e pela dificuldade de escrever um *back-end*
+robusto e com desempenho decente nessa linguagem — decidimos dividir o
+*back-end* em dois serviços: um *back-end “principal”*, e um serviço isolado em
+Python para a diarização.
 
-Inicialmente, planejávamos
+####  Back-end *Rocket*
 
-#### Sistema de reconhecimento de voz
+#### Serviço de *Speaker Recognition*
