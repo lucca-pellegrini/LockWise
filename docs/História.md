@@ -6,7 +6,7 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
-# História
+# História do LockWise
 
 O LockWise foi desenvolvido como trabalho universitário para as disciplinas de
 *Projeto Integrado: Desenvolvimento Móvel* e de *Sistemas Embarcados* do curso
