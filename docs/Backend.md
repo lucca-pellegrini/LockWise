@@ -76,7 +76,63 @@ estado, se comunica com o banco de dados
 [PostgreSQL](https://www.postgresql.org/), processa as requisições do
 aplicativo, e recebe as amostras de áudio dos dispositivos e as transfere ao
 serviço de *Speaker Recognition*. Todas as requisições que exigem segurança e
-validação ocorrem aqui: este é o coração do projeto.
+validação ocorrem aqui: este é o coração do *back-end*.
+
+#### Escolha da Stack
+
+O back-end principal foi desenvolvido utilizando
+[Rust](https://www.rust-lang.org/) como linguagem de programação, combinado
+com o framework web [Rocket](https://rocket.rs/). Essa escolhe se deve
+majoritariamente à preferência pessoal do desenvolvedor, que estava estudando
+Rust nas aulas da disciplina *Linguagens de Programação*. A framework foi
+escolhida devido à sua simplicidade, e pela sua forte integração com o
+*runtime* [Tokio](https://tokio.rs/), que já tinha utilizado em projetos
+pessoais. Além disso, a tipagem estática e *rígida* do Rust nos ajudaria a ter
+confiança de que o código, uma vez compilado, funcionaria como esperado, e
+seria extremamente portátil. O driver de SQL usado foi o *toolkit*
+[`sqlx`](https://github.com/launchbadge/sqlx), devido à sua simplicidade.
+
+#### Arquitetura da API
+
+A arquitetura da API segue princípios RESTful, com endpoints claramente
+definidos para cada domínio funcional. O sistema utiliza JSON como formato de
+intercâmbio de dados, e valida *payloads* automaticamente por meio de `structs`
+Rust derivadas pelo [Serde](https://serde.rs/). Cada endpoint é protegido por
+*middleware* de autenticação baseado em JWT (JSON Web Tokens), impedindo que
+usuários não autorizados acessem quaisquer recursos. A estrutura
+do código é modular e organizada em módulos discretos.
+
+#### Integração com Banco de Dados
+
+A integração com [PostgreSQL](https://www.postgresql.org/) é realizada
+através da biblioteca [SQLx](https://github.com/launchbadge/sqlx), um toolkit
+SQL assíncrono para Rust que oferece *type safety* nativo e desempenho elevado.
+Todas as operações de banco são executadas de forma assíncrona, e o sistema
+utiliza *prepared statements* para prevenir *SQL injection*, e *migrations*
+simples para um grosso versionamento do *schema*. A modelagem de dados segue
+princípios de normalização, com tabelas para usuários, dispositivos, convites e
+logs.
+
+#### Gerência via MQTT
+
+A gerência de comunicação MQTT é implementada usando a biblioteca
+[Rumqttc](https://crates.io/crates/rumqttc), um cliente MQTT robusto escrito
+em Rust puro. O sistema mantém conexões persistentes com o broker NanoMQ,
+publicando comandos de controle para dispositivos e se inscrevendo em tópicos
+de telemetria. Cada dispositivo possui tópicos dedicados para comunicação
+bidirecional. O processamento de mensagens é assíncrono, para que o back-end
+lide com múltiplos dispositivos simultaneamente sem degradação do desempenho.
+
+#### Processamento de Áudio e Integração com FastAPI
+
+O processamento de voz é realizado por integração com o serviço FastAPI
+dedicado (descrito abaixo), utilizando comunicação interna via HTTP dentro do
+mesmo container Docker. Quando uma requisição de autenticação por voz é
+recebida, o Rocket extrai as amostras de áudio do *payload*, as transmite para
+o serviço SpeechBrain, e aguarda o resultado da verificação. Essa arquitetura
+desacoplada isola as responsabilidades, e separa o código *back-end* principal
+que exige baixa latência do código Python para verificação de locutor, que é
+mais lenta e estritamente não-paralelizada.
 
 ### Detalhes de Implementação
 
