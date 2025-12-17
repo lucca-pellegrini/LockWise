@@ -408,7 +408,7 @@ acessadas por meio do comando `menuconfig` do script auxiliar:
 ![Tela inicial do menuconfig do projeto LockWise](img/menuconfig_top.png)
 ![Menu particular do LockWise no menuconfig](img/menuconfig_lockwise.png)
 
-Os padrões estão definidos num arquivo `sdkconfig.defaults`, e estão otimizadas
+Os padrões estão definidos num arquivo `sdkconfig.defaults`, e estão otimizados
 para usar menos memória DRAM e permitir uso de TLS onde possível:
 
 ```conf
