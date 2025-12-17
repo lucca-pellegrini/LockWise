@@ -136,6 +136,710 @@ mais lenta e estritamente não-paralelizada.
 
 ### Detalhes de Implementação
 
+Por se tratar de um programa muito grande, trataremos apenas dos seus
+principais componentes, e mencionaremos apenas os *endpoints* mais importantes
+a fim de ilustrar a estrutura do programa.
+
+#### Função Principal (main.rs)
+
+##### Função `main`
+
+A função `main` é o ponto de entrada da aplicação Rocket, estruturada em blocos
+lógicos para inicialização sequencial.
+
+```rust
+#[tokio::main]
+async fn main() -> Result<()> {
+    dotenv::dotenv().ok();
+
+    // Load env vars
+    let db_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let mqtt_host = env::var("MQTT_HOST").expect("MQTT_HOST must be set");
+    let mqtt_port: u16 = env::var("MQTT_PORT")
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(1883);
+    let mqtt_tls: bool = env::var("MQTT_TLS")
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(false);
+    let mqtt_username = env::var("MQTT_USERNAME").ok();
+    let mqtt_password = env::var("MQTT_PASSWORD").ok();
+    let port: u16 = env::var("PORT")
+        .unwrap_or("8000".to_string())
+        .parse()
+        .unwrap();
+    let speechbrain_url =
+        SpeechbrainUrl(env::var("SPEECHBRAIN_URL").unwrap_or("http://localhost:5008".to_string()));
+    let homepage_url =
+        HomepageUrl(env::var("HOMEPAGE_URL").unwrap_or("https://example.com".to_string()));
+    RECENT_COMMANDS.set(Mutex::new(HashMap::new())).unwrap();
+    PENDING_PINGS.set(Mutex::new(HashMap::new())).unwrap();
+    PENDING_CONFIG_UPDATES
+        .set(Mutex::new(HashMap::new()))
+        .unwrap();
+
+    // ... (continua)
+}
+```
+
+Este bloco inicial carrega variáveis de ambiente usando `dotenv`, define
+configurações para banco de dados, MQTT, portas e URLs de serviço. Inicializa
+armazenamentos globais thread-safe para comandos recentes, *pings* pendentes, e
+atualizações de configuração usando `OnceLock` e `Mutex`.
+
+```rust
+    // Setup DB
+    let url = Url::parse(&db_url)?;
+    let options = PgConnectOptions::from_url(&url)?.ssl_mode(PgSslMode::Require);
+    let db_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect_with(options)
+        .await?;
+
+    // ... (continua)
+```
+
+Configura conexão com PostgreSQL usando SQLx, analisando URL e aplicando TLS
+obrigatório. Cria pool de conexões com máximo de 5 conexões simultâneas para
+eficiência.
+
+```rust
+    // Create devices table if not exists
+    sqlx::query("CREATE TABLE IF NOT EXISTS devices ( uuid uuid PRIMARY KEY, user_id VARCHAR(255), last_heard timestamptz NOT NULL, uptime_ms bigint NOT NULL, hashed_passphrase VARCHAR(255), locked_down_at timestamptz)")
+        .execute(&db_pool)
+        .await?;
+
+    // Create users table if not exists
+    sqlx::query("CREATE TABLE IF NOT EXISTS users ( firebase_uid VARCHAR(255) PRIMARY KEY, hashed_password VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, phone_number VARCHAR(255), name VARCHAR(255) NOT NULL, current_token VARCHAR(255), voice_embeddings BYTEA, created_at timestamptz NOT NULL DEFAULT NOW(), last_login timestamptz)")
+        .execute(&db_pool)
+        .await?;
+
+    // ... (migrações adicionais para logs, invites, colunas)
+```
+
+Cria tabelas essenciais se não existirem: `devices` para dispositivos IoT,
+`users` para contas de usuário, `logs` para histórico de operações, `invites`
+para compartilhamento temporário. Inclui migrações para adicionar colunas
+conforme evolução do schema.
+
+```rust
+    // Setup MQTT
+    let mut mqtt_options = MqttOptions::new("backend", mqtt_host, mqtt_port);
+    if let Some(user) = mqtt_username {
+        mqtt_options.set_credentials(user, mqtt_password.unwrap_or_default());
+    }
+    if mqtt_tls {
+        mqtt_options.set_transport(Transport::tls_with_default_config());
+    }
+
+    let (mqtt_client, mut eventloop) = AsyncClient::new(mqtt_options, 10);
+
+    // Subscribe to status topics
+    mqtt_client
+        .subscribe("lockwise/+/status", QoS::AtMostOnce)
+        .await?;
+
+    // ... (continua)
+```
+
+Configura cliente MQTT com *Rumqttc*, aplicando credenciais e TLS se
+necessário. Cria cliente e *event loop* com capacidade de 10 mensagens.
+Inscreve-se em tópicos de *status* de todos os dispositivos usando wildcard.
+
+```rust
+    // Spawn MQTT event handler
+    let db_pool_clone = db_pool.clone();
+    tokio::spawn(async move {
+        mqtt::handle_mqtt_events(&db_pool_clone, &mut eventloop).await;
+    });
+
+    // ... (continua)
+```
+
+Inicia tarefa assíncrona dedicada para processar eventos MQTT recebidos,
+atualizando banco de dados com *status* de dispositivos e logs.
+
+```rust
+    // Spawn log cleanup task
+    let db_pool_cleanup = db_pool.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await; // 1 hour
+            let one_month_ago = Utc::now() - chrono::Duration::days(30);
+            let _ = sqlx::query("DELETE FROM logs WHERE timestamp < $1")
+                .bind(one_month_ago)
+                .execute(&db_pool_cleanup)
+                .await;
+        }
+    });
+
+    // ... (continua)
+```
+
+Inicia tarefa de limpeza periódica que remove logs com mais de 30 dias para
+controle de tamanho do banco.
+
+```rust
+    // Spawn Rocket HTTP server
+    tokio::spawn(async move {
+        rocket::build()
+            .configure(
+                rocket::Config::figment()
+                    .merge(("port", port))
+                    .merge(("address", "0.0.0.0"))
+                    .merge(("workers", num_cpus::get())),
+            )
+            .manage(db_pool)
+            .manage(mqtt_client)
+            .manage(speechbrain_url)
+            .manage(homepage_url)
+            .mount(
+                "/",
+                routes![
+                    index,
+                    health,
+                    device::control_device,
+                    device::control_temp_device,
+                    device::get_accessible_devices,
+                    // ... (continua) ...
+                    user::update_phone,
+                    user::verify_password,
+                    user::voice_status
+                ],
+            )
+            .launch()
+            .await
+            .unwrap();
+    });
+
+    // For now, just keep running
+    tokio::signal::ctrl_c().await?;
+    Ok(())
+}
+```
+
+Inicia servidor HTTP Rocket configurado para aceitar conexões em todas as
+interfaces, utilizando número de workers igual ao número de CPUs. Monta todas
+as rotas da API e injeta dependências (pool de banco, cliente MQTT, URLs).
+Aguarda sinal de interrupção via `SIGINT` (`Ctrl+C`) para encerramento.
+
+##### Estrutura `Token`
+
+```rust
+#[derive(Clone)]
+pub struct Token(pub String);
+```
+
+Invólucro para tokens JWT extraídos de cabeçalhos HTTP. Implementa
+`FromRequest` para validação automática em endpoints.
+
+```rust
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for Token {
+    type Error = &'static str;
+
+    /// Extrai o token JWT Bearer do cabeçalho Authorization da requisição.
+    async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        let auth_header = req.headers().get_one("Authorization");
+        match auth_header {
+            Some(auth) if auth.starts_with("Bearer ") => {
+                let token_str = &auth[7..];
+                Outcome::Success(Token(token_str.to_string()))
+            }
+            _ => Outcome::Error((
+                Status::Unauthorized,
+                "Missing or invalid Authorization header",
+            )),
+        }
+    }
+}
+```
+
+Valida presença do cabeçalho `Authorization` com formato `Bearer <token>`,
+retornando erro 401 se inválido.
+
+#### Estrutura `DeviceToken` (device.rs)
+
+```rust
+#[derive(Clone)]
+pub struct DeviceToken(pub String);
+```
+
+Similar ao `Token`, mas usado para autenticação das fechaduras quando enviam
+amostras de voz. Diferente dos tokens JWT acima, estes representam senhas,
+processadas com [Argon2](https://argon2.com/).
+
+```rust
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for DeviceToken {
+    type Error = &'static str;
+
+    /// Extrai o token Bearer do cabeçalho Authorization da requisição.
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let auth_header = req.headers().get_one("Authorization");
+        match auth_header {
+            Some(auth) if auth.starts_with("Bearer ") => {
+                let token_str = &auth[7..];
+                Outcome::Success(DeviceToken(token_str.to_string()))
+            }
+            _ => Outcome::Error((
+                Status::Unauthorized,
+                "Missing or invalid Authorization header",
+            )),
+        }
+    }
+}
+```
+
+Valida presença do cabeçalho `Authorization` com formato `Bearer <token>`, para
+ser usado em endpoints de verificação de voz onde o dispositivo se autentica
+com sua senha *hasheada*.
+
+#### Endpoint `get_devices`
+
+```rust
+#[get("/devices")]
+pub async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String, Status> {
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    let rows = sqlx::query(
+        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold, vad_rms_threshold FROM devices WHERE user_id = $1",
+    )
+    .bind(&firebase_uid)
+    .fetch_all(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+
+    let rows_vec: Vec<_> = rows;
+    let devices: Vec<serde_json::Value> = rows_vec
+        .into_iter()
+        .map(|row| {
+            let db_uuid: Uuid = row.get(0);
+            let last_heard: chrono::DateTime<chrono::Utc> = row.get(2);
+            let uptime_ms: Option<i64> = row.get(3);
+            let wifi_ssid: Option<String> = row.get(4);
+            let backend_url: Option<String> = row.get(5);
+            let mqtt_broker_url: Option<String> = row.get(6);
+            let mqtt_heartbeat_enable: Option<bool> = row.get(7);
+            let mqtt_heartbeat_interval_sec: Option<i32> = row.get(8);
+            let audio_record_timeout_sec: Option<i32> = row.get(9);
+            let lock_timeout_ms: Option<i32> = row.get(10);
+            let pairing_timeout_sec: Option<i32> = row.get(11);
+            let lock_state: Option<String> = row.get(12);
+            let locked_down_at: Option<chrono::DateTime<chrono::Utc>> = row.get(13);
+            let voice_detection_enable: Option<bool> = row.get(14);
+            let voice_invite_enable: Option<bool> = row.get(15);
+            let voice_threshold: Option<f64> = row.get(16);
+            let vad_rms_threshold: Option<i32> = row.get(17);
+            serde_json::json!({
+                "uuid": db_uuid.to_string(),
+                "user_id": firebase_uid,
+                "last_heard": last_heard.timestamp_millis(),
+                "uptime_ms": uptime_ms,
+                "wifi_ssid": wifi_ssid,
+                "backend_url": backend_url,
+                "mqtt_broker_url": mqtt_broker_url,
+                "mqtt_heartbeat_enable": mqtt_heartbeat_enable,
+                "mqtt_heartbeat_interval_sec": mqtt_heartbeat_interval_sec,
+                "audio_record_timeout_sec": audio_record_timeout_sec,
+                "lock_timeout_ms": lock_timeout_ms,
+                "pairing_timeout_sec": pairing_timeout_sec,
+                "lock_state": lock_state,
+                "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
+                "voice_detection_enable": voice_detection_enable,
+                "voice_invite_enable": voice_invite_enable,
+                "voice_threshold": voice_threshold,
+                "vad_rms_threshold": vad_rms_threshold
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string(&devices).unwrap())
+}
+```
+
+Retorna lista JSON de dispositivos pertencentes ao usuário autenticado,
+incluindo configurações como Wi-Fi, *timeouts* e estado de bloqueio: valida
+token JWT, consulta tabela `devices` filtrando por `user_id`, e mapeia
+resultados para objetos JSON com *timestamps* em milissegundos.
+
+#### Endpoint `get_logs`
+
+```rust
+#[get("/logs/<uuid>")]
+pub async fn get_logs(token: Token, uuid: &str, db_pool: &State<PgPool>) -> Result<String, Status> {
+    let uuid_parsed = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => {
+            return Err(Status::Unauthorized);
+        }
+    };
+
+    // Check that the device belongs to this user (logs only for owners)
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid_parsed)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    if let Some((Some(db_user_id),)) = row {
+        if firebase_uid != db_user_id {
+            return Err(Status::Unauthorized);
+        }
+    } else {
+        return Err(Status::Unauthorized); // Device not found or not owned
+    }
+
+    // Get logs, limit to 1000
+    let rows = sqlx::query("SELECT l.id, l.device_id, l.timestamp, l.event_type, l.reason, l.user_id, u.name as user_name FROM logs l LEFT JOIN users u ON l.user_id = u.firebase_uid WHERE l.device_id = $1 ORDER BY l.timestamp DESC LIMIT 1000")
+        .bind(uuid_parsed.to_string())
+        .fetch_all(&**db_pool)
+        .await
+        .map_err(|_| {
+            Status::InternalServerError
+        })?;
+    let logs: Vec<LogEntry> = rows
+        .into_iter()
+        .map(|row| LogEntry {
+            id: row.get(0),
+            device_id: row.get(1),
+            timestamp: row.get(2),
+            event_type: row.get(3),
+            reason: row.get(4),
+            user_id: row.get(5),
+            user_name: row.get(6),
+        })
+        .collect();
+
+    Ok(serde_json::to_string(&logs).unwrap())
+}
+```
+
+Retorna histórico de operações de um dispositivo específico, limitado a 1000
+entradas mais recentes: valida propriedade do dispositivo pelo usuário, junta
+tabelas `logs` e `users` para incluir nomes de usuários, e ordena por
+*timestamp* descendente.
+
+#### Endpoint `control_device`
+
+```rust
+#[post("/control/<uuid>", data = "<request>")]
+pub async fn control_device(
+    token: Token,
+    uuid: &str,
+    request: rocket::serde::json::Json<ControlRequest>,
+    db_pool: &State<PgPool>,
+    mqtt_client: &State<AsyncClient>,
+) -> Result<(), Status> {
+    let uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+
+    // Validate token: get firebase_uid from current_token
+    let user_row: Option<(String,)> =
+        sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+            .bind(&token.0)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+    let firebase_uid = match user_row {
+        Some((uid,)) => uid,
+        None => return Err(Status::Unauthorized),
+    };
+
+    // Check Firebase UID matches request user_id
+    if firebase_uid != request.user_id {
+        return Err(Status::Unauthorized);
+    }
+
+    // Check if user owns the device OR has an accepted, non-expired invite
+    let device_row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+            .bind(uuid)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    let has_access = if let Some((Some(owner_id),)) = device_row {
+        // User owns the device
+        if request.user_id == owner_id {
+            true
+        } else {
+            // Check for accepted, non-expired invite
+            let now = Utc::now().timestamp_millis();
+            let invite_row: Option<(i32,)> = sqlx::query_as(
+                "SELECT id FROM invites WHERE device_id = $1 AND receiver_id = $2 AND status = 1 AND expiry_timestamp > $3"
+            )
+            .bind(uuid)
+            .bind(&request.user_id)
+            .bind(now)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+            invite_row.is_some()
+        }
+    } else {
+        false // Device not found
+    };
+
+    if !has_access {
+        return Err(Status::Unauthorized);
+    }
+
+    // Store recent command
+    let now = chrono::Utc::now().timestamp();
+    {
+        let commands_mutex = super::RECENT_COMMANDS.get().unwrap();
+        let mut commands = commands_mutex.lock().unwrap();
+        commands.insert(uuid.to_string(), (firebase_uid.clone(), now));
+    }
+
+    publish_control_message(mqtt_client, uuid, request.command.clone())
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+    Ok(())
+}
+```
+
+Processa comandos para abrir ou fechar uma fechadura: valida token e
+propriedade/invite ativo, armazena comando recente para deduplicação, publica
+mensagem MQTT para o dispositivo, e registra log da operação no banco.
+
+#### Endpoint `verify_voice`
+
+```rust
+#[post("/verify_voice/<device_id>", data = "<audio_data>")]
+pub async fn verify_voice(
+    device_id: &str,
+    device_token: DeviceToken,
+    audio_data: rocket::data::Data<'_>,
+    db_pool: &State<PgPool>,
+    speechbrain_url: &State<SpeechbrainUrl>,
+) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
+    let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
+
+    // Get device info including voice_invite_enable, voice_threshold, and hashed_passphrase
+    let device_row: Option<DeviceVoiceRow> = sqlx::query_as(
+        "SELECT user_id, voice_invite_enable, voice_threshold, hashed_passphrase FROM devices WHERE uuid = $1",
+    )
+    .bind(device_uuid)
+    .fetch_optional(&**db_pool)
+    .await
+    .map_err(|_| Status::InternalServerError)?;
+
+    let (user_id, voice_invite_enable, voice_threshold, _hashed_passphrase) = match device_row {
+        Some(row)
+            if row.user_id.is_some()
+                && row.voice_invite_enable.is_some()
+                && row.voice_threshold.is_some() =>
+        {
+            let uid = row.user_id.unwrap();
+            let vie = row.voice_invite_enable.unwrap();
+            let vt = row.voice_threshold.unwrap();
+            let hp = row.hashed_passphrase;
+            println!(
+                "DEBUG: Device found, user_id: {}, voice_invite_enable: {}, voice_threshold: {}",
+                uid, vie, vt
+            );
+            // Verify the bearer token against the hashed passphrase
+            if let Some(ref hash) = hp {
+                let parsed_hash =
+                    PasswordHash::new(hash).map_err(|_| Status::InternalServerError)?;
+                let argon2 = Argon2::default();
+                if argon2
+                    .verify_password(device_token.0.as_bytes(), &parsed_hash)
+                    .is_err()
+                {
+                    return Err(Status::Unauthorized);
+                }
+            } else {
+                // No passphrase set, deny access
+                return Err(Status::Unauthorized);
+            }
+            (uid, vie, vt, hp)
+        }
+        _ => {
+            return Err(Status::BadRequest);
+        }
+    };
+
+    // Collect embeddings
+    let mut user_embeddings = Vec::new();
+    let mut user_ids = Vec::new();
+
+    // Always include owner
+    let owner_row: Option<(Option<Vec<u8>>,)> =
+        sqlx::query_as("SELECT voice_embeddings FROM users WHERE firebase_uid = $1")
+            .bind(&user_id)
+            .fetch_optional(&**db_pool)
+            .await
+            .map_err(|_| Status::InternalServerError)?;
+
+    if let Some((Some(emb),)) = owner_row {
+        println!(
+            "DEBUG: Found voice embeddings for owner {} ({} bytes)",
+            user_id,
+            emb.len()
+        );
+        user_embeddings.push(base64::engine::general_purpose::STANDARD.encode(&emb));
+        user_ids.push(user_id.clone());
+    } else {
+        return Err(Status::BadRequest); // Owner must have voice registered
+    }
+
+    // If voice_invite_enable, include invited users
+    if voice_invite_enable {
+        let now = Utc::now().timestamp_millis();
+        let invite_rows: Vec<(String, Vec<u8>)> = sqlx::query_as(
+            "SELECT u.firebase_uid, u.voice_embeddings FROM users u JOIN invites i ON u.firebase_uid = i.receiver_id WHERE i.device_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2 AND u.voice_embeddings IS NOT NULL"
+        )
+        .bind(device_uuid)
+        .bind(now)
+        .fetch_all(&**db_pool)
+        .await
+        .map_err(|_| {
+            Status::InternalServerError
+        })?;
+
+        for (invite_user_id, emb) in invite_rows {
+            println!(
+                "DEBUG: Found voice embeddings for invited user {} ({} bytes)",
+                invite_user_id,
+                emb.len()
+            );
+            user_embeddings.push(base64::engine::general_purpose::STANDARD.encode(&emb));
+            user_ids.push(invite_user_id);
+        }
+    }
+
+    if user_embeddings.is_empty() {
+        return Err(Status::BadRequest);
+    }
+
+    println!(
+        "DEBUG: Collected {} embeddings from users: {:?}",
+        user_embeddings.len(),
+        user_ids
+    );
+
+    // Read audio data
+    let mut data = Vec::new();
+    audio_data
+        .open(rocket::data::ByteUnit::max_value())
+        .read_to_end(&mut data)
+        .await
+        .map_err(|_| Status::BadRequest)?;
+
+    if data.is_empty() {
+        return Err(Status::BadRequest);
+    }
+
+    // Call speechbrain service
+    println!(
+        "DEBUG: Calling speechbrain verify service at {}/verify",
+        speechbrain_url.0.as_str()
+    );
+    let client = Client::new();
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+
+    let response = client
+        .post(format!("{}/verify", speechbrain_url.0.as_str()))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "pcm_base64": base64_data,
+            "candidates": user_embeddings
+        }))
+        .send()
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    println!(
+        "DEBUG: Speechbrain verify response status: {}",
+        response.status()
+    );
+
+    if !response.status().is_success() {
+        return Err(Status::InternalServerError);
+    }
+
+    let verify_response: serde_json::Value = response.json().await.map_err(|e| {
+        println!(
+            "DEBUG: Failed to parse speechbrain verify response: {:?}",
+            e
+        );
+        Status::InternalServerError
+    })?;
+
+    let best_index = verify_response["best_index"]
+        .as_u64()
+        .ok_or(Status::InternalServerError)? as usize;
+
+    let score = verify_response["score"]
+        .as_f64()
+        .ok_or(Status::InternalServerError)?;
+
+    println!(
+        "DEBUG: Verification best_index: {}, score: {}",
+        best_index, score
+    );
+
+    if score > voice_threshold && best_index < user_ids.len() {
+        println!(
+            "DEBUG: Score {} > {}, allowing unlock for user at index {}",
+            score, voice_threshold, best_index
+        );
+
+        let matched_user_id = &user_ids[best_index];
+
+        // Store recent voice verification
+        let now = chrono::Utc::now().timestamp();
+        {
+            let commands_mutex = super::RECENT_COMMANDS.get().unwrap();
+            let mut commands = commands_mutex.lock().unwrap();
+            commands.insert(device_id.to_string(), (matched_user_id.clone(), now));
+        }
+
+        println!(
+            "DEBUG: Stored recent voice verification for user {}",
+            matched_user_id
+        );
+        Ok(rocket::serde::json::Json(
+            serde_json::json!({"index": best_index}),
+        ))
+    } else {
+        println!(
+            "DEBUG: Score {} <= {} or invalid index {}, denying unlock",
+            score, voice_threshold, best_index
+        );
+        Err(Status::Forbidden)
+    }
+}
+```
+
+Endpoint crítico para autenticação por voz da amostra enviada pela fechadura:
+autentica dispositivo usando `DeviceToken` (senha *hasheada* do dispositivo),
+coleta embeddings de voz do proprietário e usuários convidados (se habilitado),
+codifica áudio PCM em *base64* e envia para serviço SpeechBrain, compara score
+de similaridade com threshold configurado, registra verificação bem-sucedida
+como comando recente, retorna índice do usuário identificado ou erro 403 se
+negado.
+
 ## Serviço [FastAPI](https://fastapi.tiangolo.com/) (*SpeechBrain*)
 
 ### Visão Geral
