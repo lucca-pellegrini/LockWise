@@ -17,7 +17,7 @@ from speechbrain.inference import SpeakerRecognition
 MODEL_SOURCE = "speechbrain/spkrec-ecapa-voxceleb"
 MODEL_DIR = "models/spkrec"
 
-EXPECTED_SR = 16000
+EXPECTED_SR = 44100
 MODEL_SR = 16000
 MIN_SECONDS = 2.0
 
@@ -160,7 +160,7 @@ def verify(req: VerifyRequest):
                         "--demuxer=rawaudio",
                         "--demuxer-rawaudio-format=s16le",
                         "--demuxer-rawaudio-channels=1",
-                        "--demuxer-rawaudio-rate=16000",
+                        "--demuxer-rawaudio-rate=44100",
                         temp_file,
                     ],
                     check=True,

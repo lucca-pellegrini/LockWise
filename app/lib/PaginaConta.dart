@@ -805,7 +805,7 @@ class _PaginaContaState extends State<PaginaConta> {
       final path = await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
-          sampleRate: 16000,
+          sampleRate: 44100,
           numChannels: 1,
         ),
         path: tempPath,

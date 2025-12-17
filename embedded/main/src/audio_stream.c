@@ -34,7 +34,7 @@ extern audio_board_handle_t g_board_handle;
 static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 
 /** @brief Taxa de amostragem do áudio em Hz */
-#define AUDIO_SAMPLE_RATE 16000
+#define AUDIO_SAMPLE_RATE 44100
 /** @brief Número de bits por amostra de áudio */
 #define AUDIO_BITS 16
 /** @brief Número de canais de áudio (mono) */

@@ -599,7 +599,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                 onPressed: () async {
                                   final nome = nomeController.text.trim();
                                   final usuario =
-                                  await LocalService.getUsuarioLogado();
+                                      await LocalService.getUsuarioLogado();
                                   final userId = usuario?['id'] as String;
                                   if (userId != null) {
                                     await FirebaseFirestore.instance
@@ -629,7 +629,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
-                    )
+                    ),
                   ),
                 ),
               ),
@@ -1230,8 +1230,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                               final num = int.tryParse(value);
                                               if (num == null ||
                                                   num < 3 ||
-                                                  num > 60) {
-                                                return '3-60s';
+                                                  num > 10) {
+                                                return '3-10s';
                                               }
                                               return null;
                                             },

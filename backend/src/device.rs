@@ -178,7 +178,7 @@ pub async fn update_config(
             "wifi_pass" => {} // Allow empty to not change
             "audio_timeout" => {
                 let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
-                if !(3..=60).contains(&val) {
+                if !(3..=10).contains(&val) {
                     return Err(Status::BadRequest);
                 }
             }
