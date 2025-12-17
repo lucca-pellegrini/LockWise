@@ -29,6 +29,7 @@ typedef struct {
 	char user_id[256]; /**< ID do usuário pareado */
 	bool pairing_mode; /**< Indica se o dispositivo está em modo de pareamento */
 	bool voice_detection_enable; /**< Habilita/desabilita detecção de voz */
+	int vad_rms_threshold; /**< Limiar RMS para detecção de atividade de voz */
 } config_t;
 
 /**

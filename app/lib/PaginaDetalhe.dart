@@ -3,6 +3,7 @@ import 'LocalService.dart';
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -45,9 +46,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool _initialVoiceDetectionEnabled = true;
   bool _initialVoiceInviteEnabled = true;
   double _initialVoiceThreshold = 0.60;
+  int _initialVadRmsThreshold = 1000;
   bool _voiceDetectionEnabled = true;
   bool _voiceInviteEnabled = true;
   double _voiceThreshold = 0.60;
+  int _vadRmsThreshold = 1000;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -261,9 +264,11 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
           _voiceDetectionEnabled = deviceData['voice_detection_enable'] ?? true;
           _voiceInviteEnabled = deviceData['voice_invite_enable'] ?? true;
           _voiceThreshold = (deviceData['voice_threshold'] ?? 0.60).toDouble();
+          _vadRmsThreshold = deviceData['vad_rms_threshold'] ?? 1000;
           _initialVoiceDetectionEnabled = _voiceDetectionEnabled;
           _initialVoiceInviteEnabled = _voiceInviteEnabled;
           _initialVoiceThreshold = _voiceThreshold;
+          _initialVadRmsThreshold = _vadRmsThreshold;
 
           // Store initial values
           _initialWifiSsid = _wifiSsidController.text;
@@ -1041,6 +1046,51 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                         color: Colors.white70,
                                         fontSize: 12,
                                       ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Nível mínimo de áudio para ativar detecção de voz: $_vadRmsThreshold',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Slider(
+                                      value:
+                                          ((log(_vadRmsThreshold.toDouble()) /
+                                                          log(10) -
+                                                      log(500) / log(10)) /
+                                                  (log(25000) / log(10) -
+                                                      log(500) / log(10)) *
+                                                  100)
+                                              .clamp(0, 100),
+                                      min: 0,
+                                      max: 100,
+                                      divisions: 20,
+                                      label: '$_vadRmsThreshold',
+                                      activeColor: Colors.blueAccent
+                                          .withOpacity(0.5),
+                                      inactiveColor: Colors.white.withOpacity(
+                                        0.3,
+                                      ),
+                                      onChanged: (double sliderValue) {
+                                        double minLog = log(500) / log(10);
+                                        double maxLog = log(25000) / log(10);
+                                        double logValue =
+                                            minLog +
+                                            (sliderValue / 100) *
+                                                (maxLog - minLog);
+                                        int newValue = pow(
+                                          10,
+                                          logValue,
+                                        ).round();
+                                        setState(() {
+                                          _vadRmsThreshold = newValue.clamp(
+                                            500,
+                                            25000,
+                                          );
+                                        });
+                                      },
                                     ),
                                   ],
                                 ),
@@ -1983,6 +2033,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         configs.add({
           'key': 'voice_threshold',
           'value': _voiceThreshold.toStringAsFixed(2),
+        });
+      }
+      if (_vadRmsThreshold != _initialVadRmsThreshold) {
+        configs.add({
+          'key': 'vad_rms_threshold',
+          'value': _vadRmsThreshold.toString(),
         });
       }
 

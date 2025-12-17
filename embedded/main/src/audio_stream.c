@@ -39,8 +39,6 @@ static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 #define AUDIO_BITS 16
 /** @brief Número de canais de áudio (mono) */
 #define AUDIO_CHANNELS 1
-/** @brief Limiar RMS para detecção de ruído */
-#define NOISE_RMS_THRESHOLD 1000.0
 /** @brief Duração do frame VAD em ms */
 #define VAD_FRAME_MS 30
 /** @brief Número de amostras por frame VAD */
@@ -179,7 +177,7 @@ static void vad_task(void *arg)
 		}
 		rms = sqrt(rms / VAD_SAMPLES);
 
-		if (rms > NOISE_RMS_THRESHOLD)
+		if (rms > (double)config.vad_rms_threshold)
 			speech_frames++;
 		else
 			speech_frames = 0;

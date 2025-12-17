@@ -222,6 +222,19 @@ void load_config_from_nvs(void)
 		}
 	}
 
+	// Load vad_rms_threshold
+	int32_t vad_val;
+	if (nvs_available && nvs_get_i32(nvs_handle, "vad_rms", &vad_val) == ESP_OK) {
+		config.vad_rms_threshold = vad_val;
+		ESP_LOGI(TAG, "Loaded vad_rms_threshold from NVS:\033[1m %d", config.vad_rms_threshold);
+	} else {
+		config.vad_rms_threshold = 1000;
+		if (nvs_available) {
+			nvs_set_i32(nvs_handle, "vad_rms", config.vad_rms_threshold);
+			ESP_LOGW(TAG, "Using default vad_rms_threshold (1000) and saved to NVS");
+		}
+	}
+
 	if (nvs_available) {
 		nvs_commit(nvs_handle);
 		nvs_close(nvs_handle);
@@ -230,13 +243,13 @@ void load_config_from_nvs(void)
 
 void update_config(const char *key, const char *value)
 {
-	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, pairing_timeout, user_id, pairing_mode, voice_detection_enable)
+	// Validate key (allow wifi_ssid, wifi_pass, backend_url, backend_bearer, mqtt_broker, mqtt_pass, mqtt_hb_enable, mqtt_hb_interval, audio_timeout, lock_timeout, pairing_timeout, user_id, pairing_mode, voice_detection_enable, vad_rms_threshold, vad_rms)
 	if (!strcasecmp(key, "wifi_ssid") || !strcasecmp(key, "wifi_pass") || !strcasecmp(key, "backend_url") ||
 	    !strcasecmp(key, "backend_bearer") || !strcasecmp(key, "mqtt_broker") || !strcasecmp(key, "mqtt_pass") ||
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
 	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") ||
 	    !strcasecmp(key, "pairing_timeout") || !strcasecmp(key, "user_id") || !strcasecmp(key, "pairing_mode") ||
-	    !strcasecmp(key, "voice_detection_enable")) {
+	    !strcasecmp(key, "voice_detection_enable") || !strcasecmp(key, "vad_rms_threshold") || !strcasecmp(key, "vad_rms")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -290,6 +303,10 @@ void update_config(const char *key, const char *value)
 				uint8_t new_val = atoi(value) ? 1 : 0;
 				if (config.voice_detection_enable != new_val)
 					needs_update = true;
+			} else if (!strcasecmp(key, "vad_rms_threshold") || !strcasecmp(key, "vad_rms")) {
+				int32_t new_val = atoi(value);
+				if (config.vad_rms_threshold != new_val)
+					needs_update = true;
 			}
 
 			if (needs_update) {
@@ -337,6 +354,12 @@ void update_config(const char *key, const char *value)
 					set_err = nvs_set_u8(nvs_handle, "voice_en", voice_val);
 					if (set_err == ESP_OK) {
 						config.voice_detection_enable = voice_val;
+					}
+				} else if (!strcasecmp(key, "vad_rms_threshold") || !strcasecmp(key, "vad_rms")) {
+					int32_t vad_val = atoi(value);
+					set_err = nvs_set_i32(nvs_handle, "vad_rms", vad_val);
+					if (set_err == ESP_OK) {
+						config.vad_rms_threshold = vad_val;
 					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);

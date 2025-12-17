@@ -199,6 +199,9 @@ async fn main() -> Result<()> {
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS voice_threshold FLOAT8 DEFAULT 0.60")
         .execute(&db_pool)
         .await?;
+    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS vad_rms_threshold INTEGER DEFAULT 1000")
+        .execute(&db_pool)
+        .await?;
     sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_embeddings BYTEA")
         .execute(&db_pool)
         .await?;

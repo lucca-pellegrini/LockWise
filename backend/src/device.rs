@@ -213,6 +213,12 @@ pub async fn update_config(
                     return Err(Status::BadRequest);
                 }
             }
+            "vad_rms_threshold" => {
+                let val: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                if !(500..=25000).contains(&val) {
+                    return Err(Status::BadRequest);
+                }
+            }
             _ => {
                 return Err(Status::BadRequest);
             }
@@ -251,6 +257,15 @@ pub async fn update_config(
                 let enable_bool = enable == 1;
                 sqlx::query("UPDATE devices SET voice_invite_enable = $1 WHERE uuid = $2")
                     .bind(enable_bool)
+                    .bind(uuid_parsed)
+                    .execute(&**db_pool)
+                    .await
+                    .map_err(|_| Status::InternalServerError)?;
+            }
+            "vad_rms_threshold" => {
+                let threshold: i32 = config.value.parse().map_err(|_| Status::BadRequest)?;
+                sqlx::query("UPDATE devices SET vad_rms_threshold = $1 WHERE uuid = $2")
+                    .bind(threshold)
                     .bind(uuid_parsed)
                     .execute(&**db_pool)
                     .await
@@ -485,14 +500,15 @@ pub async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String
     };
 
     let rows = sqlx::query(
-        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold FROM devices WHERE user_id = $1",
+        "SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold, vad_rms_threshold FROM devices WHERE user_id = $1",
     )
     .bind(&firebase_uid)
     .fetch_all(&**db_pool)
     .await
     .map_err(|_| Status::InternalServerError)?;
 
-    let devices: Vec<serde_json::Value> = rows
+    let rows_vec: Vec<_> = rows;
+    let devices: Vec<serde_json::Value> = rows_vec
         .into_iter()
         .map(|row| {
             let db_uuid: Uuid = row.get(0);
@@ -511,6 +527,7 @@ pub async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String
             let voice_detection_enable: Option<bool> = row.get(14);
             let voice_invite_enable: Option<bool> = row.get(15);
             let voice_threshold: Option<f64> = row.get(16);
+            let vad_rms_threshold: Option<i32> = row.get(17);
             serde_json::json!({
                 "uuid": db_uuid.to_string(),
                 "user_id": firebase_uid,
@@ -528,7 +545,8 @@ pub async fn get_devices(token: Token, db_pool: &State<PgPool>) -> Result<String
                 "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
                 "voice_detection_enable": voice_detection_enable,
                 "voice_invite_enable": voice_invite_enable,
-                "voice_threshold": voice_threshold
+                "voice_threshold": voice_threshold,
+                "vad_rms_threshold": vad_rms_threshold
             })
         })
         .collect();
@@ -740,7 +758,7 @@ pub async fn get_device(
     };
 
     // Check that the device belongs to this user or has accepted invite
-    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold FROM devices WHERE uuid = $1")
+    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold, vad_rms_threshold FROM devices WHERE uuid = $1")
             .bind(uuid)
             .fetch_optional(&**db_pool)
             .await
@@ -763,6 +781,7 @@ pub async fn get_device(
         let voice_detection_enable: Option<bool> = row.get(14);
         let voice_invite_enable: Option<bool> = row.get(15);
         let voice_threshold: Option<f64> = row.get(16);
+        let vad_rms_threshold: Option<i32> = row.get(17);
 
         let has_access = if let Some(db_user_id) = db_user_id_opt {
             // User owns the device
@@ -806,7 +825,8 @@ pub async fn get_device(
             "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
             "voice_detection_enable": voice_detection_enable,
             "voice_invite_enable": voice_invite_enable,
-            "voice_threshold": voice_threshold
+            "voice_threshold": voice_threshold,
+            "vad_rms_threshold": vad_rms_threshold
         });
         Ok(device.to_string())
     } else {
@@ -851,7 +871,7 @@ pub async fn get_temp_device(
     }
 
     // Get device data
-    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold FROM devices WHERE uuid = $1")
+    let row = sqlx::query("SELECT uuid, user_id, last_heard, uptime_ms, wifi_ssid, backend_url, mqtt_broker_url, mqtt_heartbeat_enable, mqtt_heartbeat_interval_sec, audio_record_timeout_sec, lock_timeout_ms, pairing_timeout_sec, lock_state, locked_down_at, voice_detection_enable, voice_invite_enable, voice_threshold, vad_rms_threshold FROM devices WHERE uuid = $1")
             .bind(uuid_parsed)
             .fetch_optional(&**db_pool)
             .await
@@ -873,6 +893,7 @@ pub async fn get_temp_device(
         let voice_detection_enable: Option<bool> = row.get(14);
         let voice_invite_enable: Option<bool> = row.get(15);
         let voice_threshold: Option<f64> = row.get(16);
+        let vad_rms_threshold: Option<i32> = row.get(17);
 
         let device = serde_json::json!({
             "uuid": db_uuid.to_string(),
@@ -891,7 +912,8 @@ pub async fn get_temp_device(
             "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
             "voice_detection_enable": voice_detection_enable,
             "voice_invite_enable": voice_invite_enable,
-            "voice_threshold": voice_threshold
+            "voice_threshold": voice_threshold,
+            "vad_rms_threshold": vad_rms_threshold
         });
         Ok(device.to_string())
     } else {
@@ -1034,7 +1056,7 @@ pub async fn get_temp_devices_status(
     };
 
     let rows = sqlx::query(
-        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.pairing_timeout_sec, d.lock_state, d.locked_down_at, d.voice_detection_enable, d.voice_invite_enable, d.voice_threshold FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
+        "SELECT d.uuid, d.user_id, d.last_heard, d.uptime_ms, d.wifi_ssid, d.backend_url, d.mqtt_broker_url, d.mqtt_heartbeat_enable, d.mqtt_heartbeat_interval_sec, d.audio_record_timeout_sec, d.lock_timeout_ms, d.pairing_timeout_sec, d.lock_state, d.locked_down_at, d.voice_detection_enable, d.voice_invite_enable, d.voice_threshold, d.vad_rms_threshold FROM devices d JOIN invites i ON d.uuid = i.device_id WHERE i.receiver_id = $1 AND i.status = 1 AND i.expiry_timestamp > $2"
     )
     .bind(&firebase_uid)
     .bind(Utc::now().timestamp_millis())
@@ -1061,6 +1083,7 @@ pub async fn get_temp_devices_status(
             let voice_detection_enable: Option<bool> = row.get(14);
             let voice_invite_enable: Option<bool> = row.get(15);
             let voice_threshold: Option<f64> = row.get(16);
+            let vad_rms_threshold: Option<i32> = row.get(17);
             serde_json::json!({
                 "uuid": db_uuid.to_string(),
                 "user_id": firebase_uid,
@@ -1078,7 +1101,8 @@ pub async fn get_temp_devices_status(
                 "locked_down_at": locked_down_at.map(|dt| dt.timestamp_millis()),
                 "voice_detection_enable": voice_detection_enable,
                 "voice_invite_enable": voice_invite_enable,
-                "voice_threshold": voice_threshold
+                "voice_threshold": voice_threshold,
+                "vad_rms_threshold": vad_rms_threshold
             })
         })
         .collect();
