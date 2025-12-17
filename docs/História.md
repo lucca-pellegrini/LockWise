@@ -44,6 +44,21 @@ que estávamos acostumados.
 
 ## Fases de Desenvolvimento
 
+O desenvolvimento ocorreu em três fases: primeiro, a fase de planejamento, em
+que não implementamos nenhuma parte do dispositivo físico nem do *back-end*,
+mas simplesmente nos concentramos em decidir quais *features* seriam as mais
+desejáveis, quais seriam exequíveis, e quais deveríamos abandonar. Nessa fase,
+já estávamos implementando o aplicativo, pois a disciplina exigia o
+desenvolvimento em *sprints* regulares, com apresentações de progresso a cadas
+poucas semanas. Na segunda fase, desenvolvemos o sistema embarcado em si,
+projetando a montagem, comprando componentes, e implementando o programa do
+dispositivo; já na terceira, focamos em aprimorar o *back-end*, fazendo os
+ajustes finais ao hardware e ao aplicativo à medida que a integração dos
+componentes se concretizava. O projeto do aplicativo, por sua parte, ocorreu de
+forma paralela, com desenvolvimento ativo desde as primeiras semanas do
+semestre até o último dia, sempre se ajustando às restrições impostas pelo
+hardware limitado, e sofrendo muitas refatorações e *redesigns* ocasionais.
+
 ### Concepção e Planejamento
 
 A concepção inicial era vaga: sabíamos que nosso protótipo final seria algum
