@@ -133,7 +133,7 @@ Para sair do monitor serial, pressione `Ctrl+]`.
 - Pinos I²C (GPIO18, GPIO23) — usados para controle do codec
 
 **Pinos de Controle da Fechadura**:
-    - GPIO configurável (padrão: definido em [Kconfig](main/Kconfig.projbuild))
+- GPIO configurável (padrão: definido em [Kconfig](main/Kconfig.projbuild))
   para atuador da fechadura
 - GPIO33 (TOUCH_PAD_NUM8) — sensor de toque para destrancar
 - GPIO32 (TOUCH_PAD_NUM9) — sensor de toque para modo de pareamento
