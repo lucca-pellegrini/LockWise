@@ -6,6 +6,8 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
+[Próximo: História →](História.md)
+
 # Introdução ao LockWise
 
 O LockWise é um sistema completo de fechadura inteligente que combina
@@ -34,3 +36,5 @@ embarcado, preservando a privacidade dos usuários. Nenhuma amostra de áudio é
 armazenada em nenhum momento, nem temporariamente: o áudio dos usuários nunca é
 colocado em disco, para garantir a privacidade e impossibilitar *replay
 attacks*.
+
+[Próximo: História →](História.md)

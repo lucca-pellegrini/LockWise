@@ -6,6 +6,8 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
+[← Anterior: História](História.md) | [Próximo: Back-end →](Backend.md)
+
 # Desenvolvimento do Dispositivo
 
 O firmware do LockWise roda no [ESP32-LyraT V4.3](https://docs.espressif.com/projects/esp-adf/en/latest/design-guide/dev-boards/get-started-esp32-lyrat.html), utilizando a framework [ESP-ADF](https://docs.espressif.com/projects/esp-adf/en/latest/)
@@ -474,3 +476,5 @@ CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=n
 CONFIG_MBEDTLS_CUSTOM_MEM_ALLOC=n
 ```
+
+[← Anterior: História](História.md) | [Próximo: Back-end →](Backend.md)

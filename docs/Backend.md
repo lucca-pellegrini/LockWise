@@ -6,6 +6,8 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
+[← Anterior: Sistema Embarcado](Embedded.md)
+
 # Desenvolvimento do Back-End
 
 ## Introdução
@@ -1211,3 +1213,5 @@ do candidato com a maior similaridade. Finalmente, retorna uma resposta
 estruturada contendo o índice do melhor candidato na lista e o score de
 confiança, permitindo ao cliente tomar decisões baseadas em *thresholds*
 configuráveis.
+
+[← Anterior: Sistema Embarcado](Embedded.md)

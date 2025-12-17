@@ -6,6 +6,8 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
+[← Anterior: Introdução](Introdução.md) | [Próximo: Sistema Embarcado →](Embedded.md)
+
 # História do LockWise
 
 O LockWise foi desenvolvido como trabalho universitário para as disciplinas de
@@ -200,3 +202,5 @@ placa](https://dl.espressif.com/dl/schematics/esp32-lyrat-v4.3-schematic.pdf).
 No último dia antes da entrega, imprimimos uma caixa para conter todos os
 componentes usando uma impressora 3D, e também imprimimos as credenciais de
 pareamento na parte interna da tampa.
+
+[← Anterior: Introdução](Introdução.md) | [Próximo: Sistema Embarcado →](Embedded.md)
