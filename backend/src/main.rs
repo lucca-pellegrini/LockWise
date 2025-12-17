@@ -59,6 +59,7 @@ pub struct Token(pub String);
 impl<'r> FromRequest<'r> for Token {
     type Error = &'static str;
 
+    /// Extrai o token JWT Bearer do cabeçalho Authorization da requisição.
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         let auth_header = req.headers().get_one("Authorization");
         match auth_header {
