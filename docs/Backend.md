@@ -27,7 +27,43 @@ capaz de providenciar. Eventualmente, essa ideia foi descartada pela
 dificuldade que teríamos de dividir as tarefas, e pela dificuldade de escrever
 um *back-end* robusto e com desempenho decente nessa linguagem — decidimos
 dividir o *back-end* em dois serviços: um *back-end “principal”*, e um serviço
-isolado em Python para a diarização.
+isolado em Python para a diarização:
+
+```mermaid
+graph TD
+    A[[App Flutter]] -->|API Firebase| B[Firestore]
+    A -->|API Firebase| C[Firebase Auth]
+    A -->|APIs REST| D[Proxy Reverso OpenResty]
+    A -.->|AP de Pareamento| E[[Fechadura LockWise]]
+    E <-->|MQTTS| F[Broker NanoMQ]
+    E -->|APIs REST| D
+    D -->|Porta TCP Local| G{{Back-end Rocket}}
+    F <-->|MQTTS| G
+    G -->|Toolkit SQLx| H[PostgreSQL]
+    G ==>|Conexão Interna| I{{Back-end FastAPI}}
+    subgraph Google
+        B
+        C
+    end
+    subgraph VPS Barata
+        D
+        F
+        G
+        H
+        I
+        subgraph Imagem Docker
+            G
+            I
+        end
+    end
+```
+
+Outros componentes constituem a arquitetura final do *back-end*. No diagrama
+acima, temos todos os serviços usados no depoimento final: o aplicativo se
+comunica ao Firebase e ao back-end; a fechadura se comunica com o broker e com
+o back-end; o back-end se comunica internamente na imagem, e se comunica com o
+banco de dados; um proxy reverso *[OpenResty](https://openresty.org/en/)* ou
+*[Nginx](https://nginx.org/en/)* providencia TLS.
 
 
 ##  Serviço [Rocket](https://rocket.rs/) (Back-End Principal)
@@ -40,7 +76,7 @@ estado, se comunica com o banco de dados
 [PostgreSQL](https://www.postgresql.org/), processa as requisições do
 aplicativo, e recebe as amostras de áudio dos dispositivos e as transfere ao
 serviço de *Speaker Recognition*. Todas as requisições que exigem segurança e
-validação ocorrem aqui.
+validação ocorrem aqui: este é o coração do projeto.
 
 ### Detalhes de Implementação
 
