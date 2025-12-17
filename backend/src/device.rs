@@ -3,12 +3,13 @@
 //! Este módulo contém funções e estruturas para registro, controle e monitoramento
 //! de dispositivos LockWise via API REST e comunicação MQTT.
 use anyhow::Result;
-use argon2::{Argon2, PasswordHasher};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::PasswordHash};
 use base64::Engine;
 use chrono::Utc;
 use reqwest::Client;
 use rocket::http::Status;
-use rocket::{State, get, post};
+use rocket::request::{FromRequest, Outcome};
+use rocket::{Request, State, get, post};
 use rumqttc::{AsyncClient, QoS};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
@@ -18,6 +19,32 @@ use uuid::Uuid;
 use super::SpeechbrainUrl;
 use super::Token;
 use super::mqtt::publish_control_message;
+
+/// Invólucro para token de dispositivo extraído do cabeçalho Authorization.
+#[derive(Clone)]
+pub struct DeviceToken(pub String);
+
+/// Implementação de FromRequest para DeviceToken para extrair token Bearer do cabeçalho Authorization.
+/// Usado para autenticar dispositivos que enviam dados de voz.
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for DeviceToken {
+    type Error = &'static str;
+
+    /// Extrai o token Bearer do cabeçalho Authorization da requisição.
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let auth_header = req.headers().get_one("Authorization");
+        match auth_header {
+            Some(auth) if auth.starts_with("Bearer ") => {
+                let token_str = &auth[7..];
+                Outcome::Success(DeviceToken(token_str.to_string()))
+            }
+            _ => Outcome::Error((
+                Status::Unauthorized,
+                "Missing or invalid Authorization header",
+            )),
+        }
+    }
+}
 
 /// Estrutura de requisição para control API endpoints
 #[derive(Deserialize)]
@@ -86,6 +113,19 @@ pub struct RegisterDeviceRequest {
     user_key: String,
     /// ID do usuário proprietário do dispositivo.
     user_id: String,
+}
+
+/// Estrutura para representar uma linha de dispositivo para verificação de voz.
+#[derive(sqlx::FromRow)]
+struct DeviceVoiceRow {
+    /// ID do usuário proprietário do dispositivo
+    user_id: Option<String>,
+    /// Flag indicando se convites por voz estão habilitados
+    voice_invite_enable: Option<bool>,
+    /// Limiar de confiança para verificação de voz
+    voice_threshold: Option<f64>,
+    /// Senha hasheada do dispositivo para autenticação
+    hashed_passphrase: Option<String>,
 }
 
 /// Atualiza configuração do dispositivo via MQTT.
@@ -1200,28 +1240,52 @@ pub async fn get_notifications(
 #[post("/verify_voice/<device_id>", data = "<audio_data>")]
 pub async fn verify_voice(
     device_id: &str,
+    device_token: DeviceToken,
     audio_data: rocket::data::Data<'_>,
     db_pool: &State<PgPool>,
     speechbrain_url: &State<SpeechbrainUrl>,
 ) -> Result<rocket::serde::json::Json<serde_json::Value>, Status> {
     let device_uuid = Uuid::parse_str(device_id).map_err(|_| Status::BadRequest)?;
 
-    // Get device info including voice_invite_enable and voice_threshold
-    let device_row: Option<(Option<String>, Option<bool>, Option<f64>)> = sqlx::query_as(
-        "SELECT user_id, voice_invite_enable, voice_threshold FROM devices WHERE uuid = $1",
+    // Get device info including voice_invite_enable, voice_threshold, and hashed_passphrase
+    let device_row: Option<DeviceVoiceRow> = sqlx::query_as(
+        "SELECT user_id, voice_invite_enable, voice_threshold, hashed_passphrase FROM devices WHERE uuid = $1",
     )
     .bind(device_uuid)
     .fetch_optional(&**db_pool)
     .await
     .map_err(|_| Status::InternalServerError)?;
 
-    let (user_id, voice_invite_enable, voice_threshold) = match device_row {
-        Some((Some(uid), Some(vie), Some(vt))) => {
+    let (user_id, voice_invite_enable, voice_threshold, _hashed_passphrase) = match device_row {
+        Some(row)
+            if row.user_id.is_some()
+                && row.voice_invite_enable.is_some()
+                && row.voice_threshold.is_some() =>
+        {
+            let uid = row.user_id.unwrap();
+            let vie = row.voice_invite_enable.unwrap();
+            let vt = row.voice_threshold.unwrap();
+            let hp = row.hashed_passphrase;
             println!(
                 "DEBUG: Device found, user_id: {}, voice_invite_enable: {}, voice_threshold: {}",
                 uid, vie, vt
             );
-            (uid, vie, vt)
+            // Verify the bearer token against the hashed passphrase
+            if let Some(ref hash) = hp {
+                let parsed_hash =
+                    PasswordHash::new(hash).map_err(|_| Status::InternalServerError)?;
+                let argon2 = Argon2::default();
+                if argon2
+                    .verify_password(device_token.0.as_bytes(), &parsed_hash)
+                    .is_err()
+                {
+                    return Err(Status::Unauthorized);
+                }
+            } else {
+                // No passphrase set, deny access
+                return Err(Status::Unauthorized);
+            }
+            (uid, vie, vt, hp)
         }
         _ => {
             return Err(Status::BadRequest);
