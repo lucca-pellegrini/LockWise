@@ -44,7 +44,7 @@ que estávamos acostumados.
 
 ## Fases de Desenvolvimento
 
-O desenvolvimento ocorreu em três fases: primeiro, a fase de planejamento, em
+O desenvolvimento ocorreu em duas fases: primeiro, a fase de planejamento, em
 que não implementamos nenhuma parte do dispositivo físico nem do *back-end*,
 mas simplesmente nos concentramos em decidir quais *features* seriam as mais
 desejáveis, quais seriam exequíveis, e quais deveríamos abandonar. Nessa fase,
@@ -52,12 +52,13 @@ já estávamos implementando o aplicativo, pois a disciplina exigia o
 desenvolvimento em *sprints* regulares, com apresentações de progresso a cadas
 poucas semanas. Na segunda fase, desenvolvemos o sistema embarcado em si,
 projetando a montagem, comprando componentes, e implementando o programa do
-dispositivo; já na terceira, focamos em aprimorar o *back-end*, fazendo os
-ajustes finais ao hardware e ao aplicativo à medida que a integração dos
-componentes se concretizava. O projeto do aplicativo, por sua parte, ocorreu de
-forma paralela, com desenvolvimento ativo desde as primeiras semanas do
-semestre até o último dia, sempre se ajustando às restrições impostas pelo
-hardware limitado, e sofrendo muitas refatorações e *redesigns* ocasionais.
+dispositivo; enquanto isso, também focamos em implementar e sempre aprimorar o
+*back-end*, fazendo os ajustes finais ao hardware e ao aplicativo à medida que
+a integração dos componentes se concretizava. O projeto do aplicativo, por sua
+parte, ocorreu de forma paralela, com desenvolvimento ativo desde as primeiras
+semanas do semestre até o último dia, sempre se ajustando às restrições
+impostas pelo hardware limitado, e sofrendo muitas refatorações e *redesigns*
+ocasionais.
 
 ### Concepção e Planejamento
 
@@ -199,28 +200,3 @@ placa](https://dl.espressif.com/dl/schematics/esp32-lyrat-v4.3-schematic.pdf).
 No último dia antes da entrega, imprimimos uma caixa para conter todos os
 componentes usando uma impressora 3D, e também imprimimos as credenciais de
 pareamento na parte interna da tampa.
-
-### Desenvolvimento do Back-end
-
-Inicialmente, planejávamos não escrever um *back-end*, mas usar o
-[Firebase](https://firebase.google.com/) para toda a comunicação remota entre o
-aplicativo e o dispositivo, usando as funcionalidades integradas da plataforma
-para comunicação via MQTT. Infelizmente, com a deprecação do serviço de
-reconhecimento de voz que originalmente planejamos usar, ficou claro que
-teríamos que implementar um *back-end*, nem que mínimo, para calcular os
-[*embeddings* ECAPA-TDNN](https://arxiv.org/abs/2104.01466) que usaríamos para
-fazer a diarização da voz e, assim, identificar sem ambiguidade quem é o
-locutor. O plano inicial, então, era fazer um único componente para o
-*back-end:* um serviço simples em Python, usando
-[SpeechBrain](https://speechbrain.github.io/) e alguma framework web leve, para
-controlar tanto o reconhecimento de voz quanto as funcionalidades do aplicativo
-que exigissem mais segurança que o plano gratuito do Firebase é capaz de
-providenciar. Eventualmente, essa ideia foi descartada pela dificuldade que
-teríamos de dividir as tarefas, e pela dificuldade de escrever um *back-end*
-robusto e com desempenho decente nessa linguagem — decidimos dividir o
-*back-end* em dois serviços: um *back-end “principal”*, e um serviço isolado em
-Python para a diarização.
-
-####  Back-end *Rocket*
-
-#### Serviço de *Speaker Recognition*
