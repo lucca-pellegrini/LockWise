@@ -115,6 +115,8 @@ Certifique-se de que o usuário do banco tem permissões para criar tabelas.
 Os modelos do SpeechBrain são baixados automaticamente na primeira execução.
 Para uso offline, os modelos ficam em `models/spkrec/`.
 
+**Nota**: Quando executando via Docker, os modelos são pré-carregados durante a construção da imagem para melhorar o tempo de inicialização.
+
 ## Compilação e Execução
 
 ### Serviço Principal (Rust)
@@ -140,10 +142,28 @@ O serviço estará disponível em `http://localhost:5008`.
 
 ### Utilitário de Provisionamento
 
-Para provisionar um novo dispositivo durante a configuração inicial:
+Para provisionar um novo dispositivo durante a configuração inicial, adicione
+uma senha (preferencialmente URL-safe) de 255 bytes ao dispositivo:
+
+```py
+import secrets
+print(secrets.token_urlsafe(192)[:255])) # Gera uma senha segura
+```
 
 ```bash
-cargo run --bin add_passphrase
+cargo run --bin add_passphrase # Após selecionar o dispositivo, entre a senha acima
+```
+
+Envie a mesma senha usada acima ao dispositivo via MQTT (note que o exemplo
+está em JSON, mas o dispositivo só aceitará mensagens em
+[CBOR](https://cbor.io/), recomendamos [MQTTX](https://mqttx.app/) para isso):
+
+```json
+{
+  "command": "update_config",
+  "key": "backend_bearer",
+  "value": "Wic68ZNZ0InjG8vC91J_LtBGWnOs8C4J3zTpWP8EQmCYiX3wx_OuL6NdtuardIQkecuDC7yOB_Yvyyb2K7ArFrGLOhKMIoRNk0gWefcXGkjZM_vRrVFTY6UsQeTru6XqMQr8d8HHrExORrga2Fy7pXqUkQgxcgO-cM4bPSdhAHSbpOyslntQU41o3Ov3CHAcqsmPVw3upIo7BmXjteor1rk9qCsfw0mFZLjmjD2MgqHlb9weDb0Q9I02eWz2hiD"
+}
 ```
 
 Note que o dispositivo já deve existir no banco de dados — para isso, é preciso
