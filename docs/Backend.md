@@ -84,7 +84,7 @@ validação ocorrem aqui: este é o coração do *back-end*.
 
 O back-end principal foi desenvolvido utilizando
 [Rust](https://www.rust-lang.org/) como linguagem de programação, combinado
-com o framework web [Rocket](https://rocket.rs/). Essa escolhe se deve
+com o framework web [Rocket](https://rocket.rs/). Essa escolha se deve
 majoritariamente à preferência pessoal do desenvolvedor, que estava estudando
 Rust nas aulas da disciplina *Linguagens de Programação*. A framework foi
 escolhida devido à sua simplicidade, e pela sua forte integração com o
