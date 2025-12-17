@@ -165,11 +165,32 @@ de Bluetooth LE novamente, mas com o pareamento por AP Wi-Fi já implementado e
 documentado, e com a data de entrega se aproximando, preferimos focar nos
 outros componentes do projeto.
 
+Finalmente, tendo superado esses desafios, fizemos a montagem final: compramos
+um solenoide de 12V, uma relé acionada por pino GPIO de 3,3V, um conversor
+*buck* capaz de converter até 24V para 5V, e alguns cabos e jumpers.
+Desencapamos um cabo micro USB e o soldamos à saída do conversor *buck*, com a
+outra ponta ligada ao conector de alimentação da placa, que é separado do
+conector de dados. À entrada do *buck*, ligamos a fonte de 12V usando um
+adaptador P4 onde os jumpers poderiam ser conectados. Em paralelo, ligamos o
+positivo da fonte ao *comum* da relé, com o *normalmente aberto* ligado ao
+positivo do solenoide. Finalmente, conectamos o negativo do solenoide
+diretamente ao negativo da fonte, e conectamos os pinos de controle da relé,
+*Vin*, *Ground*, e *In*, respectivamente aos pinos `VDD33`, `GND` (do *header*
+de UART), e `MTCK` do *header* de JTAG, que não utilizamos. Este último se
+conecta diretamente ao pino de GPIO 13, contanto que a chave de controle 4
+esteja ativada e a chave de controle 2 esteja desativada, como documenta [o
+diagrama da
+placa](https://dl.espressif.com/dl/schematics/esp32-lyrat-v4.3-schematic.pdf).
+No último dia antes da entrega, imprimimos uma caixa para conter todos os
+componentes usando uma impressora 3D, e também imprimimos as credenciais de
+pareamento na parte interna da tampa.
+
+### Desenvolvimento do Aplicativo
+
 ### Desenvolvimento do Back-end
 
 ####  Back-end principal
 
+Inicialmente, planejávamos
+
 #### Sistema de reconhecimento de voz
-
-
-### Desenvolvimento do Aplicativo
