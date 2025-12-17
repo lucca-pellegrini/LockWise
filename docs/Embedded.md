@@ -375,7 +375,7 @@ na pasta `main/`. Abaixo, vemos inclusas nossas unidades de translação do
 projeto, e no `REQUIRE` nós definimos todos os componentes do ESP-IDF que nos
 serão necessários:
 
-```CMakeLists.txt
+```cmake
 idf_component_register(SRCS
 	"src/audio_stream.c"
 	"src/config.c"
@@ -387,4 +387,90 @@ idf_component_register(SRCS
 	"src/wifi.c"
 	INCLUDE_DIRS "include"
 	REQUIRES mqtt esp_peripherals audio_pipeline esp_http_client driver audio_stream mbedtls esp_netif)
+```
+
+A tabela de partições do dispositivo foi definida em `partitions.csv` da
+seguinte maneira:
+
+  | Name     | Type | SubType | Offset   | Size     | Flags |
+  | -------- | ---- | ------- | -------- | -------- | ----- |
+  | nvs      | data | nvs     | 0x9000   | 0x4000   |       |
+  | otadata  | data | ota     | 0xd000   | 0x2000   |       |
+  | phy_init | data | phy     | 0xf000   | 0x1000   |       |
+  | factory  | app  | factory | 0x10000  | 0x1B0000 |       |
+  | storage  | data | fat     | 0x1C0000 | 0x30000  |       |
+
+As configurações particulares para provisionar um dispositivo individual são
+acessadas por meio do comando `menuconfig` do script auxiliar:
+
+![Tela inicial do menuconfig do projeto LockWise](img/menuconfig_top.png)
+![Menu particular do LockWise no menuconfig](img/menuconfig_lockwise.png)
+
+Os padrões estão definidos num arquivo `sdkconfig.defaults`, e estão otimizadas
+para usar menos memória DRAM e permitir uso de TLS onde possível:
+
+```conf
+# ESP32-LyraT V4.3 Configuration
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Flash Configuration
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Audio HAL Configuration
+CONFIG_ESP_LYRAT_V4_3_BOARD=y
+
+# FreeRTOS Configuration
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=3072
+CONFIG_FREERTOS_ENABLE_BACKWARD_COMPATIBILITY=y
+
+# WiFi Configuration
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# MQTT Configuration
+CONFIG_MQTT_PROTOCOL_311=y
+CONFIG_MQTT_TRANSPORT_SSL=y
+CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
+
+# HTTP Client Configuration
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
+
+# NVS Configuration
+CONFIG_NVS_ENCRYPTION=n
+
+# Partition Table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# Memory
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MEMTEST=n
+
+# Task WDT
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+# Log level
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Disable unused ADF components to save memory
+CONFIG_AUDIO_RECORDER_ENABLED=n
+CONFIG_DISPLAY_SERVICE_ENABLED=n
+CONFIG_BLUETOOTH_SERVICE_ENABLED=n
+CONFIG_INPUT_KEY_SERVICE_ENABLED=n
+CONFIG_BATTERY_SERVICE_ENABLED=n
+CONFIG_CLOUD_SERVICE_ENABLED=n
+CONFIG_WIFI_SERVICE_ENABLED=n
+CONFIG_OTA_SERVICE_ENABLED=n
+
+# Allow mbedTLS to allocate on SPIRAM, which releases a bunch of pages
+CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=n
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=n
+CONFIG_MBEDTLS_CUSTOM_MEM_ALLOC=n
 ```
