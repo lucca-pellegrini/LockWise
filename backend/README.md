@@ -72,20 +72,21 @@ Configure um broker MQTT e defina as variáveis de ambiente `MQTT_HOST`,
 
 ## Estrutura do Projeto
 
-```
-backend/
-├── src/
-│   ├── main.rs               # API principal em Rust (Rocket)
-│   └── bin/
-│       └── add_passphrase.rs # Utilitário para provisionamento de dispositivos
-├── speechbrain_service.py    # Serviço de reconhecimento de voz (FastAPI)
-├── models/                   # Modelos treinados do SpeechBrain
-├── samples/                  # Amostras de áudio para teste
-├── Cargo.toml                # Dependências Rust
-├── requirements.txt          # Dependências Python
-├── .env.example              # Exemplo de variáveis de ambiente
-└── README.md                 # Este arquivo
-```
+O projeto está organizado da seguinte forma:
+
+- **src/**: Código fonte Rust
+  - **bin/**: Utilitários
+    - [add_passphrase.rs](src/bin/add_passphrase.rs): Utilitário para provisionamento de dispositivos
+  - [main.rs](src/main.rs): API principal em Rust (Rocket)
+  - [device.rs](src/device.rs): Gerenciamento de dispositivos
+  - [invite.rs](src/invite.rs): Gerenciamento de convites
+  - [mqtt.rs](src/mqtt.rs): Comunicação MQTT
+  - [user.rs](src/user.rs): Gerenciamento de usuários
+- [speechbrain_service.py](speechbrain_service.py): Serviço de reconhecimento de voz (FastAPI)
+- [Cargo.toml](Cargo.toml): Dependências Rust
+- [requirements.txt](requirements.txt): Dependências Python
+- [.env.example](.env.example): Exemplo de variáveis de ambiente
+- [README.md](README.md): Este arquivo
 
 ## Configuração
 
