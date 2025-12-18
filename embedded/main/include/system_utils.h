@@ -1,6 +1,6 @@
 /* System Utilities Header */
-#pragma once
 
+#pragma once
 #ifndef SYSTEM_UTILS_H
 #define SYSTEM_UTILS_H
 

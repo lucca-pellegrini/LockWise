@@ -1,25 +1,21 @@
 /* WiFi Management Implementation */
 
 #include "config.h"
+#include "esp_event.h"
 #include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_netif.h"
 #include "esp_peripherals.h"
+#include "esp_wifi.h"
 #include "freertos/idf_additions.h"
-#include "system_utils.h"
+#include "freertos/task.h"
 #include "lwip/sockets.h"
 #include "periph_wifi.h"
+#include "system_utils.h"
 #include "wifi.h"
-#include <string.h>
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "esp_netif.h"
-#include "nvs_flash.h"
-#include "lwip/ip4_addr.h"
 #include <ctype.h>
 #include <stdio.h>
-#include "esp_system.h"
-#include "esp_mac.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include <string.h>
 
 #if (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0))
 #include "esp_netif.h"

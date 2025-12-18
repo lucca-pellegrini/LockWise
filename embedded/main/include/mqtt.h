@@ -1,6 +1,6 @@
 /* MQTT Management Header */
-#pragma once
 
+#pragma once
 #ifndef MQTT_H
 #define MQTT_H
 

@@ -1,11 +1,10 @@
 /* Configuration Management Header */
-#pragma once
 
+#pragma once
 #ifndef CONFIG_H
 #define CONFIG_H
 
 #include <stdbool.h>
-#include <stdint.h>
 
 /**
  * @brief Estrutura que armazena todas as configurações do dispositivo.

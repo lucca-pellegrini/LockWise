@@ -3,11 +3,8 @@
 #include "config.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "esp_system.h"
-#include "freertos/FreeRTOS.h"
 #include "mqtt.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 #include <stdbool.h>
 #include <string.h>
 #include <strings.h>
@@ -249,7 +246,8 @@ void update_config(const char *key, const char *value)
 	    !strcasecmp(key, "mqtt_hb_enable") || !strcasecmp(key, "mqtt_hb_interval") ||
 	    !strcasecmp(key, "audio_timeout") || !strcasecmp(key, "lock_timeout") ||
 	    !strcasecmp(key, "pairing_timeout") || !strcasecmp(key, "user_id") || !strcasecmp(key, "pairing_mode") ||
-	    !strcasecmp(key, "voice_detection_enable") || !strcasecmp(key, "vad_rms_threshold") || !strcasecmp(key, "vad_rms")) {
+	    !strcasecmp(key, "voice_detection_enable") || !strcasecmp(key, "vad_rms_threshold") ||
+	    !strcasecmp(key, "vad_rms")) {
 		nvs_handle_t nvs_handle;
 		esp_err_t err = nvs_open("voice_lock", NVS_READWRITE, &nvs_handle);
 		if (err == ESP_OK) {
@@ -314,71 +312,62 @@ void update_config(const char *key, const char *value)
 				if (!strcasecmp(key, "mqtt_hb_enable")) {
 					uint8_t enable_val = atoi(value) ? 1 : 0;
 					set_err = nvs_set_u8(nvs_handle, "mqtt_hb_enable", enable_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.mqtt_heartbeat_enable = enable_val;
-					}
 				} else if (!strcasecmp(key, "mqtt_hb_interval")) {
 					int32_t interval_val = atoi(value);
 					set_err = nvs_set_i32(nvs_handle, "hb_interval", interval_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.mqtt_heartbeat_interval_sec = interval_val;
-					}
 				} else if (!strcasecmp(key, "audio_timeout")) {
 					int32_t timeout_val = atoi(value);
 					set_err = nvs_set_i32(nvs_handle, "audio_timeout", timeout_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.audio_record_timeout_sec = timeout_val;
-					}
 				} else if (!strcasecmp(key, "lock_timeout")) {
 					int32_t lock_timeout_val = atoi(value);
 					set_err = nvs_set_i32(nvs_handle, "lock_timeout", lock_timeout_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.lock_timeout_ms = lock_timeout_val;
-					}
 				} else if (!strcasecmp(key, "pairing_timeout")) {
 					int32_t pairing_timeout_val = atoi(value);
 					set_err = nvs_set_i32(nvs_handle, "pairing_timeout", pairing_timeout_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.pairing_timeout_sec = pairing_timeout_val;
-					}
 				} else if (!strcasecmp(key, "user_id")) {
 					set_err = nvs_set_str(nvs_handle, "user_id", value);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						strcpy(config.user_id, value);
-					}
 				} else if (!strcasecmp(key, "pairing_mode")) {
 					uint8_t pairing_val = atoi(value) ? 1 : 0;
 					set_err = nvs_set_u8(nvs_handle, "pairing_mode", pairing_val);
 				} else if (!strcasecmp(key, "voice_detection_enable")) {
 					uint8_t voice_val = atoi(value) ? 1 : 0;
 					set_err = nvs_set_u8(nvs_handle, "voice_en", voice_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.voice_detection_enable = voice_val;
-					}
 				} else if (!strcasecmp(key, "vad_rms_threshold") || !strcasecmp(key, "vad_rms")) {
 					int32_t vad_val = atoi(value);
 					set_err = nvs_set_i32(nvs_handle, "vad_rms", vad_val);
-					if (set_err == ESP_OK) {
+					if (set_err == ESP_OK)
 						config.vad_rms_threshold = vad_val;
-					}
 				} else {
 					set_err = nvs_set_str(nvs_handle, key, value);
 					if (set_err == ESP_OK) {
-						if (!strcasecmp(key, "wifi_ssid")) {
+						if (!strcasecmp(key, "wifi_ssid"))
 							strcpy(config.wifi_ssid, value);
-						} else if (!strcasecmp(key, "wifi_pass")) {
+						else if (!strcasecmp(key, "wifi_pass"))
 							strcpy(config.wifi_password, value);
-						} else if (!strcasecmp(key, "backend_url")) {
+						else if (!strcasecmp(key, "backend_url"))
 							strcpy(config.backend_url, value);
-						} else if (!strcasecmp(key, "backend_bearer")) {
+						else if (!strcasecmp(key, "backend_bearer"))
 							strcpy(config.backend_bearer_token, value);
-						} else if (!strcasecmp(key, "mqtt_broker")) {
+						else if (!strcasecmp(key, "mqtt_broker"))
 							strcpy(config.mqtt_broker_url, value);
-						} else if (!strcasecmp(key, "mqtt_pass")) {
+						else if (!strcasecmp(key, "mqtt_pass"))
 							strcpy(config.mqtt_broker_password, value);
-						} else if (!strcasecmp(key, "user_id")) {
+						else if (!strcasecmp(key, "user_id"))
 							strcpy(config.user_id, value);
-						}
 					}
 				}
 				if (set_err == ESP_OK) {

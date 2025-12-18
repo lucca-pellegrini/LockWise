@@ -13,7 +13,6 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_sleep.h"
-#include "esp_system.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "hal/i2c_types.h"

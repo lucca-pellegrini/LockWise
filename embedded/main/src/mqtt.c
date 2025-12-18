@@ -5,16 +5,13 @@
 #include "driver/gpio.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
-#include "system_utils.h"
-#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "lock.h"
 #include "mqtt.h"
 #include "nvs_flash.h"
+#include "system_utils.h"
 #include <arpa/inet.h>
 #include <cbor.h>
-#include <errno.h>
 #include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,7 +71,6 @@ static void process_cbor_command(CborValue *value)
 				unlock_door(DOOR_REASON_MQTT);
 			} else if (!strcasecmp(command, "LOCK")) {
 				lock_door(DOOR_REASON_MQTT);
-
 			} else if (!strcasecmp(command, "PING")) {
 				mqtt_publish_status("PONG");
 			} else if (!strcasecmp(command, "RECORD")) {
@@ -219,13 +215,12 @@ void mqtt_init(void)
 		char *path_start = strchr(host_start, '/');
 		int len = 0;
 
-		if (port_start) {
+		if (port_start)
 			len = port_start - host_start;
-		} else if (path_start) {
+		else if (path_start)
 			len = path_start - host_start;
-		} else {
+		else
 			len = strlen(host_start);
-		}
 
 		if (len > 0 && len < sizeof(hostname)) {
 			strncpy(hostname, host_start, len);

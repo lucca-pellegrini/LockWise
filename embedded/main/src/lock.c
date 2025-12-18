@@ -90,8 +90,8 @@ void unlock_door(door_reason_t reason)
 					      lock_timeout_callback);
 	else
 		xTimerStop(lock_ctx.timer, 0);
-
 	xTimerStart(lock_ctx.timer, 0);
+
 	xSemaphoreGive(lock_ctx.mutex);
 }
 

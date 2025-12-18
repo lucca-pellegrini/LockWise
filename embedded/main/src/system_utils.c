@@ -1,15 +1,13 @@
 /* System Utilities Implementation */
 
-#include "system_utils.h"
-#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lock.h"
 #include "mqtt.h"
+#include "system_utils.h"
 
 static const char *TAG = "\033[1mLOCKWISE:\033[91mSYSTEM\033[1m\033[91m";
 

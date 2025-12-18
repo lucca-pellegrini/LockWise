@@ -1,9 +1,10 @@
 /* Lock Control Header */
-#pragma once
 
-#include <stdint.h>
+#pragma once
 #ifndef LOCK_H
 #define LOCK_H
+
+#include <stdint.h>
 
 /** @brief Pino GPIO para o LED indicador da fechadura */
 #define LOCK_INDICATOR_LED_GPIO 22

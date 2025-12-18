@@ -1,10 +1,8 @@
 /* Audio Streaming Header */
 
+#pragma once
 #ifndef AUDIO_STREAM_H
 #define AUDIO_STREAM_H
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 
 /**
  * @brief Comandos para controle do streaming de áudio.

@@ -1,6 +1,6 @@
 /* WiFi Management Header */
-#pragma once
 
+#pragma once
 #ifndef WIFI_H
 #define WIFI_H
 

@@ -13,8 +13,6 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "filter_resample.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -23,7 +21,7 @@
 #include "math.h"
 #include "mqtt.h"
 #include "raw_stream.h"
-#include "sdkconfig.h"
+#include "system_utils.h"
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -42,7 +40,7 @@ static const char *TAG = "\033[1mLOCKWISE:\033[92mAUDIO\033[0m\033[92m";
 /** @brief Duração do frame VAD em ms */
 #define VAD_FRAME_MS 30
 /** @brief Número de amostras por frame VAD */
-#define VAD_SAMPLES ((AUDIO_SAMPLE_RATE * VAD_FRAME_MS) / 1000)
+#define VAD_SAMPLES ((AUDIO_SAMPLE_RATE * VAD_FRAME_MS) / 1000.)
 /** @brief Número de frames consecutivos para acionar VAD */
 #define VAD_TRIGGER_FRAMES 6
 /** @brief Tempo de cooldown após acionamento VAD em ms */
@@ -163,13 +161,12 @@ static void vad_task(void *arg)
 		}
 
 		if (have < frame_bytes) {
-			// not enough data this round, try again later
-			// optional: print small debug every few seconds
+			// Not enough data this round, try again later
 			vTaskDelay(pdMS_TO_TICKS(10));
 			continue;
 		}
 
-		// compute RMS on frame_buf (int16 samples)
+		// Compute RMS on frame_buf (int16 samples)
 		double rms = 0.0;
 		for (int i = 0; i < VAD_SAMPLES; i++) {
 			double s = (double)frame_buf[i];
@@ -194,10 +191,11 @@ static void vad_task(void *arg)
 		}
 	}
 
-	// unreachable
+	// Unreachable
+	ESP_LOGE(TAG, "vad_task finished");
 	free(frame_buf);
 	free(tmp);
-	vTaskDelete(NULL);
+	cleanup_restart();
 }
 
 /**
@@ -210,6 +208,18 @@ static void vad_task(void *arg)
 static void http_stream_task(void *arg)
 {
 	ESP_LOGI(TAG, "Starting HTTP stream task");
+
+	char voice_url[512];
+	snprintf(voice_url, sizeof(voice_url), "%s/verify_voice/%s", config.backend_url, config.device_id);
+
+	esp_http_client_config_t http_cfg = {
+		.url = voice_url,
+		.method = HTTP_METHOD_POST,
+		.crt_bundle_attach = !strncmp(voice_url, "https://", 8) ? esp_crt_bundle_attach : NULL,
+		.timeout_ms = 15000,
+		.buffer_size_tx = 4096,
+		.buffer_size = 4096,
+	};
 
 	for (;;) {
 		xSemaphoreTake(stream_gate, portMAX_DELAY);
@@ -230,18 +240,6 @@ static void http_stream_task(void *arg)
 		audio_pipeline_run(pipeline);
 		vTaskDelay(pdMS_TO_TICKS(200)); // Wait for codec to settle
 
-		char voice_url[512];
-		snprintf(voice_url, sizeof(voice_url), "%s/verify_voice/%s", config.backend_url, config.device_id);
-
-		esp_http_client_config_t http_cfg = {
-			.url = voice_url,
-			.method = HTTP_METHOD_POST,
-			.crt_bundle_attach = (strncmp(config.backend_url, "https://", 8) == 0) ? esp_crt_bundle_attach :
-												 NULL,
-			.timeout_ms = 15000,
-			.buffer_size_tx = 4096,
-			.buffer_size = 4096,
-		};
 		esp_http_client_handle_t http = esp_http_client_init(&http_cfg);
 		if (!http) {
 			ESP_LOGE(TAG, "Failed to init HTTP client");
@@ -322,9 +320,8 @@ static void http_stream_task(void *arg)
 			}
 
 			int written = esp_http_client_write(http, (char *)audio_buffer, pcm_bytes_sent);
-			if (written != pcm_bytes_sent) {
+			if (written != pcm_bytes_sent)
 				ESP_LOGE(TAG, "HTTP write failed: %d != %zu", written, pcm_bytes_sent);
-			}
 		} else {
 			ESP_LOGE(TAG, "Not enough audio buffered: %zu < %zu", pcm_bytes_sent, min_bytes);
 		}

@@ -3,15 +3,13 @@
 #include "audio_stream.h"
 #include "config.h"
 #include "driver/uart.h"
-#include "system_utils.h"
 #include "esp_log.h"
-#include "esp_system.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lock.h"
 #include "mqtt.h"
 #include "nvs_flash.h"
 #include "serial.h"
+#include "system_utils.h"
 #include <string.h>
 
 static const char *TAG = "\033[1mLOCKWISE:\033[36mSERIAL\033[0m\033[36m";
@@ -39,9 +37,8 @@ void serial_command_task(void *pvParameters)
 		if (len > 0) {
 			if (data == '\n' || data == '\r') {
 				buffer[index] = '\0';
-				if (index > 0) {
+				if (index > 0)
 					ESP_LOGI(TAG, "Received command: %s", buffer);
-				}
 				index = 0;
 
 				run_command(buffer);
@@ -56,11 +53,10 @@ static void run_command(char buffer[256])
 {
 	if (strncmp(buffer, "update_config ", 14) == 0) {
 		char key[32], value[256];
-		if (sscanf(buffer + 14, "%31s %255[^\n]", key, value) == 2) {
+		if (sscanf(buffer + 14, "%31s %255[^\n]", key, value) == 2)
 			update_config(key, value);
-		} else {
+		else
 			ESP_LOGW(TAG, "Invalid update_config format");
-		}
 	} else if (strcasecmp(buffer, "unlock") == 0) {
 		unlock_door(DOOR_REASON_SERIAL);
 	} else if (strcasecmp(buffer, "lock") == 0) {
