@@ -47,28 +47,27 @@ git submodule update --init --recursive
 
 ## Estrutura do Projeto
 
-```
-embedded/
-├── main/
-│   ├── src/
-│   │   ├── main.c              # Código principal da aplicação
-│   │   ├── lock.c              # Controle da fechadura
-│   │   ├── audio_stream.c      # Streaming de áudio
-│   │   ├── mqtt.c              # Gerenciamento MQTT
-│   │   ├── wifi.c              # Conectividade Wi-Fi
-│   │   ├── config.c            # Configuração e NVS
-│   │   ├── serial.c            # Comandos seriais
-│   │   └── system_utils.c      # Utilitários do sistema
-│   ├── include/                # Cabeçalhos
-│   ├── CMakeLists.txt          # Definições dos arquivos e componentes usados
-│   └── Kconfig.projbuild       # Opções de configuração
-├── esp-adf/                    # Framework ESP-ADF
-├── CMakeLists.txt              # Definições básicas do projeto
-├── partitions.csv              # Tabela de partições
-├── sdkconfig.defaults          # Configurações padrão
-├── LICENSE                     # Termos de direitos autorais
-└── README.md                   # Este arquivo que você está lendo
-```
+O projeto está organizado da seguinte forma:
+
+- **main/**: Código principal da aplicação
+  - **src/**: Arquivos fonte C
+    - [main.c](main/src/main.c): Ponto de entrada e inicialização do sistema
+    - [lock.c](main/src/lock.c): Controle da fechadura e atuadores
+    - [audio_stream.c](main/src/audio_stream.c): Streaming de áudio para autenticação por voz
+    - [mqtt.c](main/src/mqtt.c): Gerenciamento de conexões MQTT
+    - [wifi.c](main/src/wifi.c): Conectividade Wi-Fi e modo de pareamento
+    - [config.c](main/src/config.c): Gerenciamento de configuração e NVS
+    - [serial.c](main/src/serial.c): Comandos via interface serial
+    - [system_utils.c](main/src/system_utils.c): Utilitários de sistema (reinicialização, halt)
+  - **include/**: Arquivos de cabeçalho
+  - [CMakeLists.txt](main/CMakeLists.txt): Configuração do build para o componente main
+  - [Kconfig.projbuild](main/Kconfig.projbuild): Opções de configuração específicas do projeto
+- **esp-adf/**: Submódulo do framework ESP-ADF
+- [CMakeLists.txt](CMakeLists.txt): Configuração principal do build
+- [partitions.csv](partitions.csv): Definição das partições da flash
+- [sdkconfig.defaults](sdkconfig.defaults): Configurações padrão do ESP-IDF
+- [LICENSE](LICENSE): Licença do projeto
+- [README.md](README.md): Este arquivo
 
 ## Configuração
 
