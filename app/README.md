@@ -63,34 +63,33 @@ flutter pub get
 
 ## Estrutura do Projeto
 
-```
-app/
-├── lib/
-│   ├── main.dart                    # Ponto de entrada da aplicação
-│   ├── PaginaBoasVindas.dart        # Tela de onboarding
-│   ├── PaginaLogin.dart             # Tela de login
-│   ├── PaginaCadastro.dart          # Tela de cadastro
-│   ├── PaginaInicial.dart           # Tela principal com fechaduras
-│   ├── PaginaDetalhe.dart           # Detalhes e controle de fechadura
-│   ├── PaginaNotificação.dart       # Histórico de notificações
-│   ├── PaginaConfig.dart            # Configurações do app
-│   ├── PaginaConta.dart             # Gerenciamento de conta
-│   ├── PaginaConvite.dart           # Gerenciamento de convites
-│   ├── PaginaSobre.dart             # Sobre o app
-│   ├── PaginaEsqueci.dart           # Recuperação de senha
-│   ├── PaginaNovaSenha.dart         # Alteração de senha
-│   ├── PaginaTemporaria.dart        # Acessos temporários
-│   ├── LocalService.dart             # Serviços locais (auth, storage)
-│   ├── models/
-│   │   ├── AssetPreloader.dart      # Pré-carregamento de assets
-│   │   ├── nav_item_model.dart      # Modelo de navegação
-│   │   └── rive_model.dart          # Modelo Rive animations
-│   └── firebase_options.dart        # Configurações Firebase (arquivo com segredos)
-├── android/                         # Configurações Android
-├── assets/                          # Assets (fonts, images)
-├── pubspec.yaml                     # Dependências e configuração
-└── README.md                        # Este arquivo
-```
+O projeto está organizado da seguinte forma:
+
+- **lib/**: Código fonte Dart
+  - [main.dart](lib/main.dart): Ponto de entrada da aplicação
+  - [PaginaBoasVindas.dart](lib/PaginaBoasVindas.dart): Tela de onboarding
+  - [PaginaLogin.dart](lib/PaginaLogin.dart): Tela de login
+  - [PaginaCadastro.dart](lib/PaginaCadastro.dart): Tela de cadastro
+  - [PaginaInicial.dart](lib/PaginaInicial.dart): Tela principal com fechaduras
+  - [PaginaDetalhe.dart](lib/PaginaDetalhe.dart): Detalhes e controle de fechadura
+  - [PaginaNotificação.dart](lib/PaginaNotificação.dart): Histórico de notificações
+  - [PaginaConfig.dart](lib/PaginaConfig.dart): Configurações do app
+  - [PaginaConta.dart](lib/PaginaConta.dart): Gerenciamento de conta
+  - [PaginaConvite.dart](lib/PaginaConvite.dart): Gerenciamento de convites
+  - [PaginaSobre.dart](lib/PaginaSobre.dart): Sobre o app
+  - [PaginaEsqueci.dart](lib/PaginaEsqueci.dart): Recuperação de senha
+  - [PaginaNovaSenha.dart](lib/PaginaNovaSenha.dart): Alteração de senha
+  - [PaginaTemporaria.dart](lib/PaginaTemporaria.dart): Acessos temporários
+  - [LocalService.dart](lib/LocalService.dart): Serviços locais (auth, storage)
+  - **models/**: Modelos de dados
+    - [AssetPreloader.dart](lib/models/AssetPreloader.dart): Pré-carregamento de assets
+    - [nav_item_model.dart](lib/models/nav_item_model.dart): Modelo de navegação
+    - [rive_model.dart](lib/models/rive_model.dart): Modelo Rive animations
+  - [firebase_options.dart](lib/firebase_options.dart): Configurações Firebase
+- **android/**: Configurações Android
+- **assets/**: Assets (fonts, images)
+- [pubspec.yaml](pubspec.yaml): Dependências e configuração
+- [README.md](README.md): Este arquivo
 
 ## Configuração
 
