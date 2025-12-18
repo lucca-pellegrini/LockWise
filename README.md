@@ -71,6 +71,10 @@ O sistema utiliza uma arquitetura distribuída:
 - **Armazenamento**: [PostgreSQL](https://www.postgresql.org/) para dados persistentes
 - **Processamento de Áudio**: Captura e análise em tempo real no dispositivo embarcado
 
+## Documentação
+
+Para documentação técnica detalhada do sistema LockWise, consulte [docs/](docs/).
+
 ## Licença
 
 Este projeto é composto por múltiplos componentes, cada um com sua própria licença:
