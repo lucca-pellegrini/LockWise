@@ -327,6 +327,12 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 6. **Desempenho**: Monitore uso de memória e conexões de banco
 7. **Backup**: Faça backup regular do banco de dados PostgreSQL
 
+## Documentação
+
+Documentação técnica autogerada do código Rust está disponível
+[aqui](https://lockwise-docs.verticordia.com/backend/lockwise_backend/). A
+seção relevante do relatório técnico está [aqui](../docs/Backend.md).
+
 ## Licença
 
 Este projeto é licenciado sob [Apache License 2.0](LICENSE).

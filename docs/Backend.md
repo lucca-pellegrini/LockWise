@@ -1214,4 +1214,10 @@ estruturada contendo o índice do melhor candidato na lista e o score de
 confiança, permitindo ao cliente tomar decisões baseadas em *thresholds*
 configuráveis.
 
+## Documentação Técnica Auto-Gerada
+
+A documentação técnica completa, gerada automaticamente a partir do código Rust
+usando `cargo doc`, está disponível
+[aqui](https://lockwise-docs.verticordia.com/backend/lockwise_backend/).
+
 [← Anterior: Sistema Embarcado](Embedded.md)

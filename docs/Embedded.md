@@ -477,4 +477,10 @@ CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=n
 CONFIG_MBEDTLS_CUSTOM_MEM_ALLOC=n
 ```
 
+## Documentação Técnica Auto-Gerada
+
+A documentação técnica completa, gerada automaticamente a partir do código C
+usando Doxygen, está disponível
+[aqui](https://lockwise-docs.verticordia.com/embedded/).
+
 [← Anterior: História](História.md) | [Próximo: Back-end →](Backend.md)

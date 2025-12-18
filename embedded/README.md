@@ -200,6 +200,12 @@ O dispositivo suporta modo de pareamento para configuração inicial:
    - Libere buffers após uso
    - Monitore uso de heap: `esp_get_free_heap_size()`
 
+## Documentação
+
+Documentação técnica autogerada do código C está disponível
+[aqui](https://lockwise-docs.verticordia.com/embedded/). A seção relevante do
+relatório técnico está [aqui](../docs/Embedded.md).
+
 ## Licença
 
 Este projeto é licenciado sob [Apache License 2.0](LICENSE).

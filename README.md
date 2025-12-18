@@ -73,7 +73,11 @@ O sistema utiliza uma arquitetura distribuída:
 
 ## Documentação
 
-Para documentação técnica detalhada do sistema LockWise, consulte [docs/](docs/).
+Para documentação técnica detalhada do sistema LockWise, consulte [o relatório
+técnico](docs/README.md) e a documentação autogerada:
+
+- [Documentação do Sistema Embarcado (Doxygen)](https://lockwise-docs.verticordia.com/embedded/)
+- [Documentação do Back-end (Rust)](https://lockwise-docs.verticordia.com/backend/lockwise_backend/)
 
 ## Licença
 
