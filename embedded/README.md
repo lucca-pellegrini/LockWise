@@ -1,7 +1,9 @@
 ---
 title: LockWise — Sistema Embarcado
 subtitle: "Um sistema de fechadura inteligente controlado por autenticação de voz e comandos MQTT, construído para ESP32-LyraT v4.3 usando ESP-IDF e ESP-ADF."
-author: "Felipe Castelo Branco de Mello, Lucca M. A. Pellegrini"
+author:
+    - Felipe Castelo Branco de Mello
+    - Lucca M. A. Pellegrini
 date: 2025-12-13
 lang: pt-BR
 ---

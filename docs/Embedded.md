@@ -1,7 +1,9 @@
 ---
 title: LockWise — Embarcado
 subtitle: "Documentação técnica do componente embarcado"
-author: "Felipe Castelo Branco de Mello, Lucca M. A. Pellegrini"
+author:
+    - Felipe Castelo Branco de Mello
+    - Lucca M. A. Pellegrini
 date: 2025-12-16
 lang: pt-BR
 ---

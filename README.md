@@ -1,7 +1,11 @@
 ---
 title: LockWise
 subtitle: "Sistema de fechadura inteligente com autenticação por voz, controle MQTT e aplicativo móvel"
-author: "Amanda Canizela Guimarães, Ariel Inácio Jordão, Felipe Castelo Branco de Mello, Lucca M. A. Pellegrini"
+author:
+    - Amanda Canizela Guimarães
+    - Ariel Inácio Jordão
+    - Felipe Castelo Branco de Mello
+    - Lucca M. A. Pellegrini
 date: 2025-12-16
 lang: pt-BR
 ---

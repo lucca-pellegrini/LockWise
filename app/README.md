@@ -1,7 +1,10 @@
 ---
 title: LockWise — Aplicativo Móvel
 subtitle: "Um painel de controle para seus produtos LockWise"
-author: "Amanda Canizela, Ariel Inácio, Lucca M. A. Pellegrini"
+author:
+    - Amanda Canizela
+    - Ariel Inácio
+    - Lucca M. A. Pellegrini
 date: 2025-12-13
 lang: pt-BR
 ---

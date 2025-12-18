@@ -1,7 +1,11 @@
 ---
 title: LockWise — História
 subtitle: "Cronologia do desenvolvimento e evolução do projeto"
-author: "Amanda Canizela Guimarães, Ariel Inácio Jordão, Felipe Castelo Branco de Mello, Lucca M. A. Pellegrini"
+author:
+    - Amanda Canizela Guimarães
+    - Ariel Inácio Jordão
+    - Felipe Castelo Branco de Mello
+    - Lucca M. A. Pellegrini
 date: 2025-12-16
 lang: pt-BR
 ---
