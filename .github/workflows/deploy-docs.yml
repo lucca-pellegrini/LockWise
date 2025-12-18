@@ -1,0 +1,84 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-embedded:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Doxygen
+        run: sudo apt-get install -y doxygen
+
+      - name: Generate Embedded Docs
+        run: |
+          cd embedded
+          doxygen Doxyfile
+
+      - name: Upload Embedded Docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: embedded-docs
+          path: embedded/docs/html/
+
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate Backend Docs
+        run: |
+          cd backend
+          cargo doc --release
+
+      - name: Upload Backend Docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-docs
+          path: backend/target/doc/
+
+  deploy:
+    needs: [build-embedded, build-backend]
+    runs-on: ubuntu-latest
+    if: github.repository == 'lucca-pellegrini/LockWise' && !github.event.repository.fork
+
+    env:
+      GITHUB_PAGES: true
+
+    steps:
+      - name: Download Embedded Docs
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-docs
+          path: site/embedded
+
+      - name: Download Backend Docs
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-docs
+          path: site/backend
+
+      - name: Disable Jekyll
+        run: touch site/.nojekyll
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
