@@ -75,6 +75,54 @@ jobs:
       - name: Disable Jekyll
         run: touch site/.nojekyll
 
+      - name: Create landing page
+        run: |
+          cat > site/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Documentação LockWise</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              body {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                max-width: 720px;
+                margin: 4rem auto;
+                padding: 0 1rem;
+                line-height: 1.5;
+              }
+              h1 {
+                margin-bottom: 1.5rem;
+              }
+              ul {
+                list-style: none;
+                padding: 0;
+              }
+              li {
+                margin: 1rem 0;
+              }
+              a {
+                font-size: 1.1rem;
+                text-decoration: none;
+              }
+              a:hover {
+                text-decoration: underline;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>Documentação LockWise</h1>
+            <p>Oi 😀</p>
+            <p>Não era pra você estar nessa página. A documentação está aqui:</p>
+            <ul>
+              <li><a href="/backend/lockwise_backend/">Documentação do back-end</a></li>
+              <li><a href="/embedded/">Documentação do sistema embarcado</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
