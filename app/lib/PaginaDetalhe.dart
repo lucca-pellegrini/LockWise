@@ -32,6 +32,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   int? pingMs;
   String _duracaoSelecionada = '1_semana';
   Timer? _offlineTimer;
+  Timer? _pingTimer;
 
   // Config controllers
   final TextEditingController _nomeController = TextEditingController();
@@ -102,6 +103,16 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _carregarDadosFechadura();
     _connectWebSocket();
+    _startPingTimer();
+  }
+
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(Duration(seconds: 10), (_) async {
+      if (isConnected) {
+        await _pingDevice();
+      }
+    });
   }
 
   bool get isLockedDown => fechadura?['locked_down_at'] != null;
@@ -134,6 +145,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
               lastHeard = data['last_heard'];
               isOpen = data['lock_state'] == 'UNLOCKED';
             });
+            _pingDevice();
             _offlineTimer?.cancel();
             _offlineTimer = Timer(Duration(seconds: 10), () {
               if (mounted) {
@@ -219,19 +231,26 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     }
 
     // Poll ping if connected
-    if (isConnected) {
-      final start = DateTime.now().millisecondsSinceEpoch;
-      final pingResponse = await http.post(
-        Uri.parse('${LocalService.backendUrl}/ping/${widget.fechaduraId}'),
-        headers: {'Authorization': 'Bearer $backendToken'},
-      );
-      if (pingResponse.statusCode == 200) {
-        final end = DateTime.now().millisecondsSinceEpoch;
-        final newPingMs = ((end - start) / 2).round();
-        setState(() {
-          pingMs = newPingMs;
-        });
-      }
+    await _pingDevice();
+  }
+
+  Future<void> _pingDevice() async {
+    if (!isConnected) return;
+
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final start = DateTime.now().millisecondsSinceEpoch;
+    final pingResponse = await http.post(
+      Uri.parse('${LocalService.backendUrl}/ping/${widget.fechaduraId}'),
+      headers: {'Authorization': 'Bearer $backendToken'},
+    );
+    if (pingResponse.statusCode == 200) {
+      final end = DateTime.now().millisecondsSinceEpoch;
+      final newPingMs = ((end - start) / 2).round();
+      setState(() {
+        pingMs = newPingMs;
+      });
     }
   }
 
@@ -2173,6 +2192,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   void dispose() {
     _webSocketChannel?.sink.close(status.goingAway);
     _offlineTimer?.cancel();
+    _pingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
