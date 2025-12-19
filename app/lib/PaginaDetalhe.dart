@@ -144,6 +144,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             setState(() {
               lastHeard = data['last_heard'];
               isOpen = data['lock_state'] == 'UNLOCKED';
+              if (fechadura != null) {
+                fechadura!['locked_down_at'] = data['locked_down_at'];
+              }
             });
             _pingDevice();
             _offlineTimer?.cancel();
@@ -159,6 +162,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             print('DEBUG: Received device_update for ${widget.fechaduraId}');
             setState(() {
               isOpen = data['lock_state'] == 'UNLOCKED';
+              if (fechadura != null) {
+                fechadura!['locked_down_at'] = data['locked_down_at'];
+              }
             });
             _offlineTimer?.cancel();
             _offlineTimer = Timer(Duration(seconds: 10), () {

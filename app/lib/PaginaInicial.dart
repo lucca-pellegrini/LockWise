@@ -145,6 +145,7 @@ class _InicialState extends State<Inicial> {
                 if (cartao['id'] == deviceId) {
                   cartao['isOnline'] = true;
                   cartao['isUnlocked'] = lockState == 'UNLOCKED';
+                  cartao['locked_down_at'] = data['locked_down_at'];
                 }
               }
             });
@@ -167,6 +168,7 @@ class _InicialState extends State<Inicial> {
               for (var cartao in cartoes) {
                 if (cartao['id'] == deviceId) {
                   cartao['isUnlocked'] = lockState == 'UNLOCKED';
+                  cartao['locked_down_at'] = data['locked_down_at'];
                 }
               }
             });
