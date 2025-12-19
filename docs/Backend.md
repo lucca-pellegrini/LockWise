@@ -64,7 +64,7 @@ graph TD
 ```
 
 Outros componentes constituem a arquitetura final do *back-end*. No diagrama
-acima, temos todos os serviços usados no depoimento final: o aplicativo se
+acima, temos todos os serviços usados no *deployment* final: o aplicativo se
 comunica ao Firebase e ao back-end; a fechadura se comunica com o broker e com
 o back-end; o back-end se comunica internamente na imagem, e se comunica com o
 banco de dados; um proxy reverso *[OpenResty](https://openresty.org/en/)* ou

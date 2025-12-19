@@ -153,9 +153,9 @@ Wi-Fi](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference
 — para criar um ponto de acesso ao qual o smartphone do usuário poderia se
 conectar para enviar suas credenciais.
 
-O quarto e último desafio ocorreu quando fizemos o primeiro depoimento do nosso
-*back-end* [Rocket](https://rocket.rs/) na nuvem, usando uma imagem gerada
-pelo [Podman](https://podman.io/) e executado pelo
+O quarto e último desafio ocorreu quando fizemos o primeiro *deployment* do
+nosso *back-end* [Rocket](https://rocket.rs/) na nuvem, usando uma imagem
+gerada pelo [Podman](https://podman.io/) e executado pelo
 [Docker](https://www.docker.com/) atrás de um proxy reverso
 [OpenResty](https://openresty.org/en/): até então, todo o desenvolvimento do
 *back-end* principal foi feito usando o comando `cargo run` localmente, sem
