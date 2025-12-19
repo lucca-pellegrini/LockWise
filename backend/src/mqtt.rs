@@ -139,7 +139,8 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                         "type": "device_online",
                                         "device_id": uuid_str,
                                         "last_heard": now.timestamp_millis(),
-                                        "lock_state": lock_state
+                                        "lock_state": lock_state,
+                                        "locked_down_at": null
                                     })
                                     .to_string();
 
@@ -296,13 +297,26 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                     .execute(db_pool)
                                     .await;
 
+                            // Get locked_down_at
+                            let locked_down_at: Option<i64> = {
+                                let row: Option<(Option<chrono::DateTime<Utc>>,)> = sqlx::query_as(
+                                    "SELECT locked_down_at FROM devices WHERE uuid = $1",
+                                )
+                                .bind(uuid)
+                                .fetch_optional(db_pool)
+                                .await
+                                .unwrap_or(None);
+                                row.and_then(|(dt,)| dt.map(|d| d.timestamp_millis()))
+                            };
+
                             // Broadcast update to owner and invited users
                             if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
                                 let update = serde_json::json!({
                                     "type": "device_update",
                                     "device_id": uuid_str,
                                     "lock_state": lock_state,
-                                    "timestamp": timestamp.timestamp_millis()
+                                    "timestamp": timestamp.timestamp_millis(),
+                                    "locked_down_at": locked_down_at
                                 })
                                 .to_string();
 
