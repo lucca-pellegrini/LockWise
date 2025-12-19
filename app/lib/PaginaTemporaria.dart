@@ -885,6 +885,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   bool _isAppInForeground = true;
   bool isLockedDown = false;
   int? lockedDownAt;
+  Timer? _offlineTimer;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -946,12 +947,36 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
       (message) {
         try {
           final data = jsonDecode(message);
-          if (data['type'] == 'device_update' &&
+          if (data['type'] == 'device_online' &&
+              data['device_id'] == widget.deviceId) {
+            setState(() {
+              lastHeard = data['last_heard'];
+              isOpen = data['lock_state'] == 'UNLOCKED';
+              isLockedDown = data['locked_down_at'] != null;
+              lockedDownAt = data['locked_down_at'];
+            });
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display
+                });
+              }
+            });
+          } else if (data['type'] == 'device_update' &&
               data['device_id'] == widget.deviceId) {
             setState(() {
               isOpen = data['lock_state'] == 'UNLOCKED';
               isLockedDown = data['locked_down_at'] != null;
               lockedDownAt = data['locked_down_at'];
+            });
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display
+                });
+              }
             });
           }
         } catch (e) {
@@ -1026,6 +1051,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   @override
   void dispose() {
     _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
