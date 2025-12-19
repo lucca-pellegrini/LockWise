@@ -6,6 +6,8 @@ import 'dart:async';
 import 'PaginaDetalhe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 class Temporaria extends StatefulWidget {
   const Temporaria({super.key});
@@ -18,29 +20,84 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _fechadurasTemporarias = [];
   bool _isLoading = true;
   Map<String, dynamic>? _usuario;
-  Timer? _pollTimer;
-  Timer? _statusPollingTimer;
+  WebSocketChannel? _webSocketChannel;
+  Map<String, Timer> _offlineTimers = {};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarFechadurasTemporarias();
-    _pollTimer = Timer.periodic(Duration(seconds: 30), (_) => _pollDevices());
-    _startStatusPolling();
+    _connectWebSocket();
   }
 
-  void _startStatusPolling() {
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollStatuses();
-    });
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_online' ||
+              data['type'] == 'device_update') {
+            final deviceId = data['device_id'];
+            final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  for (var item in _fechadurasTemporarias) {
+                    if (item['device']['device_id'] == deviceId) {
+                      item['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
+            setState(() {
+              for (var item in _fechadurasTemporarias) {
+                if (item['device']['device_id'] == deviceId) {
+                  item['isOnline'] = true;
+                  item['isUnlocked'] = lockState == 'UNLOCKED';
+                  item['locked_down_at'] = data['locked_down_at'];
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      },
+      onError: (error) {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+
+    // Initial polls
+    await _pollDevices();
+    await _pollStatuses();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pollTimer?.cancel();
-    _statusPollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimers.forEach((_, timer) => timer.cancel());
     super.dispose();
   }
 
@@ -153,7 +210,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 10000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               item['isOnline'] = isOnline;
@@ -824,94 +881,59 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     with WidgetsBindingObserver {
   bool isOpen = true;
   int? lastHeard;
-  int? pingMs;
-  Timer? _pollingTimer;
+  WebSocketChannel? _webSocketChannel;
   bool _isAppInForeground = true;
   bool isLockedDown = false;
   int? lockedDownAt;
+  Timer? _offlineTimer;
+  int? pingMs;
+  Timer? _pingTimer;
 
   bool get isConnected =>
       lastHeard != null &&
-      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 30000;
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 10000;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarDados();
-    _startPolling();
+    _connectWebSocket();
+    _startPingTimer();
   }
 
-  void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollUpdates();
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(Duration(seconds: 10), (_) async {
+      if (isConnected) {
+        await _pingDevice();
+      }
     });
+  }
+
+  Future<void> _pingDevice() async {
+    if (!isConnected) return;
+
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final start = DateTime.now().millisecondsSinceEpoch;
+    final pingResponse = await http.post(
+      Uri.parse('${LocalService.backendUrl}/temp_ping/${widget.deviceId}'),
+      headers: {'Authorization': 'Bearer $backendToken'},
+    );
+    if (pingResponse.statusCode == 200) {
+      final end = DateTime.now().millisecondsSinceEpoch;
+      final newPingMs = ((end - start) / 2).round();
+      setState(() {
+        pingMs = newPingMs;
+      });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _isAppInForeground = state == AppLifecycleState.resumed;
-  }
-
-  Future<void> _pollUpdates() async {
-    if (!mounted || !_isAppInForeground) return;
-    final backendToken = await LocalService.getBackendToken();
-    if (backendToken == null) return;
-
-    // Poll device state
-    for (int attempt = 0; attempt < 2; attempt++) {
-      try {
-        final deviceResponse = await http.get(
-          Uri.parse(
-            '${LocalService.backendUrl}/temp_device/${widget.deviceId}',
-          ),
-          headers: {'Authorization': 'Bearer $backendToken'},
-        );
-        if (deviceResponse.statusCode == 200) {
-          final deviceData = jsonDecode(deviceResponse.body);
-          final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
-          final newLastHeard = deviceData['last_heard'];
-          final newIsLockedDown = deviceData['locked_down_at'] != null;
-          final newLockedDownAt = deviceData['locked_down_at'];
-          if (newIsOpen != isOpen ||
-              newLastHeard != lastHeard ||
-              newIsLockedDown != isLockedDown ||
-              newLockedDownAt != lockedDownAt) {
-            setState(() {
-              isOpen = newIsOpen;
-              lastHeard = newLastHeard;
-              isLockedDown = newIsLockedDown;
-              lockedDownAt = newLockedDownAt;
-            });
-          }
-        }
-        break;
-      } catch (e) {
-        if (attempt == 1) {
-          // Ignore after 2 attempts
-        } else {
-          await Future.delayed(const Duration(seconds: 1));
-        }
-      }
-    }
-
-    // Poll ping if connected
-    if (isConnected) {
-      final start = DateTime.now().millisecondsSinceEpoch;
-      final pingResponse = await http.post(
-        Uri.parse('${LocalService.backendUrl}/temp_ping/${widget.deviceId}'),
-        headers: {'Authorization': 'Bearer $backendToken'},
-      );
-      if (pingResponse.statusCode == 200) {
-        final end = DateTime.now().millisecondsSinceEpoch;
-        final newPingMs = ((end - start) / 2).round();
-        if (newPingMs != pingMs) {
-          setState(() {
-            pingMs = newPingMs;
-          });
-        }
-      }
-    }
+    // Not used
   }
 
   Future<void> _carregarDados() async {
@@ -936,6 +958,70 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     } catch (e) {
       // Ignore
     }
+  }
+
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_online' &&
+              data['device_id'] == widget.deviceId) {
+            setState(() {
+              lastHeard = data['last_heard'];
+              isOpen = data['lock_state'] == 'UNLOCKED';
+              isLockedDown = data['locked_down_at'] != null;
+              lockedDownAt = data['locked_down_at'];
+            });
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display
+                });
+              }
+            });
+          } else if (data['type'] == 'device_update' &&
+              data['device_id'] == widget.deviceId) {
+            setState(() {
+              isOpen = data['lock_state'] == 'UNLOCKED';
+              isLockedDown = data['locked_down_at'] != null;
+              lockedDownAt = data['locked_down_at'];
+            });
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display
+                });
+              }
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      },
+      onError: (error) {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
   }
 
   Future<void> _registrarAcao(String acao) async {
@@ -963,23 +1049,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
         throw Exception('Backend error: ${response.statusCode}');
       }
 
-      // Pause polling for 5 seconds to allow backend to update database
-      _pollingTimer?.cancel();
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) {
-          _startPolling();
-        }
-      });
-
-      // Also pause the main status polling timer if it exists
-      final temporariaState = context
-          .findAncestorStateOfType<_TemporariaState>();
-      temporariaState?._statusPollingTimer?.cancel();
-      Future.delayed(const Duration(seconds: 5), () {
-        if (temporariaState != null && temporariaState.mounted) {
-          temporariaState._startStatusPolling();
-        }
-      });
+      // WebSocket will update
 
       setState(() {
         isOpen = acao == 'Abrir';
@@ -1012,7 +1082,9 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimer?.cancel();
+    _pingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1140,6 +1212,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                       ),
                                     ],
                                   ),
+
                                 if (!isLockedDown && isConnected)
                                   Row(
                                     children: [
@@ -1164,6 +1237,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                       ),
                                     ],
                                   ),
+
                                 if (!isLockedDown &&
                                     !isConnected &&
                                     lastHeard != null)

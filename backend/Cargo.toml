@@ -31,3 +31,4 @@ jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 base64 = "0.22"
 num_cpus = "1.17.0"
 anyhow = "1.0.100"
+rocket_ws = "0.1.1"

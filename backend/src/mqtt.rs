@@ -132,6 +132,58 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                     .bind(heartbeat_msg.vad_rms_threshold)
                                     .execute(db_pool)
                                     .await;
+
+                                // Broadcast device online update to owner and invited users
+                                if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                    let update = serde_json::json!({
+                                        "type": "device_online",
+                                        "device_id": uuid_str,
+                                        "last_heard": now.timestamp_millis(),
+                                        "lock_state": lock_state,
+                                        "locked_down_at": null
+                                    })
+                                    .to_string();
+                                    eprintln!(
+                                        "DEBUG: Broadcasting device_online for device {} with last_heard {} to recipients",
+                                        uuid_str,
+                                        now.timestamp_millis()
+                                    );
+
+                                    // Get owner
+                                    let owner_row: Option<(String,)> = sqlx::query_as(
+                                        "SELECT user_id FROM devices WHERE uuid = $1",
+                                    )
+                                    .bind(uuid)
+                                    .fetch_optional(db_pool)
+                                    .await
+                                    .unwrap_or(None);
+
+                                    let mut recipients = Vec::new();
+                                    if let Some((owner_id,)) = owner_row {
+                                        recipients.push(owner_id);
+                                    }
+
+                                    // Get invited users with status = 1
+                                    let invited_rows: Vec<(String,)> = sqlx::query_as(
+                                         "SELECT receiver_id FROM invites WHERE device_id = $1 AND status = 1"
+                                     )
+                                     .bind(uuid)
+                                     .fetch_all(db_pool)
+                                     .await
+                                     .unwrap_or_default();
+
+                                    for (receiver_id,) in invited_rows {
+                                        recipients.push(receiver_id);
+                                    }
+
+                                    // Send to each recipient
+                                    let broadcasts = user_broadcasts.lock().unwrap();
+                                    for recipient in recipients {
+                                        if let Some(tx) = broadcasts.get(&recipient) {
+                                            let _ = tx.send(update.clone());
+                                        }
+                                    }
+                                }
                             }
                         } else if let Ok(event_msg) =
                             serde_cbor::from_slice::<EventMessage>(&publish.payload)
@@ -162,7 +214,53 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                 .bind(uuid)
                                 .execute(db_pool)
                                 .await;
-                                if result.is_ok() {}
+                                if result.is_ok() {
+                                    // Broadcast device update to owner and invited users
+                                    if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                        let update = serde_json::json!({
+                                            "type": "device_update",
+                                            "device_id": uuid_str,
+                                            "lock_state": "LOCKED",
+                                            "locked_down_at": timestamp.timestamp_millis()
+                                        })
+                                        .to_string();
+
+                                        // Get owner
+                                        let owner_row: Option<(String,)> = sqlx::query_as(
+                                            "SELECT user_id FROM devices WHERE uuid = $1",
+                                        )
+                                        .bind(uuid)
+                                        .fetch_optional(db_pool)
+                                        .await
+                                        .unwrap_or(None);
+
+                                        let mut recipients = Vec::new();
+                                        if let Some((owner_id,)) = owner_row {
+                                            recipients.push(owner_id);
+                                        }
+
+                                        // Get invited users with status = 1
+                                        let invited_rows: Vec<(String,)> = sqlx::query_as(
+                                              "SELECT receiver_id FROM invites WHERE device_id = $1 AND status = 1"
+                                          )
+                                          .bind(uuid)
+                                          .fetch_all(db_pool)
+                                          .await
+                                          .unwrap_or_default();
+
+                                        for (receiver_id,) in invited_rows {
+                                            recipients.push(receiver_id);
+                                        }
+
+                                        // Send to each recipient
+                                        let broadcasts = user_broadcasts.lock().unwrap();
+                                        for recipient in recipients {
+                                            if let Some(tx) = broadcasts.get(&recipient) {
+                                                let _ = tx.send(update.clone());
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
@@ -199,15 +297,58 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
 
                             // Insert log
                             let _ = sqlx::query(
-                                       "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id) VALUES ($1, $2, $3, $4, $5)"
-                                   )
-                                   .bind(uuid_str)
-                                   .bind(timestamp)
-                                   .bind(event_type)
-                                   .bind(reason)
-                                   .bind(&user_id)
-                                   .execute(db_pool)
-                                   .await;
+                                        "INSERT INTO logs (device_id, timestamp, event_type, reason, user_id) VALUES ($1, $2, $3, $4, $5)"
+                                    )
+                                    .bind(uuid_str)
+                                    .bind(timestamp)
+                                    .bind(event_type)
+                                    .bind(reason)
+                                    .bind(&user_id)
+                                    .execute(db_pool)
+                                    .await;
+
+                            // Broadcast log update to owner only
+                            if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                // Get user name if user_id is present
+                                let user_name = if let Some(ref uid) = user_id {
+                                    let row: Option<(String,)> = sqlx::query_as(
+                                        "SELECT name FROM users WHERE firebase_uid = $1",
+                                    )
+                                    .bind(uid)
+                                    .fetch_optional(db_pool)
+                                    .await
+                                    .unwrap_or(None);
+                                    row.map(|(name,)| name)
+                                } else {
+                                    None
+                                };
+
+                                let log_update = serde_json::json!({
+                                    "type": "log_update",
+                                    "device_id": uuid_str,
+                                    "timestamp": timestamp.timestamp_millis(),
+                                    "event_type": event_type,
+                                    "reason": reason,
+                                    "user_id": user_id,
+                                    "user_name": user_name
+                                })
+                                .to_string();
+
+                                // Get owner
+                                let owner_row: Option<(String,)> =
+                                    sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+                                        .bind(uuid)
+                                        .fetch_optional(db_pool)
+                                        .await
+                                        .unwrap_or(None);
+
+                                if let Some((owner_id,)) = owner_row {
+                                    let broadcasts = user_broadcasts.lock().unwrap();
+                                    if let Some(tx) = broadcasts.get(&owner_id) {
+                                        let _ = tx.send(log_update);
+                                    }
+                                }
+                            }
 
                             // Update lock_state
                             let lock_state = if lock_msg.lock == "LOCKED" {
@@ -221,6 +362,64 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                     .bind(uuid_str)
                                     .execute(db_pool)
                                     .await;
+
+                            // Get locked_down_at
+                            let locked_down_at: Option<i64> = {
+                                let row: Option<(Option<chrono::DateTime<Utc>>,)> = sqlx::query_as(
+                                    "SELECT locked_down_at FROM devices WHERE uuid = $1",
+                                )
+                                .bind(uuid)
+                                .fetch_optional(db_pool)
+                                .await
+                                .unwrap_or(None);
+                                row.and_then(|(dt,)| dt.map(|d| d.timestamp_millis()))
+                            };
+
+                            // Broadcast update to owner and invited users
+                            if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                let update = serde_json::json!({
+                                    "type": "device_update",
+                                    "device_id": uuid_str,
+                                    "lock_state": lock_state,
+                                    "timestamp": timestamp.timestamp_millis(),
+                                    "locked_down_at": locked_down_at
+                                })
+                                .to_string();
+
+                                // Get owner
+                                let owner_row: Option<(String,)> =
+                                    sqlx::query_as("SELECT user_id FROM devices WHERE uuid = $1")
+                                        .bind(uuid)
+                                        .fetch_optional(db_pool)
+                                        .await
+                                        .unwrap_or(None);
+
+                                let mut recipients = Vec::new();
+                                if let Some((owner_id,)) = owner_row {
+                                    recipients.push(owner_id);
+                                }
+
+                                // Get invited users with status = 1
+                                let invited_rows: Vec<(String,)> = sqlx::query_as(
+                                     "SELECT receiver_id FROM invites WHERE device_id = $1 AND status = 1"
+                                 )
+                                 .bind(uuid)
+                                 .fetch_all(db_pool)
+                                 .await
+                                 .unwrap_or_default();
+
+                                for (receiver_id,) in invited_rows {
+                                    recipients.push(receiver_id);
+                                }
+
+                                // Send to each recipient
+                                let broadcasts = user_broadcasts.lock().unwrap();
+                                for recipient in recipients {
+                                    if let Some(tx) = broadcasts.get(&recipient) {
+                                        let _ = tx.send(update.clone());
+                                    }
+                                }
+                            }
                         }
                     }
                 }

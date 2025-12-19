@@ -13,6 +13,8 @@ import 'package:http/http.dart' as http;
 import 'package:wifi_scan/wifi_scan.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 class Inicial extends StatefulWidget {
   final String usuarioId;
@@ -37,7 +39,8 @@ class _InicialState extends State<Inicial> {
   );
   List<rive.StateMachineController?> riveControllers =
       List<rive.StateMachineController?>.filled(bottomNavItems.length, null);
-  Timer? _statusPollingTimer;
+  WebSocketChannel? _webSocketChannel;
+  Map<String, Timer> _offlineTimers = {};
 
   Widget _buildImage(String assetName, [double width = 350]) {
     return Image.asset('images/$assetName', width: width);
@@ -48,7 +51,7 @@ class _InicialState extends State<Inicial> {
     super.initState();
     _carregarFechaduras();
     _scanWifiNetworks();
-    _startStatusPolling();
+    _connectWebSocket();
   }
 
   Future<void> _scanWifiNetworks() async {
@@ -103,10 +106,89 @@ class _InicialState extends State<Inicial> {
     }
   }
 
-  void _startStatusPolling() {
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollStatuses();
-    });
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_online') {
+            final deviceId = data['device_id'];
+            final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  for (var cartao in cartoes) {
+                    if (cartao['id'] == deviceId) {
+                      cartao['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
+            setState(() {
+              for (var cartao in cartoes) {
+                if (cartao['id'] == deviceId) {
+                  cartao['isOnline'] = true;
+                  cartao['isUnlocked'] = lockState == 'UNLOCKED';
+                  cartao['locked_down_at'] = data['locked_down_at'];
+                }
+              }
+            });
+          } else if (data['type'] == 'device_update') {
+            final deviceId = data['device_id'];
+            final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  for (var cartao in cartoes) {
+                    if (cartao['id'] == deviceId) {
+                      cartao['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
+            setState(() {
+              for (var cartao in cartoes) {
+                if (cartao['id'] == deviceId) {
+                  cartao['isUnlocked'] = lockState == 'UNLOCKED';
+                  cartao['locked_down_at'] = data['locked_down_at'];
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // Ignore invalid messages
+        }
+      },
+      onError: (error) {
+        // Reconnect after delay
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        // Reconnect
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+
+    // Initial poll
+    _pollStatuses();
   }
 
   Future<void> _pollStatuses() async {
@@ -132,7 +214,7 @@ class _InicialState extends State<Inicial> {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 10000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               cartao['isOnline'] = isOnline;
@@ -179,7 +261,8 @@ class _InicialState extends State<Inicial> {
 
   @override
   void dispose() {
-    _statusPollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimers.forEach((_, timer) => timer.cancel());
     for (var controller in riveControllers) {
       controller?.dispose();
     }
@@ -586,222 +669,225 @@ class _InicialState extends State<Inicial> {
             return Dialog(
               backgroundColor: Colors.transparent,
               child: _GlassDialog(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
 
-                  children: [
-                    Align(
-                      alignment: Alignment.center,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 10),
-                        child: Text(
-                          'Adicionar Nova Fechadura',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                    children: [
+                      Align(
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 10),
+                          child: Text(
+                            'Adicionar Nova Fechadura',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
-                    SizedBox(height: 20),
+                      SizedBox(height: 20),
 
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
 
-                      child: TextFormField(
-                        controller: nomeController,
-                        style: TextStyle(color: Colors.white),
+                        child: TextFormField(
+                          controller: nomeController,
+                          style: TextStyle(color: Colors.white),
 
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
                               return 'Por favor, insira o nome da fechadura';
                             } else if (value.length > 15) {
                               return 'O nome deve ter pelo menos 3 caracteres';
                             }
-                          return null;
-                        },
+                            return null;
+                          },
 
-                        decoration: InputDecoration(
-                          labelText: 'Nome da Fechadura',
-                          labelStyle: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.normal,
-                          ),
-
-                          hintText: 'Digite o nome da fechadura',
-                          hintStyle: TextStyle(color: Colors.white),
-
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(
-                            Icons.lock_outline,
-                            color: Colors.white,
-                          ),
-
-                          // Borda quando o campo está habilitado mas não focado
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.blueGrey.shade400,
-                              width: 1.5,
-                            ),
-                          ),
-                          // Borda quando o campo está focado
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
+                          decoration: InputDecoration(
+                            labelText: 'Nome da Fechadura',
+                            labelStyle: TextStyle(
                               color: Colors.white,
-                              width: 2.0,
+                              fontWeight: FontWeight.normal,
                             ),
-                          ),
-                          // Borda quando há erro de validação
-                          errorBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.red,
-                              width: 1.5,
+
+                            hintText: 'Digite o nome da fechadura',
+                            hintStyle: TextStyle(color: Colors.white),
+
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(
+                              Icons.lock_outline,
+                              color: Colors.white,
                             ),
-                          ),
-                          // Borda quando há erro e o campo está focado
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.red,
-                              width: 2.0,
+
+                            // Borda quando o campo está habilitado mas não focado
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.blueGrey.shade400,
+                                width: 1.5,
+                              ),
+                            ),
+                            // Borda quando o campo está focado
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.white,
+                                width: 2.0,
+                              ),
+                            ),
+                            // Borda quando há erro de validação
+                            errorBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.red,
+                                width: 1.5,
+                              ),
+                            ),
+                            // Borda quando há erro e o campo está focado
+                            focusedErrorBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.red,
+                                width: 2.0,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(height: 10),
+                      SizedBox(height: 10),
 
-                    Text(
-                      'Selecione um ícone:',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    SizedBox(height: 8),
-
-                    _buildIconGrid(
-                      selectedIcon: iconeSelecionado,
-                      setStateDialog: setStateDialog,
-                      onSelected: (icon) => iconeSelecionado = icon,
-                    ),
-
-                    SizedBox(height: 20),
-
-                    Text(
-                      'Configuração de WiFi:',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-
-                    // WiFi Network Dropdown
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: DropdownButtonFormField<String>(
-                      decoration: InputDecoration(
-                        labelText: 'Rede WiFi',
-                        labelStyle: TextStyle(color: Colors.white),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Colors.blueGrey.shade400,
-                            width: 1.5,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Colors.white,
-                            width: 2.0,
-                          ),
-                        ),
-                        prefixIcon: Icon(Icons.wifi, color: Colors.white),
-                      ),
-                      dropdownColor: Colors.blueAccent.withOpacity(0.8),
-                      style: TextStyle(color: Colors.white),
-                      value: selectedWifiNetwork,
-                      items: _wifiNetworks
-                      .where((ap) => ap.ssid.isNotEmpty)
-                      .map(
-                      (ap) => DropdownMenuItem<String>(
-                          value: ap.ssid,
-                          child: Text(ap.ssid),
-                        ),
-                      )
-                      .toList(),
-                      onChanged: (value) {
-                        selectedWifiNetwork = value;
-                        setStateDialog(() {});
-                      },
-                    ),
-                    ),
-
-                    SizedBox(height: 10),
-
-                    // WiFi Password Field
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: TextFormField(
+                      Text(
+                        'Selecione um ícone:',
                         style: TextStyle(color: Colors.white),
-                        obscureText: true,
-                        onChanged: (value) {
-                          wifiPassword = value;
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'Senha da Rede WiFi',
-                          labelStyle: TextStyle(color: Colors.white),
-                          hintText: 'Digite a senha da rede',
-                          hintStyle: TextStyle(color: Colors.white),
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.lock, color: Colors.white),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.blueGrey.shade400,
-                              width: 1.5,
+                      ),
+                      SizedBox(height: 8),
+
+                      _buildIconGrid(
+                        selectedIcon: iconeSelecionado,
+                        setStateDialog: setStateDialog,
+                        onSelected: (icon) => iconeSelecionado = icon,
+                      ),
+
+                      SizedBox(height: 20),
+
+                      Text(
+                        'Configuração de WiFi:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+
+                      // WiFi Network Dropdown
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: DropdownButtonFormField<String>(
+                          decoration: InputDecoration(
+                            labelText: 'Rede WiFi',
+                            labelStyle: TextStyle(color: Colors.white),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.blueGrey.shade400,
+                                width: 1.5,
+                              ),
                             ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.white,
+                                width: 2.0,
+                              ),
+                            ),
+                            prefixIcon: Icon(Icons.wifi, color: Colors.white),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.white,
-                              width: 2.0,
+                          dropdownColor: Colors.blueAccent.withOpacity(0.8),
+                          style: TextStyle(color: Colors.white),
+                          value: selectedWifiNetwork,
+                          items: _wifiNetworks
+                              .where((ap) => ap.ssid.isNotEmpty)
+                              .map(
+                                (ap) => DropdownMenuItem<String>(
+                                  value: ap.ssid,
+                                  child: Text(ap.ssid),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            selectedWifiNetwork = value;
+                            setStateDialog(() {});
+                          },
+                        ),
+                      ),
+
+                      SizedBox(height: 10),
+
+                      // WiFi Password Field
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: TextFormField(
+                          style: TextStyle(color: Colors.white),
+                          obscureText: true,
+                          onChanged: (value) {
+                            wifiPassword = value;
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Senha da Rede WiFi',
+                            labelStyle: TextStyle(color: Colors.white),
+                            hintText: 'Digite a senha da rede',
+                            hintStyle: TextStyle(color: Colors.white),
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.lock, color: Colors.white),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.blueGrey.shade400,
+                                width: 1.5,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: Colors.white,
+                                width: 2.0,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
 
-                    SizedBox(height: 20),
+                      SizedBox(height: 20),
 
-                    Align(
-                      alignment: Alignment.center,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: 10),
+                      Align(
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 10),
 
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isPairing) ...[
-                              CircularProgressIndicator(color: Colors.white),
-                              SizedBox(height: 10),
-                            ],
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _GlassDialogButton(
-                                  text: 'Cancelar',
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  color: Colors.red,
-                                ),
-                                SizedBox(width: 10),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isPairing) ...[
+                                CircularProgressIndicator(color: Colors.white),
+                                SizedBox(height: 10),
+                              ],
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _GlassDialogButton(
+                                    text: 'Cancelar',
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    color: Colors.red,
+                                  ),
+                                  SizedBox(width: 10),
 
-                                _GlassDialogButton(
-                                  text: isPairing
-                                  ? 'Pareando...'
-                                  : 'Parear Dispositivo',
-                                  onPressed: isPairing
-                                  ? () {}
-                                  : () async {
-                                    if (nomeController.text.isNotEmpty &&
+                                  _GlassDialogButton(
+                                    text: isPairing
+                                        ? 'Pareando...'
+                                        : 'Parear Dispositivo',
+                                    onPressed: isPairing
+                                        ? () {}
+                                        : () async {
+                                            if (nomeController
+                                                    .text
+                                                    .isNotEmpty &&
                                                 selectedWifiNetwork != null &&
                                                 wifiPassword.isNotEmpty) {
                                               setStateDialog(
@@ -817,12 +903,14 @@ class _InicialState extends State<Inicial> {
                                                     'http://192.168.4.1/configure',
                                                   ),
                                                   headers: {
-                                                    'Content-Type': 'text/plain',
+                                                    'Content-Type':
+                                                        'text/plain',
                                                   },
                                                   body: configData,
                                                 );
 
-                                                if (response.statusCode == 200) {
+                                                if (response.statusCode ==
+                                                    200) {
                                                   // Parse device UUID from response body
                                                   String deviceUuid = response
                                                       .body
@@ -849,20 +937,25 @@ class _InicialState extends State<Inicial> {
 
                                                   // Success! Now add or update in Firestore with device UUID as document ID
                                                   int iconeCodePoint =
-                                                      iconeSelecionado.codePoint;
+                                                      iconeSelecionado
+                                                          .codePoint;
 
-                                                  final docRef = FirebaseFirestore
-                                                      .instance
-                                                      .collection('fechaduras')
-                                                      .doc(widget.usuarioId)
-                                                      .collection('devices')
-                                                      .doc(deviceUuid);
+                                                  final docRef =
+                                                      FirebaseFirestore.instance
+                                                          .collection(
+                                                            'fechaduras',
+                                                          )
+                                                          .doc(widget.usuarioId)
+                                                          .collection('devices')
+                                                          .doc(deviceUuid);
 
-                                                  final doc = await docRef.get();
+                                                  final doc = await docRef
+                                                      .get();
                                                   if (doc.exists) {
                                                     // Update existing device
                                                     await docRef.update({
-                                                      'nome': nomeController.text,
+                                                      'nome':
+                                                          nomeController.text,
                                                       'icone_code_point':
                                                           iconeCodePoint,
                                                       'updated_at':
@@ -871,7 +964,8 @@ class _InicialState extends State<Inicial> {
                                                   } else {
                                                     // Add new device
                                                     await docRef.set({
-                                                      'nome': nomeController.text,
+                                                      'nome':
+                                                          nomeController.text,
                                                       'icone_code_point':
                                                           iconeCodePoint,
                                                       'notificacoes': 1,
@@ -882,7 +976,8 @@ class _InicialState extends State<Inicial> {
                                                     });
                                                   }
 
-                                                  final fechaduraId = deviceUuid;
+                                                  final fechaduraId =
+                                                      deviceUuid;
 
                                                   await _carregarFechaduras();
                                                   Navigator.of(context).pop();
@@ -931,18 +1026,20 @@ class _InicialState extends State<Inicial> {
                                                 ),
                                               );
                                             }
-                                  },
-                                  color: isPairing ? Colors.white : Colors.green,
-                                ),
-                              ],
-                            ),
-                          ],
+                                          },
+                                    color: isPairing
+                                        ? Colors.white
+                                        : Colors.green,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              )
               ),
             );
           },

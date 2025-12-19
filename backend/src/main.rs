@@ -29,15 +29,19 @@
 //! instruções detalhadas de configuração e execução.
 use anyhow::Result;
 use chrono::Utc;
+use rocket::futures::{SinkExt, StreamExt};
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 use rocket::{Request, State, get, routes};
+use rocket_ws::{Message, WebSocket};
 use rumqttc::{AsyncClient, MqttOptions, QoS, Transport};
 use sqlx::ConnectOptions;
+use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Mutex, OnceLock};
+use tokio::sync::broadcast;
 use url::Url;
 
 mod device;
@@ -54,24 +58,32 @@ pub struct HomepageUrl(pub String);
 #[derive(Clone)]
 pub struct Token(pub String);
 
-/// Implementação de FromRequest para Token para extrair token Bearer do cabeçalho Authorization.
+/// Implementação de FromRequest para Token para extrair token Bearer do cabeçalho Authorization ou query parameter.
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Token {
     type Error = &'static str;
 
-    /// Extrai o token JWT Bearer do cabeçalho Authorization da requisição.
+    /// Extrai o token JWT Bearer do cabeçalho Authorization ou query parameter.
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        // First try Authorization header
         let auth_header = req.headers().get_one("Authorization");
-        match auth_header {
-            Some(auth) if auth.starts_with("Bearer ") => {
-                let token_str = &auth[7..];
-                Outcome::Success(Token(token_str.to_string()))
-            }
-            _ => Outcome::Error((
-                Status::Unauthorized,
-                "Missing or invalid Authorization header",
-            )),
+        if let Some(token_str) = auth_header.and_then(|auth| auth.strip_prefix("Bearer ")) {
+            return Outcome::Success(Token(token_str.to_string()));
         }
+
+        // If not found, try query parameter (for websockets)
+        if let Some(token_str) = req.uri().query().and_then(|q| {
+            url::form_urlencoded::parse(q.as_bytes())
+                .find(|(k, _)| k == "token")
+                .map(|(_, v)| v.into_owned())
+        }) {
+            return Outcome::Success(Token(token_str));
+        }
+
+        Outcome::Error((
+            Status::Unauthorized,
+            "Missing or invalid Authorization header or token query parameter",
+        ))
     }
 }
 
@@ -82,12 +94,23 @@ type PendingPings = Mutex<HashMap<String, (i64, tokio::sync::oneshot::Sender<()>
 /// Rastreia solicitações de atualização de configuração pendentes com canal de resposta
 type PendingConfigUpdates = Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>;
 
+/// Canal de broadcast para atualizações de dispositivos via WebSocket
+type DeviceUpdateSender = broadcast::Sender<String>;
+/// Broadcast por usuário para WebSocket
+type UserBroadcast = broadcast::Sender<String>;
+/// Mapa de broadcasts por usuário
+type UserBroadcasts = Mutex<HashMap<String, UserBroadcast>>;
+
 /// Armazenamento global para comandos recentes
 pub static RECENT_COMMANDS: OnceLock<RecentCommands> = OnceLock::new();
 /// Armazenamento global para pings pendentes
 pub static PENDING_PINGS: OnceLock<PendingPings> = OnceLock::new();
 /// Armazenamento global para atualizações de configuração pendentes
 pub static PENDING_CONFIG_UPDATES: OnceLock<PendingConfigUpdates> = OnceLock::new();
+/// Canal de broadcast para WebSocket
+pub static DEVICE_UPDATE_TX: OnceLock<DeviceUpdateSender> = OnceLock::new();
+/// Broadcasts por usuário
+pub static USER_BROADCASTS: OnceLock<UserBroadcasts> = OnceLock::new();
 
 /// Ponto de entrada principal do serviço de back-end LockWise.
 /// Inicializa banco de dados, cliente MQTT, configura tabelas, inicia manipulador de eventos MQTT,
@@ -120,6 +143,9 @@ async fn main() -> Result<()> {
     PENDING_CONFIG_UPDATES
         .set(Mutex::new(HashMap::new()))
         .unwrap();
+    let (tx, _rx) = broadcast::channel(100);
+    DEVICE_UPDATE_TX.set(tx).unwrap();
+    USER_BROADCASTS.set(Mutex::new(HashMap::new())).unwrap();
 
     // Setup DB
     let url = Url::parse(&db_url)?;
@@ -199,9 +225,11 @@ async fn main() -> Result<()> {
     sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS voice_threshold FLOAT8 DEFAULT 0.60")
         .execute(&db_pool)
         .await?;
-    sqlx::query("ALTER TABLE devices ADD COLUMN IF NOT EXISTS vad_rms_threshold INTEGER DEFAULT 1000")
-        .execute(&db_pool)
-        .await?;
+    sqlx::query(
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS vad_rms_threshold INTEGER DEFAULT 1000",
+    )
+    .execute(&db_pool)
+    .await?;
     sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_embeddings BYTEA")
         .execute(&db_pool)
         .await?;
@@ -259,6 +287,7 @@ async fn main() -> Result<()> {
                 routes![
                     index,
                     health,
+                    websocket_updates,
                     device::control_device,
                     device::control_temp_device,
                     device::get_accessible_devices,
@@ -314,4 +343,76 @@ fn index(homepage_url: &State<HomepageUrl>) -> rocket::response::Redirect {
 #[get("/health")]
 fn health() -> &'static str {
     "OK"
+}
+
+/// WebSocket endpoint para atualizações em tempo real de dispositivos
+#[get("/ws/updates")]
+fn websocket_updates(
+    ws: WebSocket,
+    token: Token,
+    db_pool: &State<PgPool>,
+) -> rocket_ws::Channel<'static> {
+    let pool = (**db_pool).clone();
+    ws.channel(move |mut stream| {
+        Box::pin(async move {
+            // Validate token and get user_id
+            let user_row: Option<(String,)> =
+                sqlx::query_as("SELECT firebase_uid FROM users WHERE current_token = $1")
+                    .bind(&token.0)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+            let user_id = match user_row {
+                Some((uid,)) => uid,
+                None => {
+                    // Invalid token, close connection
+                    let _ = stream.close(None).await;
+                    return Ok(());
+                }
+            };
+
+            // Get or create user broadcast
+            let user_broadcasts = USER_BROADCASTS.get().unwrap();
+            let tx = {
+                let mut broadcasts = user_broadcasts.lock().unwrap();
+                broadcasts
+                    .entry(user_id.clone())
+                    .or_insert_with(|| broadcast::channel(100).0)
+                    .clone()
+            };
+            let mut rx = tx.subscribe();
+
+            // Enviar mensagem inicial
+            if stream
+                .send(Message::Text("Connected".to_string()))
+                .await
+                .is_err()
+            {
+                return Ok(());
+            }
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Ok(update) => {
+                                if stream.send(Message::Text(update)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                    msg = stream.next() => {
+                        match msg {
+                            Some(Ok(Message::Close(_))) | None => break,
+                            _ => {} // Ignore other messages
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        })
+    })
 }

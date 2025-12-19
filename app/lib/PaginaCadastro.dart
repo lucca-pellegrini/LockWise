@@ -498,7 +498,9 @@ class _CadastroState extends State<Cadastro> {
 
                                             // Register in backend
                                             final response = await http.post(
-                                              Uri.parse('${LocalService.backendUrl}/register'),
+                                              Uri.parse(
+                                                '${LocalService.backendUrl}/register',
+                                              ),
                                               headers: {
                                                 'Content-Type':
                                                     'application/json',
