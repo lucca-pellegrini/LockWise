@@ -100,7 +100,16 @@ class _NotificacaoState extends State<Notificacao>
               'reason': reason,
             };
             setState(() {
-              logs.insert(0, newLog); // Add to beginning
+              // Check for duplicates before inserting
+              if (!logs.any(
+                (log) =>
+                    log['data_hora'] == newLog['data_hora'] &&
+                    log['usuario'] == newLog['usuario'] &&
+                    log['acao'] == newLog['acao'] &&
+                    log['reason'] == newLog['reason'],
+              )) {
+                logs.insert(0, newLog); // Add to beginning
+              }
             });
           }
         } catch (e) {

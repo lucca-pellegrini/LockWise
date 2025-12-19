@@ -28,6 +28,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   bool _isLoading = true;
   Map<String, dynamic>? fechadura;
   List<Map<String, dynamic>> logs = [];
+  int _logUpdateCounter = 0;
   int? lastHeard;
   int? pingMs;
   String _duracaoSelecionada = '1_semana';
@@ -174,6 +175,41 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                 });
               }
             });
+          } else if (data['type'] == 'log_update' &&
+              data['device_id'] == widget.fechaduraId) {
+            print('DEBUG: Received log_update for ${widget.fechaduraId}');
+            print('DEBUG: log_update data: $data');
+            setState(() {
+              final newLog = {
+                'data_hora': data['timestamp'],
+                'usuario': getUserDisplay(
+                  data['user_name'],
+                  data['user_id'],
+                  data['reason'],
+                ),
+                'acao': data['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir',
+                'reason': translateReason(data['reason']),
+              };
+              print('DEBUG: Created newLog: $newLog');
+              // Check for duplicates before adding
+              if (!logs.any(
+                (log) =>
+                    log['data_hora'] == newLog['data_hora'] &&
+                    log['usuario'] == newLog['usuario'] &&
+                    log['acao'] == newLog['acao'] &&
+                    log['reason'] == newLog['reason'],
+              )) {
+                logs = [newLog, ...logs];
+                _logUpdateCounter++;
+                print('DEBUG: Added log, new logs length: ${logs.length}');
+                // Keep only the latest 1000 logs to match backend limit
+                if (logs.length > 1000) {
+                  logs = logs.take(1000).toList();
+                }
+              } else {
+                print('DEBUG: Log is duplicate, not added');
+              }
+            });
           }
         } catch (e) {
           print('DEBUG: Error parsing WebSocket message: $e');
@@ -181,10 +217,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         }
       },
       onError: (error) {
+        print('DEBUG: WebSocket error: $error');
         // Reconnect after delay
         Future.delayed(const Duration(seconds: 5), _connectWebSocket);
       },
       onDone: () {
+        print('DEBUG: WebSocket done, reconnecting');
         // Reconnect
         Future.delayed(const Duration(seconds: 5), _connectWebSocket);
       },
@@ -1540,6 +1578,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
                                         : SingleChildScrollView(
                                             scrollDirection: Axis.horizontal,
                                             child: DataTable(
+                                              key: ValueKey(_logUpdateCounter),
                                               columns: const [
                                                 DataColumn(
                                                   label: Text(

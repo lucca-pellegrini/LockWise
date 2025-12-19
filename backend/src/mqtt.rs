@@ -309,13 +309,28 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
 
                             // Broadcast log update to owner only
                             if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                // Get user name if user_id is present
+                                let user_name = if let Some(ref uid) = user_id {
+                                    let row: Option<(String,)> = sqlx::query_as(
+                                        "SELECT name FROM users WHERE firebase_uid = $1",
+                                    )
+                                    .bind(uid)
+                                    .fetch_optional(db_pool)
+                                    .await
+                                    .unwrap_or(None);
+                                    row.map(|(name,)| name)
+                                } else {
+                                    None
+                                };
+
                                 let log_update = serde_json::json!({
                                     "type": "log_update",
                                     "device_id": uuid_str,
                                     "timestamp": timestamp.timestamp_millis(),
                                     "event_type": event_type,
                                     "reason": reason,
-                                    "user_id": user_id
+                                    "user_id": user_id,
+                                    "user_name": user_name
                                 })
                                 .to_string();
 
