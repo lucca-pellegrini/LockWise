@@ -55,7 +55,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
             final deviceId = data['device_id'];
             final lockState = data['lock_state'];
             _offlineTimers[deviceId]?.cancel();
-            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
               if (mounted) {
                 setState(() {
                   for (var item in _fechadurasTemporarias) {
@@ -210,7 +210,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 10000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               item['isOnline'] = isOnline;
@@ -888,7 +888,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
 
   bool get isConnected =>
       lastHeard != null &&
-      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 30000;
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 10000;
 
   @override
   void initState() {

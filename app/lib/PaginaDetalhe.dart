@@ -31,6 +31,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   int? lastHeard;
   int? pingMs;
   String _duracaoSelecionada = '1_semana';
+  Timer? _offlineTimer;
 
   // Config controllers
   final TextEditingController _nomeController = TextEditingController();
@@ -57,7 +58,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
   bool get isConnected =>
       lastHeard != null &&
-      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 30000;
+      (DateTime.now().millisecondsSinceEpoch - lastHeard!) < 10000;
   final _conviteFormKey = GlobalKey<FormState>();
   final _configFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();
@@ -133,37 +134,28 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
               lastHeard = data['last_heard'];
               isOpen = data['lock_state'] == 'UNLOCKED';
             });
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display, just mark offline via time check
+                });
+              }
+            });
           } else if (data['type'] == 'device_update' &&
               data['device_id'] == widget.fechaduraId) {
             print('DEBUG: Received device_update for ${widget.fechaduraId}');
             setState(() {
               isOpen = data['lock_state'] == 'UNLOCKED';
             });
-          } else if (data['type'] == 'log_update' &&
-              data['device_id'] == widget.fechaduraId) {
-            print('DEBUG: Received log_update for ${widget.fechaduraId}');
-            // Add new log to list
-            final timestamp = data['timestamp'];
-            final user = getUserDisplay(
-              data['user_name'],
-              data['user_id'],
-              data['reason'],
-            );
-            final action = data['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
-            final reason = translateReason(data['reason']);
-            final newLog = {
-              'data_hora': timestamp,
-              'usuario': user,
-              'acao': action,
-              'reason': reason,
-            };
-            setState(() {
-              logs.insert(0, newLog); // Add to beginning
+            _offlineTimer?.cancel();
+            _offlineTimer = Timer(Duration(seconds: 10), () {
+              if (mounted) {
+                setState(() {
+                  // Keep lastHeard for display, just mark offline via time check
+                });
+              }
             });
-          } else {
-            print(
-              'DEBUG: Unmatched WebSocket message type: ${data['type']} for device ${data['device_id']}',
-            );
           }
         } catch (e) {
           print('DEBUG: Error parsing WebSocket message: $e');
@@ -2180,6 +2172,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   @override
   void dispose() {
     _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

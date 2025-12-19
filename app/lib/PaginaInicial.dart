@@ -129,7 +129,7 @@ class _InicialState extends State<Inicial> {
             final deviceId = data['device_id'];
             final lockState = data['lock_state'];
             _offlineTimers[deviceId]?.cancel();
-            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
               if (mounted) {
                 setState(() {
                   for (var cartao in cartoes) {
@@ -152,7 +152,7 @@ class _InicialState extends State<Inicial> {
             final deviceId = data['device_id'];
             final lockState = data['lock_state'];
             _offlineTimers[deviceId]?.cancel();
-            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 10), () {
               if (mounted) {
                 setState(() {
                   for (var cartao in cartoes) {
@@ -212,7 +212,7 @@ class _InicialState extends State<Inicial> {
               final lastHeard = device['last_heard'];
               final isOnline =
                   lastHeard != null &&
-                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 30000;
+                  (DateTime.now().millisecondsSinceEpoch - lastHeard) < 10000;
               final isUnlocked = device['lock_state'] == 'UNLOCKED';
               final lockedDownAt = device['locked_down_at'];
               cartao['isOnline'] = isOnline;
