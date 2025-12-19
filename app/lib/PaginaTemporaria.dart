@@ -21,6 +21,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
   bool _isLoading = true;
   Map<String, dynamic>? _usuario;
   WebSocketChannel? _webSocketChannel;
+  Map<String, Timer> _offlineTimers = {};
 
   @override
   void initState() {
@@ -53,6 +54,18 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
               data['type'] == 'device_update') {
             final deviceId = data['device_id'];
             final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+              if (mounted) {
+                setState(() {
+                  for (var item in _fechadurasTemporarias) {
+                    if (item['device']['device_id'] == deviceId) {
+                      item['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
             setState(() {
               for (var item in _fechadurasTemporarias) {
                 if (item['device']['device_id'] == deviceId) {
@@ -84,6 +97,7 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimers.forEach((_, timer) => timer.cancel());
     super.dispose();
   }
 

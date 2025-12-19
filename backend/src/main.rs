@@ -67,11 +67,8 @@ impl<'r> FromRequest<'r> for Token {
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
         // First try Authorization header
         let auth_header = req.headers().get_one("Authorization");
-        if let Some(auth) = auth_header {
-            if auth.starts_with("Bearer ") {
-                let token_str = &auth[7..];
-                return Outcome::Success(Token(token_str.to_string()));
-            }
+        if let Some(token_str) = auth_header.and_then(|auth| auth.strip_prefix("Bearer ")) {
+            return Outcome::Success(Token(token_str.to_string()));
         }
 
         // If not found, try query parameter (for websockets)

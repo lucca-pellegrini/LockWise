@@ -122,24 +122,26 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     // Listen for messages
     _webSocketChannel!.stream.listen(
       (message) {
+        print('DEBUG: WebSocket message received: $message');
         try {
           final data = jsonDecode(message);
+          print('DEBUG: Parsed WebSocket data: $data');
           if (data['type'] == 'device_online' &&
               data['device_id'] == widget.fechaduraId) {
-            final lastHeard = data['last_heard'];
-            final lockState = data['lock_state'];
+            print('DEBUG: Received device_online for ${widget.fechaduraId}');
             setState(() {
-              lastHeard != null ? lastHeard : this.lastHeard;
-              isOpen = lockState == 'UNLOCKED';
+              lastHeard = data['last_heard'];
+              isOpen = data['lock_state'] == 'UNLOCKED';
             });
           } else if (data['type'] == 'device_update' &&
               data['device_id'] == widget.fechaduraId) {
-            final lockState = data['lock_state'];
+            print('DEBUG: Received device_update for ${widget.fechaduraId}');
             setState(() {
-              isOpen = lockState == 'UNLOCKED';
+              isOpen = data['lock_state'] == 'UNLOCKED';
             });
           } else if (data['type'] == 'log_update' &&
               data['device_id'] == widget.fechaduraId) {
+            print('DEBUG: Received log_update for ${widget.fechaduraId}');
             // Add new log to list
             final timestamp = data['timestamp'];
             final user = getUserDisplay(
@@ -158,8 +160,13 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             setState(() {
               logs.insert(0, newLog); // Add to beginning
             });
+          } else {
+            print(
+              'DEBUG: Unmatched WebSocket message type: ${data['type']} for device ${data['device_id']}',
+            );
           }
         } catch (e) {
+          print('DEBUG: Error parsing WebSocket message: $e');
           // Ignore invalid messages
         }
       },

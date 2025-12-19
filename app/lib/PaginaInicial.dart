@@ -40,6 +40,7 @@ class _InicialState extends State<Inicial> {
   List<rive.StateMachineController?> riveControllers =
       List<rive.StateMachineController?>.filled(bottomNavItems.length, null);
   WebSocketChannel? _webSocketChannel;
+  Map<String, Timer> _offlineTimers = {};
 
   Widget _buildImage(String assetName, [double width = 350]) {
     return Image.asset('images/$assetName', width: width);
@@ -126,21 +127,50 @@ class _InicialState extends State<Inicial> {
           final data = jsonDecode(message);
           if (data['type'] == 'device_online') {
             final deviceId = data['device_id'];
-            final lastHeard = data['last_heard'];
             final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+              if (mounted) {
+                setState(() {
+                  for (var cartao in cartoes) {
+                    if (cartao['id'] == deviceId) {
+                      cartao['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
             setState(() {
               for (var cartao in cartoes) {
                 if (cartao['id'] == deviceId) {
-                  final isOnline =
-                      DateTime.now().millisecondsSinceEpoch - lastHeard < 30000;
-                  final isUnlocked = lockState == 'UNLOCKED';
-                  cartao['isOnline'] = isOnline;
-                  cartao['isUnlocked'] = isUnlocked;
+                  cartao['isOnline'] = true;
+                  cartao['isUnlocked'] = lockState == 'UNLOCKED';
+                }
+              }
+            });
+          } else if (data['type'] == 'device_update') {
+            final deviceId = data['device_id'];
+            final lockState = data['lock_state'];
+            _offlineTimers[deviceId]?.cancel();
+            _offlineTimers[deviceId] = Timer(Duration(seconds: 30), () {
+              if (mounted) {
+                setState(() {
+                  for (var cartao in cartoes) {
+                    if (cartao['id'] == deviceId) {
+                      cartao['isOnline'] = false;
+                    }
+                  }
+                });
+              }
+            });
+            setState(() {
+              for (var cartao in cartoes) {
+                if (cartao['id'] == deviceId) {
+                  cartao['isUnlocked'] = lockState == 'UNLOCKED';
                 }
               }
             });
           }
-          // Handle other types if needed
         } catch (e) {
           // Ignore invalid messages
         }
@@ -230,6 +260,7 @@ class _InicialState extends State<Inicial> {
   @override
   void dispose() {
     _webSocketChannel?.sink.close(status.goingAway);
+    _offlineTimers.forEach((_, timer) => timer.cancel());
     for (var controller in riveControllers) {
       controller?.dispose();
     }

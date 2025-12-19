@@ -143,6 +143,11 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                         "locked_down_at": null
                                     })
                                     .to_string();
+                                    eprintln!(
+                                        "DEBUG: Broadcasting device_online for device {} with last_heard {} to recipients",
+                                        uuid_str,
+                                        now.timestamp_millis()
+                                    );
 
                                     // Get owner
                                     let owner_row: Option<(String,)> = sqlx::query_as(
