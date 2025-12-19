@@ -214,7 +214,53 @@ pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::Event
                                 .bind(uuid)
                                 .execute(db_pool)
                                 .await;
-                                if result.is_ok() {}
+                                if result.is_ok() {
+                                    // Broadcast device update to owner and invited users
+                                    if let Some(user_broadcasts) = super::USER_BROADCASTS.get() {
+                                        let update = serde_json::json!({
+                                            "type": "device_update",
+                                            "device_id": uuid_str,
+                                            "lock_state": "LOCKED",
+                                            "locked_down_at": timestamp.timestamp_millis()
+                                        })
+                                        .to_string();
+
+                                        // Get owner
+                                        let owner_row: Option<(String,)> = sqlx::query_as(
+                                            "SELECT user_id FROM devices WHERE uuid = $1",
+                                        )
+                                        .bind(uuid)
+                                        .fetch_optional(db_pool)
+                                        .await
+                                        .unwrap_or(None);
+
+                                        let mut recipients = Vec::new();
+                                        if let Some((owner_id,)) = owner_row {
+                                            recipients.push(owner_id);
+                                        }
+
+                                        // Get invited users with status = 1
+                                        let invited_rows: Vec<(String,)> = sqlx::query_as(
+                                              "SELECT receiver_id FROM invites WHERE device_id = $1 AND status = 1"
+                                          )
+                                          .bind(uuid)
+                                          .fetch_all(db_pool)
+                                          .await
+                                          .unwrap_or_default();
+
+                                        for (receiver_id,) in invited_rows {
+                                            recipients.push(receiver_id);
+                                        }
+
+                                        // Send to each recipient
+                                        let broadcasts = user_broadcasts.lock().unwrap();
+                                        for recipient in recipients {
+                                            if let Some(tx) = broadcasts.get(&recipient) {
+                                                let _ = tx.send(update.clone());
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else if let Ok(lock_msg) =
                             serde_cbor::from_slice::<LockStatusMessage>(&publish.payload)
