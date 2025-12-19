@@ -69,6 +69,7 @@ struct ControlMessage {
 /// Manipula eventos MQTT recebidos dos dispositivos.
 /// Processa mensagens de heartbeat, eventos (PONG, CONFIG_UPDATED, LOCKING_DOWN)
 /// e atualizações de status de bloqueio, atualizando o banco de dados conforme necessário.
+/// Também envia atualizações em tempo real via WebSocket para usuários conectados.
 pub async fn handle_mqtt_events(db_pool: &PgPool, eventloop: &mut rumqttc::EventLoop) {
     loop {
         match eventloop.poll().await {

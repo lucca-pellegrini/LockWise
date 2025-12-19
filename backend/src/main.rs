@@ -10,6 +10,7 @@
 //! - **Gerenciamento de Dispositivos**: Ver [`device`] para registro e controle remoto
 //! - **Convites Temporários**: Ver [`invite`] para compartilhamento de acesso
 //! - **Comunicação MQTT**: Ver [`mqtt`] para mensagens e heartbeats
+//! - **WebSockets**: Atualizações em tempo real via WebSocket para dispositivos
 //! - **Autenticação por Voz**: Registro e verificação usando SpeechBrain (serviço Python)
 //! - **Logs de Acesso**: Histórico de operações em dispositivos
 //! - **Configuração Remota**: Atualização de parâmetros via MQTT
@@ -21,7 +22,7 @@
 //! - **Serviço Principal (Rust)**: API REST com [Rocket](https://rocket.rs/), gerenciamento de usuários e dispositivos
 //! - **Serviço de Voz (Python)**: Reconhecimento de voz com [SpeechBrain](https://speechbrain.github.io/) e [FastAPI](https://fastapi.tiangolo.com/)
 //! - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) para persistência de dados
-//! - **Comunicação**: [MQTT](https://mqtt.org/) para controle em tempo real dos dispositivos
+//! - **Comunicação**: [MQTT](https://mqtt.org/) para controle em tempo real dos dispositivos e WebSockets para atualizações push
 //!
 //! ## Configuração
 //!
