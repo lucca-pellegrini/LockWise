@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 class Notificacao extends StatefulWidget {
   const Notificacao({super.key});
@@ -18,7 +20,7 @@ class _NotificacaoState extends State<Notificacao>
     with RouteAware, WidgetsBindingObserver {
   List<Map<String, dynamic>> logs = [];
   bool _isLoading = true;
-  Timer? _pollingTimer;
+  WebSocketChannel? _webSocketChannel;
   bool _isAppInForeground = true;
   Map<String, String> deviceNames = {};
 
@@ -58,13 +60,58 @@ class _NotificacaoState extends State<Notificacao>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarLogs();
-    _startPolling();
+    _connectWebSocket();
   }
 
-  void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollLogs();
-    });
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final uri = Uri.parse(
+      '${LocalService.backendUrl}/ws/updates?token=$backendToken',
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'log_update') {
+            final deviceId = data['device_id'];
+            final timestamp = data['timestamp'];
+            final user = getUserDisplay(
+              data['user_name'],
+              data['user_id'],
+              data['reason'],
+            );
+            final action = data['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = translateReason(data['reason']);
+            final newLog = {
+              'data_hora': timestamp,
+              'fechadura_nome': deviceNames[deviceId] ?? deviceId,
+              'usuario': user,
+              'acao': action,
+              'reason': reason,
+            };
+            setState(() {
+              logs.insert(0, newLog); // Add to beginning
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      },
+      onError: (error) {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+
+    // Initial poll
+    await _pollLogs();
   }
 
   Future<void> _pollLogs() async {
@@ -167,7 +214,7 @@ class _NotificacaoState extends State<Notificacao>
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     super.dispose();

@@ -6,6 +6,8 @@ import 'dart:async';
 import 'PaginaDetalhe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 class Temporaria extends StatefulWidget {
   const Temporaria({super.key});
@@ -18,29 +20,65 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _fechadurasTemporarias = [];
   bool _isLoading = true;
   Map<String, dynamic>? _usuario;
-  Timer? _pollTimer;
-  Timer? _statusPollingTimer;
+  WebSocketChannel? _webSocketChannel;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarFechadurasTemporarias();
-    _pollTimer = Timer.periodic(Duration(seconds: 30), (_) => _pollDevices());
-    _startStatusPolling();
+    _connectWebSocket();
   }
 
-  void _startStatusPolling() {
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollStatuses();
-    });
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final uri = Uri.parse(
+      '${LocalService.backendUrl}/ws/updates?token=$backendToken',
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_online' ||
+              data['type'] == 'device_update') {
+            final deviceId = data['device_id'];
+            final lockState = data['lock_state'];
+            setState(() {
+              for (var item in _fechadurasTemporarias) {
+                if (item['device']['device_id'] == deviceId) {
+                  item['isOnline'] = true;
+                  item['isUnlocked'] = lockState == 'UNLOCKED';
+                  item['locked_down_at'] = data['locked_down_at'];
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      },
+      onError: (error) {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+
+    // Initial polls
+    await _pollDevices();
+    await _pollStatuses();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pollTimer?.cancel();
-    _statusPollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
     super.dispose();
   }
 
@@ -971,15 +1009,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
         }
       });
 
-      // Also pause the main status polling timer if it exists
-      final temporariaState = context
-          .findAncestorStateOfType<_TemporariaState>();
-      temporariaState?._statusPollingTimer?.cancel();
-      Future.delayed(const Duration(seconds: 5), () {
-        if (temporariaState != null && temporariaState.mounted) {
-          temporariaState._startStatusPolling();
-        }
-      });
+      // WebSocket will update
 
       setState(() {
         isOpen = acao == 'Abrir';

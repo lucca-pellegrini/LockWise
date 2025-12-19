@@ -4,8 +4,11 @@ import 'dart:ui';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math';
+import 'PaginaDetalhe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 
@@ -58,7 +61,7 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
   final _conviteFormKey = GlobalKey<FormState>();
   final _configFormKey = GlobalKey<FormState>();
   final _idUsuarioController = TextEditingController();
-  Timer? _pollingTimer;
+  WebSocketChannel? _webSocketChannel;
   bool _isAppInForeground = true;
 
   String translateReason(String reason) {
@@ -97,15 +100,77 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarDadosFechadura();
-    _startPolling();
+    _connectWebSocket();
   }
 
   bool get isLockedDown => fechadura?['locked_down_at'] != null;
 
-  void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollUpdates();
-    });
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final uri = Uri.parse(
+      '${LocalService.backendUrl}/ws/updates?token=$backendToken',
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_online' &&
+              data['device_id'] == widget.fechaduraId) {
+            final lastHeard = data['last_heard'];
+            final lockState = data['lock_state'];
+            setState(() {
+              lastHeard != null ? lastHeard : this.lastHeard;
+              isOpen = lockState == 'UNLOCKED';
+            });
+          } else if (data['type'] == 'device_update' &&
+              data['device_id'] == widget.fechaduraId) {
+            final lockState = data['lock_state'];
+            setState(() {
+              isOpen = lockState == 'UNLOCKED';
+            });
+          } else if (data['type'] == 'log_update' &&
+              data['device_id'] == widget.fechaduraId) {
+            // Add new log to list
+            final timestamp = data['timestamp'];
+            final user = getUserDisplay(
+              data['user_name'],
+              data['user_id'],
+              data['reason'],
+            );
+            final action = data['event_type'] == 'LOCK' ? 'Fechar' : 'Abrir';
+            final reason = translateReason(data['reason']);
+            final newLog = {
+              'data_hora': timestamp,
+              'usuario': user,
+              'acao': action,
+              'reason': reason,
+            };
+            setState(() {
+              logs.insert(0, newLog); // Add to beginning
+            });
+          }
+        } catch (e) {
+          // Ignore invalid messages
+        }
+      },
+      onError: (error) {
+        // Reconnect after delay
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        // Reconnect
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+
+    // Initial polls
+    await _pollDevice();
+    await _pollLogs();
   }
 
   @override
@@ -113,12 +178,10 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
     _isAppInForeground = state == AppLifecycleState.resumed;
   }
 
-  Future<void> _pollUpdates() async {
-    if (!mounted || !_isAppInForeground) return;
+  Future<void> _pollDevice() async {
     final backendToken = await LocalService.getBackendToken();
     if (backendToken == null) return;
 
-    // Poll device state
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final deviceResponse = await http.get(
@@ -136,26 +199,17 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
           final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
           final newLastHeard = deviceData['last_heard'];
-          final newIsLockedDown = deviceData['locked_down_at'] != null;
-          print(
-            'DEBUG: newIsLockedDown: $newIsLockedDown, current isLockedDown: ${isLockedDown}',
-          );
-          if (newIsOpen != isOpen ||
-              newLastHeard != lastHeard ||
-              newIsLockedDown != isLockedDown) {
-            setState(() {
-              isOpen = newIsOpen;
-              lastHeard = newLastHeard;
-              // Note: isLockedDown is computed from fechadura, not stored as state
-            });
-          }
+          setState(() {
+            isOpen = newIsOpen;
+            lastHeard = newLastHeard;
+          });
         }
-        break; // Success, exit retry loop
+        break;
       } catch (e) {
         if (attempt == 1) {
-          // Ignore after 2 attempts
+          // Ignore
         } else {
-          await Future.delayed(const Duration(seconds: 1)); // Wait before retry
+          await Future.delayed(const Duration(seconds: 1));
         }
       }
     }
@@ -170,15 +224,17 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
       if (pingResponse.statusCode == 200) {
         final end = DateTime.now().millisecondsSinceEpoch;
         final newPingMs = ((end - start) / 2).round();
-        if (newPingMs != pingMs) {
-          setState(() {
-            pingMs = newPingMs;
-          });
-        }
+        setState(() {
+          pingMs = newPingMs;
+        });
       }
     }
+  }
 
-    // Poll logs
+  Future<void> _pollLogs() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
     try {
       final logsResponse = await http.get(
         Uri.parse('${LocalService.backendUrl}/logs/${widget.fechaduraId}'),
@@ -204,15 +260,12 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
             'reason': reason,
           };
         }).toList();
-        if (transformedLogs.length != logs.length ||
-            !transformedLogs.every((log) => logs.contains(log))) {
-          setState(() {
-            logs = transformedLogs;
-          });
-        }
+        setState(() {
+          logs = transformedLogs;
+        });
       }
     } catch (e) {
-      // Ignore errors
+      // Ignore
     }
   }
 
@@ -376,17 +429,9 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
         'tipo_acesso': 'manual', // ou 'remoto' conforme seu fluxo
       });
 
-      // Pause polling for 5 seconds to allow backend to update database
-      _pollingTimer?.cancel();
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) {
-          _startPolling();
-        }
-      });
-
-      // Polling will update logs and state
+      // WebSocket will update state
       setState(() {
-        isOpen = novoEstado == 1; // Temporarily update, polling will confirm
+        isOpen = novoEstado == 1;
       });
 
       // Mostra feedback para o usuário
@@ -2122,15 +2167,8 @@ class _LockDetailsState extends State<LockDetails> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
     WidgetsBinding.instance.removeObserver(this);
-    _nomeController.dispose();
-    _idUsuarioController.dispose();
-    _wifiSsidController.dispose();
-    _wifiPasswordController.dispose();
-    _audioTimeoutController.dispose();
-    _lockTimeoutController.dispose();
-    _pairingTimeoutController.dispose();
     super.dispose();
   }
 }
