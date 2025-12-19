@@ -886,6 +886,8 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   bool isLockedDown = false;
   int? lockedDownAt;
   Timer? _offlineTimer;
+  int? pingMs;
+  Timer? _pingTimer;
 
   bool get isConnected =>
       lastHeard != null &&
@@ -897,6 +899,36 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     WidgetsBinding.instance.addObserver(this);
     _carregarDados();
     _connectWebSocket();
+    _startPingTimer();
+  }
+
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(Duration(seconds: 10), (_) async {
+      if (isConnected) {
+        await _pingDevice();
+      }
+    });
+  }
+
+  Future<void> _pingDevice() async {
+    if (!isConnected) return;
+
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final start = DateTime.now().millisecondsSinceEpoch;
+    final pingResponse = await http.post(
+      Uri.parse('${LocalService.backendUrl}/temp_ping/${widget.deviceId}'),
+      headers: {'Authorization': 'Bearer $backendToken'},
+    );
+    if (pingResponse.statusCode == 200) {
+      final end = DateTime.now().millisecondsSinceEpoch;
+      final newPingMs = ((end - start) / 2).round();
+      setState(() {
+        pingMs = newPingMs;
+      });
+    }
   }
 
   @override
@@ -1052,6 +1084,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
   void dispose() {
     _webSocketChannel?.sink.close(status.goingAway);
     _offlineTimer?.cancel();
+    _pingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1172,6 +1205,31 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                         isConnected
                                             ? 'Conectada'
                                             : 'Desconectada',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                if (!isLockedDown && isConnected)
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.speed,
+                                        color: pingMs == null
+                                            ? Colors.white
+                                            : pingMs! > 1000
+                                            ? Colors.orange.shade800
+                                            : pingMs! < 500
+                                            ? Colors.green
+                                            : Colors.yellow.shade700,
+                                        size: 20,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Ping: ${pingMs ?? '?'}ms',
                                         style: TextStyle(
                                           fontSize: 16,
                                           color: Colors.white,
