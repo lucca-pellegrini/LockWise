@@ -17,6 +17,7 @@ utilizando [PostgreSQL](https://www.postgresql.org/) para armazenamento e [MQTT]
 ## Funcionalidades
 
 - **API REST**: Endpoints para gerenciamento de usuários, dispositivos e convites
+- **WebSockets**: Atualizações em tempo real de dispositivos via WebSocket
 - **Autenticação de Usuário**: Integração com Firebase Authentication e senhas locais
 - **Gerenciamento de Dispositivos**: Registro, controle remoto e monitoramento via MQTT
 - **Autenticação por Voz**: Registro e verificação de embeddings de voz usando SpeechBrain
@@ -278,6 +279,11 @@ O serviço estará disponível na porta especificada (padrão: 12223).
 
 - `GET /logs/<uuid>` - Logs do dispositivo
 - `GET /notifications` - Notificações do usuário
+
+### WebSockets
+
+- `GET /ws/updates` - [WebSocket](https://websockets.spec.whatwg.org/) para
+  atualizações em tempo real de dispositivos (token via *query parameter)*
 
 ### Acesso Temporário
 

@@ -38,6 +38,7 @@ graph TD
     A[[App Flutter]] -->|API Firebase| B[Firestore]
     A -->|API Firebase| C[Firebase Auth]
     A -->|APIs REST| D[Proxy Reverso OpenResty]
+    A <-->|WebSocket| D
     A -.->|AP de Pareamento| E[[Fechadura LockWise]]
     E <-->|MQTTS| F[Broker NanoMQ]
     E -->|APIs REST| D
@@ -137,6 +138,17 @@ o serviço SpeechBrain, e aguarda o resultado da verificação. Essa arquitetura
 desacoplada isola as responsabilidades, e separa o código *back-end* principal
 que exige baixa latência do código Python para verificação de locutor, que é
 mais lenta e estritamente não-paralelizada.
+
+#### Comunicação em Tempo Real via WebSocket
+
+O back-end suporta atualizações em tempo real através de conexões WebSocket,
+permitindo que o aplicativo receba notificações instantâneas sobre mudanças no
+estado dos dispositivos. Cada usuário possui um canal de broadcast dedicado,
+garantindo que apenas usuários autorizados recebam atualizações dos dispositivos
+que possuem ou têm acesso via convites. As atualizações incluem status online/offline
+dos dispositivos, mudanças de estado de bloqueio, logs de acesso e notificações
+de eventos importantes. O endpoint `/ws/updates` aceita tokens de autenticação
+via parâmetro de query, facilitando a integração com clientes WebSocket.
 
 ### Detalhes de Implementação
 
