@@ -58,24 +58,35 @@ pub struct HomepageUrl(pub String);
 #[derive(Clone)]
 pub struct Token(pub String);
 
-/// Implementação de FromRequest para Token para extrair token Bearer do cabeçalho Authorization.
+/// Implementação de FromRequest para Token para extrair token Bearer do cabeçalho Authorization ou query parameter.
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Token {
     type Error = &'static str;
 
-    /// Extrai o token JWT Bearer do cabeçalho Authorization da requisição.
+    /// Extrai o token JWT Bearer do cabeçalho Authorization ou query parameter.
     async fn from_request(req: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        // First try Authorization header
         let auth_header = req.headers().get_one("Authorization");
-        match auth_header {
-            Some(auth) if auth.starts_with("Bearer ") => {
+        if let Some(auth) = auth_header {
+            if auth.starts_with("Bearer ") {
                 let token_str = &auth[7..];
-                Outcome::Success(Token(token_str.to_string()))
+                return Outcome::Success(Token(token_str.to_string()));
             }
-            _ => Outcome::Error((
-                Status::Unauthorized,
-                "Missing or invalid Authorization header",
-            )),
         }
+
+        // If not found, try query parameter (for websockets)
+        if let Some(token_str) = req.uri().query().and_then(|q| {
+            url::form_urlencoded::parse(q.as_bytes())
+                .find(|(k, _)| k == "token")
+                .map(|(_, v)| v.into_owned())
+        }) {
+            return Outcome::Success(Token(token_str));
+        }
+
+        Outcome::Error((
+            Status::Unauthorized,
+            "Missing or invalid Authorization header or token query parameter",
+        ))
     }
 }
 
