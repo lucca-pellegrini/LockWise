@@ -34,8 +34,13 @@ class _TemporariaState extends State<Temporaria> with WidgetsBindingObserver {
     final backendToken = await LocalService.getBackendToken();
     if (backendToken == null) return;
 
-    final uri = Uri.parse(
-      '${LocalService.backendUrl}/ws/updates?token=$backendToken',
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
     );
     _webSocketChannel = WebSocketChannel.connect(uri);
 
@@ -862,8 +867,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     with WidgetsBindingObserver {
   bool isOpen = true;
   int? lastHeard;
-  int? pingMs;
-  Timer? _pollingTimer;
+  WebSocketChannel? _webSocketChannel;
   bool _isAppInForeground = true;
   bool isLockedDown = false;
   int? lockedDownAt;
@@ -877,79 +881,12 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _carregarDados();
-    _startPolling();
-  }
-
-  void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _pollUpdates();
-    });
+    _connectWebSocket();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _isAppInForeground = state == AppLifecycleState.resumed;
-  }
-
-  Future<void> _pollUpdates() async {
-    if (!mounted || !_isAppInForeground) return;
-    final backendToken = await LocalService.getBackendToken();
-    if (backendToken == null) return;
-
-    // Poll device state
-    for (int attempt = 0; attempt < 2; attempt++) {
-      try {
-        final deviceResponse = await http.get(
-          Uri.parse(
-            '${LocalService.backendUrl}/temp_device/${widget.deviceId}',
-          ),
-          headers: {'Authorization': 'Bearer $backendToken'},
-        );
-        if (deviceResponse.statusCode == 200) {
-          final deviceData = jsonDecode(deviceResponse.body);
-          final newIsOpen = deviceData['lock_state'] == 'UNLOCKED';
-          final newLastHeard = deviceData['last_heard'];
-          final newIsLockedDown = deviceData['locked_down_at'] != null;
-          final newLockedDownAt = deviceData['locked_down_at'];
-          if (newIsOpen != isOpen ||
-              newLastHeard != lastHeard ||
-              newIsLockedDown != isLockedDown ||
-              newLockedDownAt != lockedDownAt) {
-            setState(() {
-              isOpen = newIsOpen;
-              lastHeard = newLastHeard;
-              isLockedDown = newIsLockedDown;
-              lockedDownAt = newLockedDownAt;
-            });
-          }
-        }
-        break;
-      } catch (e) {
-        if (attempt == 1) {
-          // Ignore after 2 attempts
-        } else {
-          await Future.delayed(const Duration(seconds: 1));
-        }
-      }
-    }
-
-    // Poll ping if connected
-    if (isConnected) {
-      final start = DateTime.now().millisecondsSinceEpoch;
-      final pingResponse = await http.post(
-        Uri.parse('${LocalService.backendUrl}/temp_ping/${widget.deviceId}'),
-        headers: {'Authorization': 'Bearer $backendToken'},
-      );
-      if (pingResponse.statusCode == 200) {
-        final end = DateTime.now().millisecondsSinceEpoch;
-        final newPingMs = ((end - start) / 2).round();
-        if (newPingMs != pingMs) {
-          setState(() {
-            pingMs = newPingMs;
-          });
-        }
-      }
-    }
+    // Not used
   }
 
   Future<void> _carregarDados() async {
@@ -976,6 +913,46 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
     }
   }
 
+  void _connectWebSocket() async {
+    final backendToken = await LocalService.getBackendToken();
+    if (backendToken == null) return;
+
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
+    );
+    _webSocketChannel = WebSocketChannel.connect(uri);
+
+    // Listen for messages
+    _webSocketChannel!.stream.listen(
+      (message) {
+        try {
+          final data = jsonDecode(message);
+          if (data['type'] == 'device_update' &&
+              data['device_id'] == widget.deviceId) {
+            setState(() {
+              isOpen = data['lock_state'] == 'UNLOCKED';
+              isLockedDown = data['locked_down_at'] != null;
+              lockedDownAt = data['locked_down_at'];
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+      },
+      onError: (error) {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+      onDone: () {
+        Future.delayed(const Duration(seconds: 5), _connectWebSocket);
+      },
+    );
+  }
+
   Future<void> _registrarAcao(String acao) async {
     try {
       final usuario = await LocalService.getUsuarioLogado();
@@ -1000,14 +977,6 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
       if (response.statusCode != 200) {
         throw Exception('Backend error: ${response.statusCode}');
       }
-
-      // Pause polling for 5 seconds to allow backend to update database
-      _pollingTimer?.cancel();
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) {
-          _startPolling();
-        }
-      });
 
       // WebSocket will update
 
@@ -1042,7 +1011,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _webSocketChannel?.sink.close(status.goingAway);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1170,30 +1139,7 @@ class _TemporaryDeviceDialogState extends State<_TemporaryDeviceDialog>
                                       ),
                                     ],
                                   ),
-                                if (!isLockedDown && isConnected)
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.speed,
-                                        color: pingMs == null
-                                            ? Colors.white
-                                            : pingMs! > 1000
-                                            ? Colors.orange.shade800
-                                            : pingMs! < 500
-                                            ? Colors.green
-                                            : Colors.yellow.shade700,
-                                        size: 20,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Ping: ${pingMs ?? '?'}ms',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+
                                 if (!isLockedDown &&
                                     !isConnected &&
                                     lastHeard != null)

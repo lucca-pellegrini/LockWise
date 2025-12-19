@@ -67,8 +67,13 @@ class _NotificacaoState extends State<Notificacao>
     final backendToken = await LocalService.getBackendToken();
     if (backendToken == null) return;
 
-    final uri = Uri.parse(
-      '${LocalService.backendUrl}/ws/updates?token=$backendToken',
+    final backendUri = Uri.parse(LocalService.backendUrl);
+    final uri = Uri(
+      scheme: backendUri.scheme == 'https' ? 'wss' : 'ws',
+      host: backendUri.host,
+      port: backendUri.port,
+      path: '/ws/updates',
+      queryParameters: {'token': backendToken},
     );
     _webSocketChannel = WebSocketChannel.connect(uri);
 
