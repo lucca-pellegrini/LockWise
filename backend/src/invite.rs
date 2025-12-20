@@ -83,11 +83,6 @@ pub async fn create_invite(
     request: rocket::serde::json::Json<CreateInviteRequest>,
     db_pool: &State<PgPool>,
 ) -> Result<String, Status> {
-    println!(
-        "DEBUG: create_invite called with receiver_email: {}, device_id: {}",
-        request.receiver_email, request.device_id
-    );
-
     // Parse device_id to UUID
     let device_uuid = match Uuid::parse_str(&request.device_id) {
         Ok(uuid) => uuid,
@@ -298,10 +293,6 @@ pub async fn reject_invite(
     };
 
     // Delete the invite
-    println!(
-        "DEBUG: Deleting invite with id: {}, receiver_id: {}",
-        invite_id, user_id
-    );
     let rows_affected = sqlx::query("DELETE FROM invites WHERE id = $1 AND receiver_id = $2")
         .bind(invite_id)
         .bind(&user_id)
@@ -314,10 +305,6 @@ pub async fn reject_invite(
         return Err(Status::NotFound);
     }
 
-    println!(
-        "DEBUG: Invite deleted successfully, rows affected: {}",
-        rows_affected
-    );
     Ok(())
 }
 

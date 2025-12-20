@@ -363,16 +363,7 @@ pub async fn register_voice(
         .decode(embedding_b64)
         .map_err(|_| Status::InternalServerError)?;
 
-    println!(
-        "DEBUG: Embedding binary length: {} bytes",
-        embedding_bytes.len()
-    );
-
     // Store in database
-    println!(
-        "DEBUG: Storing embedding in database for user {}",
-        firebase_uid
-    );
     sqlx::query("UPDATE users SET voice_embeddings = $1 WHERE firebase_uid = $2")
         .bind(&embedding_bytes)
         .bind(&firebase_uid)
