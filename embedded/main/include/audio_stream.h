@@ -9,7 +9,7 @@
  *
  * Este enum define os comandos disponíveis para iniciar ou parar o streaming de áudio.
  */
-typedef enum {
+typedef enum audio_stream_cmd {
 	AUDIO_STREAM_START, /**< Inicia o streaming de áudio */
 	AUDIO_STREAM_STOP /**< Para o streaming de áudio */
 } audio_stream_cmd_t;

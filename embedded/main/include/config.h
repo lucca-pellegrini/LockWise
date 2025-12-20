@@ -12,7 +12,7 @@
  * Esta estrutura contém todas as configurações persistentes armazenadas em NVS (Non-Volatile Storage).
  * Inclui credenciais Wi-Fi, URLs de back-end, configurações MQTT e outros parâmetros operacionais.
  */
-typedef struct {
+typedef struct config {
 	char wifi_ssid[32]; /**< Nome da rede Wi-Fi para conexão */
 	char wifi_password[64]; /**< Senha da rede Wi-Fi */
 	char device_id[64]; /**< Identificador único do dispositivo (UUID) */

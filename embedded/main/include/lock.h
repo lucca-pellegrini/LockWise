@@ -15,7 +15,7 @@
 /**
  * @brief Estados possíveis da fechadura.
  */
-typedef enum {
+typedef enum lock_state {
 	LOCK_STATE_LOCKED, /**< Fechadura está trancada */
 	LOCK_STATE_UNLOCKED, /**< Fechadura está destrancada */
 	LOCK_STATE_AUTHENTICATING /**< Fechadura está em processo de autenticação */
@@ -24,7 +24,7 @@ typedef enum {
 /**
  * @brief Razões para mudança de estado da fechadura.
  */
-typedef enum {
+typedef enum door_reason {
 	DOOR_REASON_BUTTON, /**< Ação manual via botão de toque */
 	DOOR_REASON_TIMEOUT, /**< Trancamento automático por timeout */
 	DOOR_REASON_MQTT, /**< Comando via MQTT */
@@ -37,7 +37,7 @@ typedef enum {
 /**
  * @brief Parâmetros para controle do piscar do LED.
  */
-typedef struct {
+typedef struct blink_params {
 	uint16_t period_ms; /**< Período total do ciclo de piscar em ms */
 	uint16_t on_time_ms; /**< Tempo em que o LED fica aceso em ms */
 } blink_params_t;

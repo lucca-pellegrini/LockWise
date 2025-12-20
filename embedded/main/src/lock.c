@@ -17,7 +17,7 @@ static const char *TAG = "\033[1mLOCKWISE:\033[93mLOCK";
  *
  * Mantém o estado da fechadura, mutex para sincronização e timer de auto-trancamento.
  */
-typedef struct {
+typedef struct lock_context {
 	lock_state_t state; /**< Estado atual da fechadura */
 	SemaphoreHandle_t mutex; /**< Mutex para proteger acesso ao contexto */
 	TimerHandle_t timer; /**< Timer para trancamento automático */
