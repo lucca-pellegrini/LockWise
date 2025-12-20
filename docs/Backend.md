@@ -8,7 +8,7 @@ date: 2025-12-16
 lang: pt-BR
 ---
 
-[← Anterior: Sistema Embarcado](Embedded.md)
+[← Anterior: Sistema Embarcado](Embedded.md) | [Infraestrutura →](Infraestrutura.md)
 
 # Desenvolvimento do Back-End
 
@@ -1234,4 +1234,4 @@ A documentação técnica completa, gerada automaticamente a partir do código R
 usando `cargo doc`, está disponível
 [aqui](https://lockwise-docs.verticordia.com/backend/lockwise_backend/).
 
-[← Anterior: Sistema Embarcado](Embedded.md)
+[← Anterior: Sistema Embarcado](Embedded.md) | [Infraestrutura →](Infraestrutura.md)

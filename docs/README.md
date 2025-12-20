@@ -19,3 +19,4 @@ LockWise:
 - [História](História.md)
 - [Sistema Embarcado](Embedded.md)
 - [Back-end](Backend.md)
+- [Infraestrutura](Infraestrutura.md)
